@@ -244,7 +244,7 @@ meaningfully contributing in the long run.
 
 - [ ] Write a design document
 - [x] Create a Discord server
-- [ ] Set up a GitHub repository for the codebase and discussions
+- [x] Create a GitHub repository
 - [ ] Onboard 3-4 core developers who can contribute to Hearth long-term
 - [ ] Design a project logo
 - [ ] Design a workspace structure
