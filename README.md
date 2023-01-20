@@ -243,7 +243,7 @@ of core developers who understand Hearth's goals and who are capable of
 meaningfully contributing in the long run.
 
 - [ ] Write a design document
-- [ ] Create a Discord server
+- [x] Create a Discord server
 - [ ] Set up a GitHub repository for the codebase and discussions
 - [ ] Onboard 3-4 core developers who can contribute to Hearth long-term
 - [ ] Design a project logo
