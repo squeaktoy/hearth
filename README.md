@@ -3,9 +3,7 @@
 Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
 
-[Discord server](https://discord.gg/gzzJ3pWCft)
-
-<iframe src="https://discord.com/widget?id=1065779071008649327&theme=dark" width="350" height="500" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
+[Come join our Discord server!](https://discord.gg/gzzJ3pWCft)
 
 # Design
 
