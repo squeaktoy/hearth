@@ -77,7 +77,7 @@ impl GlyphAtlas {
             glyphs: glyph_info
         }, glyph_shape_errors))
     }
-    fn generate_packer(glyphs: &Vec<Option<GlyphBitmap>>) -> rect_packer::Packer {
+    fn generate_packer(glyphs: &Vec<Option<GlyphBitmap>>) -> Packer {
         let mut config = rect_packer::Config {
             width: 4,
             height: 4,
