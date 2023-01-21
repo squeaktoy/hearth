@@ -1,0 +1,12 @@
+[package]
+name = "font-mud"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+msdfgen = {version = "0.2.1", features = ["ttf-parser"]}
+ttf-parser = "0.18.1"
+rect_packer = "0.2.1"
+
+[dev-dependencies]
+notosans = "0.1.0"
