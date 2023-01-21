@@ -98,17 +98,19 @@ TBD.
 
 Scripting in Hearth is done with WebAssembly. Blah blah blah, lightweight spec,
 blah blah blah, linear memory storage, blah blah blah, lots of runtime options,
-I've said all of this before. Hearth's execution model is inspired by BEAM,
-the virtual machine that the Erlang and Elixir programming languages run on.
-BEAM is a tried-and-true solution for creating resilient, fault-tolerant,
-hot-swappable systems, so many of Hearth's design choices follow BEAM's.
-Hearth scripts are ran as green thread "processes" that can spawn and kill
-other processes. Processes share data by sending messages back and forth from
-each other. A significant departure from BEAM is that because Hearth runs on
-multiple computers at once, processes can spawn other processes on different
-peers, which can be either another client or the server. Hearth's networking
-implementation will then transport messages sent from a process on one peer to
-another, and the server will relay client-to-client messages.
+I've said all of this before.
+
+Hearth's execution model is inspired by BEAM, the virtual machine that the
+Erlang and Elixir programming languages run on. BEAM is a tried-and-true
+solution for creating resilient, fault-tolerant, hot-swappable systems, so many
+of Hearth's design choices follow BEAM's. Hearth scripts are ran as green
+thread "processes" that can spawn and kill other processes. Processes share
+data by sending messages back and forth from each other. A significant
+departure from BEAM is that because Hearth runs on multiple computers at once,
+processes can spawn other processes on different peers, which can be either
+another client or the server. Hearth's networking implementation will then
+transport messages sent from a process on one peer to another, and the server
+will relay client-to-client messages.
 
 A working example of a BEAM-like WebAssembly runtime is Lunatic. Lunatic runs
 green Wasm threads on top of a Rust asynchronous runtime, which handles all of
