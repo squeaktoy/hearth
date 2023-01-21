@@ -214,25 +214,6 @@ node in the rend3 frame graph with a custom shader.
 
 ### CLIs
 
-## Development
-
-Hearth is more of a research project than a general user- or production-ready
-application, and its users are intended to also be its developers. During
-Hearth's early stages of development, its developers must:
-
-1. Use Linux.
-2. Know Rust.
-3. Be familiar with the use of terminal applications like shells,
-  terminal-based text editors, or other TUI apps.
-
-Hearth's core host-side components can generally be decoupled from each other
-into several different fields of development:
-
-1. IPC and TUI interfaces.
-2. Client-server networking.
-3. Process management.
-4. ECS integration.
-
 ## Roadmap
 
 ### Phase 0 - Pre-Production
@@ -252,8 +233,26 @@ meaningfully contributing in the long run.
 - [ ] Create mocks for all of the codebase components
 - [ ] Money?
 
-### Phase 1 - Alpha
+### Phase 1 - Pre-Alpha
 
-### Phase 2 - Beta
+Hearth's core host-side components can generally be decoupled from each other
+into several different areas of development:
 
-### Phase 3 - Release
+1. IPC and TUI interfaces.
+2. Client-server networking.
+3. Process management.
+4. ECS integration.
+5. Virtual terminal emulator development.
+
+Because these different areas are independent, the early-stage development plan
+for Hearth is to work on each of these areas in parallel. During this point of
+development, it's important that multiple developers can work in coordination
+with each other in order to progress to beta as quickly as possible. Mock
+interfaces and placeholder data where functioning inter-component code would
+otherwise go can be used to develop each component separately.
+
+### Phase 2 - Alpha
+
+### Phase 3 - Beta
+
+### Phase 4 - Release
