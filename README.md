@@ -61,8 +61,6 @@ its design principles.
 
 ## Architecture
 
-### Network
-
 The name "Hearth" is meant to invoke the coziness of sharing a warm fireplace
 with loved ones. Hearth is based on a straight-forward client-server network
 architecture, with multiple peers connecting to a single persistent host. In
@@ -75,6 +73,16 @@ In order to upgrade Hearth's design from a trustful private environment to a
 trustless public service, future systems will need to solve these dilemmas in
 order to prevent griefing. Hearth's goal is to explore implementations of
 shared execution and content workflow, not security or permissions systems.
+
+Hearth is effectively two programs at once: a distributed scripting
+environment and a game engine. The scripting provides the metatextual rules of
+the environment and the game engine creates the spatial substrate of the world.
+The bridge between distributed execution logic and game engine logic is in the
+scripting API. Scripts perform high-level logic in the environment, but are
+also singularly responsible for loading and managing all of the spatial
+content.
+
+### Network
 
 Hearth operates over TCP socket connections. Although other real-time
 networking options like GameNetworkingSockets or QUIC have significantly
