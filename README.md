@@ -220,8 +220,8 @@ node in the rend3 frame graph with a custom shader.
 
 ### Phase 0: Pre-Production
 
-In phase 0, Hearth will document its purpose, propose an implementation, decide
-on which libraries and resources to use in its development, and find a handful
+In phase 0, Hearth documents its purpose, proposes an implementation, decides
+on which libraries and resources to use in its development, and finds a handful
 of core developers who understand Hearth's goals and who are capable of
 meaningfully contributing in the long run.
 
