@@ -248,10 +248,10 @@ into several different areas of development:
 
 Because these different areas are independent, the early-stage development plan
 for Hearth is to work on each of these areas in parallel. During this point of
-development, it's important that multiple developers can work in coordination
-with each other in order to progress to beta as quickly as possible. Mock
-interfaces and placeholder data where functioning inter-component code would
-otherwise go can be used to develop each component separately.
+development, it's important that multiple developers work in coordination with
+each other in order to progress to beta as quickly as possible. Mock interfaces
+and placeholder data where functioning inter-component code would otherwise go
+are used to develop each component separately.
 
 ### Phase 2: Alpha
 
