@@ -216,7 +216,7 @@ node in the rend3 frame graph with a custom shader.
 
 ## Roadmap
 
-### Phase 0 - Pre-Production
+### Phase 0: Pre-Production
 
 In phase 0, Hearth will document its purpose, propose an implementation, decide
 on which libraries and resources to use in its development, and find a handful
@@ -233,7 +233,7 @@ meaningfully contributing in the long run.
 - [ ] Create mocks for all of the codebase components
 - [ ] Money?
 
-### Phase 1 - Pre-Alpha
+### Phase 1: Pre-Alpha
 
 Hearth's core host-side components can generally be decoupled from each other
 into several different areas of development:
@@ -251,8 +251,8 @@ with each other in order to progress to beta as quickly as possible. Mock
 interfaces and placeholder data where functioning inter-component code would
 otherwise go can be used to develop each component separately.
 
-### Phase 2 - Alpha
+### Phase 2: Alpha
 
-### Phase 3 - Beta
+### Phase 3: Beta
 
-### Phase 4 - Release
+### Phase 4: Release
