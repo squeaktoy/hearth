@@ -156,7 +156,9 @@ from a large variety of viewing angles.
 
 ### Platform
 
-Hearth runs outside of the browser as a native application.
+Hearth runs outside of the browser as a native application. Linux is the only
+target platform to start with but Windows support will also be added during
+the [alpha phase of development](#phase-2-alpha).
 
 ## Usecases
 
