@@ -1,0 +1,8 @@
+[package]
+name = "hearth-rpc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+remoc = { workspace = true, features = ["rtc"] }
+serde = { workspace = true }
