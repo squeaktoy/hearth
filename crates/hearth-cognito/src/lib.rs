@@ -1,5 +1,5 @@
 use hearth_rpc::ProcessApi;
-use hearth_wasm::WasmLinker;
+use hearth_wasm::{GuestMemory, WasmLinker};
 use wasmtime::{Caller, Linker};
 
 /// This contains all script-accessible process-related stuff.
@@ -13,6 +13,19 @@ pub struct Cognito {
 impl Cognito {
     pub async fn print_hello_world(&self) {
         self.api.print_hello_world().await.unwrap();
+    }
+
+    // impl_wasm_linker should also work with non-async functions
+    //
+    // if a function is passed GuestMemory or GuestMemory<'_>, the macro should
+    // automatically create a GuestMemory instance using the Caller's exported
+    // memory extern
+    //
+    // it should also turn arguments in the core wasm types (u32, u64, i32, u64)
+    // into arguments for the linker's closure, as well as the return type,
+    // which in this example is just ().
+    pub fn log_message(&self, mut memory: GuestMemory<'_>, msg_ptr: u32, msg_len: u32) {
+        eprintln!("message from wasm: {}", memory.get_str(msg_ptr, msg_len));
     }
 
     // this is only generated; written up by hand for reference
@@ -29,6 +42,22 @@ impl Cognito {
             .func_wrap0_async("cognito", "print_hello_world", |caller: Caller<'_, T>| {
                 Box::new(print_hello_world(caller))
             })
+            .unwrap();
+    }
+
+    pub fn link_log_message<T: AsRef<Self>>(linker: &mut Linker<T>) {
+        linker
+            .func_wrap(
+                "cognito",
+                "log_message",
+                |mut caller: Caller<'_, T>, msg_ptr: u32, msg_len: u32| {
+                    let memory = GuestMemory::from_caller(&mut caller);
+                    // note that cognito needs to be retrieved after memory
+                    // because it immutably borrows caller and memory does not
+                    let cognito = caller.data().as_ref();
+                    cognito.log_message(memory, msg_ptr, msg_len)
+                },
+            )
             .unwrap();
     }
 }
