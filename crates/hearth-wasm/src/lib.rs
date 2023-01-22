@@ -1,14 +1,7 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+pub trait WasmLinker<T: AsRef<Self>> {
+    const MODULE_NAME: &'static str;
+    fn add_to_linker(linker: &mut wasmtime::Linker<T>);
+    fn wrap_func<Params, Args>(linker: &mut wasmtime::Linker<T>, name: &str, func: impl wasmtime::IntoFunc<T, Params, Args>) {
+        linker.func_wrap(Self::MODULE_NAME, name, func).unwrap();
     }
 }

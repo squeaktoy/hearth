@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "crates/font-mud",
-    "crates/hearth-wasm"
+    "crates/hearth-cognito",
+    "crates/hearth-wasm",
 ]
