@@ -3,6 +3,7 @@ members = [
   "crates/font-mud",
   "crates/hearth-cognito",
   "crates/hearth-core",
+  "crates/hearth-guest",
   "crates/hearth-wasm",
 ]
 
