@@ -69,6 +69,7 @@ impl<T: AsRef<Cognito> + Send + 'static> WasmLinker<T> for Cognito {
 
     fn add_to_linker(linker: &mut Linker<T>) {
         Self::link_print_hello_world(linker);
+        Self::link_log_message(linker);
     }
 }
 
