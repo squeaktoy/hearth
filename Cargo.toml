@@ -4,3 +4,6 @@ members = [
   "crates/hearth-cognito",
   "crates/hearth-wasm",
 ]
+
+[workspace.dependencies]
+hearth-wasm = { path = "crates/hearth-wasm" }
