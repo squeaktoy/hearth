@@ -5,9 +5,7 @@ Hearth is a shared, always-on execution environment for constructing
 
 [Come join our Discord server!](https://discord.gg/gzzJ3pWCft)
 
-# Design
-
-## The History of Virtual Worlds
+# The History of Virtual Worlds
 
 Shared virtual spaces have been around for decades, in many forms. Before PCs
 were capable of 3D graphics, a popular kind of virtual space were multi-user
@@ -23,7 +21,7 @@ perform the same basic task, but in virtual reality. The decades-old
 commonality between all of these diversity platforms is user-created content.
 What's next?
 
-## Philosophy
+# Philosophy
 
 Hearth is a proof-of-concept of a new design philosophy for constructing shared
 virtual spaces based on three fundamental design principles:
@@ -59,7 +57,7 @@ has achieved this, the next goal will be to explore and research the
 possibilities of the shared virtual space, to evaluate potential further use of
 its design principles.
 
-## Architecture
+# Architecture
 
 The name "Hearth" is meant to invoke the coziness of sharing a warm fireplace
 with loved ones. Hearth is based on a straight-forward client-server network
@@ -82,7 +80,7 @@ scripting API. Scripts perform high-level logic in the environment, but are
 also singularly responsible for loading and managing all of the spatial
 content.
 
-### Network
+## Network
 
 Hearth operates over TCP socket connections. Although other real-time
 networking options like GameNetworkingSockets or QUIC have significantly
@@ -94,7 +92,7 @@ will be  encrypted. Hearth assumes that peers are friendly, but not that
 man-in-the-middle attacks are impossible. The specific encryption protocol is
 TBD.
 
-### Scripting
+## Scripting
 
 Scripting in Hearth is done with WebAssembly. Blah blah blah, lightweight spec,
 blah blah blah, linear memory storage, blah blah blah, lots of runtime options,
@@ -119,7 +117,7 @@ multitasking by timeslicing Wasm execution, then yielding to other green
 threads. Lunatic's operation is another large influence on Hearth's design, and
 Hearth may reference--or even directly use--Lunatic's code in its own codebase.
 
-### IPC
+## IPC
 
 To administrate the network, every peer in a Hearth network exposes an IPC
 interface on a Unix domain socket. This can be used to query running processes,
@@ -129,11 +127,11 @@ importantly, load new WebAssembly modules into the environment. The expected
 content development loop in Hearth is to develop new scripts natively, then
 load and execute the compiled module into Hearth using IPC.
 
-### Rendering
+## Rendering
 
-### ECS
+## ECS
 
-### Assets
+## Assets
 
 Assets are multipurpose, hash-identified binary blobs that are exchanged
 on-demand over the Hearth network. To distribute modules to other peers, Hearth
@@ -170,7 +168,7 @@ ID's data. To remedy this, processes have a host call that explicitly warms a
 target peer's asset cache with a given asset, and must use that host call when
 referencing asset IDs to a remote process that does not have the asset.
 
-### Terminal Emulator
+## Terminal Emulator
 
 So far, only Hearth's network architecture, execution model, and content model
 have been described. These fulfill the first and second principles of Hearth's
@@ -190,21 +188,21 @@ field (MSDF) rendering. MSDF rendering is good for text in 3D space because
 each glyph can be drawn with high-quality antialiasing and texture filtering
 from a large variety of viewing angles.
 
-### Platform
+## Platform
 
 Hearth runs outside of the browser as a native application. Linux is the only
 target platform to start with but Windows support will also be added during
 the [alpha phase of development](#phase-2-alpha).
 
-## Usecases
+# Usecases
 
-## Implementation
+# Implementation
 
 Hearth is written entirely in Rust. Rust rust rust rust rust rust rust. It's
 licensed under the GNU Affero General Public License version 3 (AGPLv3). Beer.
 Beeeeeeeeeeeeeeeeeeeeeeer. Freedom.
 
-### Networking
+## Networking
 
 The [Tokio](https://tokio.rs) provides an asynchronous Rust runtime for async
 code, non-blocking IO over both TCP and Unix domain sockets, and a foundation
@@ -220,7 +218,7 @@ definition, and the assumption is being made that no programs other than Hearth
 or its forks will be using the protocol. The development time saved is more
 than worth the loss of interoperability.
 
-### Rendering
+## Rendering
 
 Scenes are rendered with [rend3](https://github.com/BVE-Reborn/rend3), a
 batteries-included rendering engine based on
@@ -230,7 +228,7 @@ and other handy renderer features that Hearth doesn't need to do itself.
 Additionally, rend3's frame graph allows us to easily extend the renderer with
 new features as needed.
 
-### Terminal Emulator
+## Terminal Emulator
 
 The terminal emulator is implemented with the help of the
 [alacritty_terminal](https://crates.io/crates/alacritty_terminal) crate, which
@@ -244,13 +242,13 @@ node in the rend3 frame graph with a custom shader.
   * note: the ttf-parser crate looks like what we need)
 - TBD: UX for interacting with in-space terminals?
 
-### Input
+## Input
 
-### WebAssembly
+## WebAssembly
 
-### TUIs
+## TUIs
 
-### CLIs
+## CLIs
 
 # Roadmap
 
