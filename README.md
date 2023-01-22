@@ -129,20 +129,46 @@ importantly, load new WebAssembly modules into the environment. The expected
 content development loop in Hearth is to develop new scripts natively, then
 load and execute the compiled module into Hearth using IPC.
 
-When a process is spawned on a remote peer, that peer must have that
-WebAssembly module available locally in order to execute its functions. To
-distribute modules to other peers, Hearth first hashes each WebAssembly module,
-and uses that hash as an identifier to other peers. If a peer does not own a
-copy of a module, it will not recognize the hash of that module in its cache
-of modules, and it will request the module's data from another peer. When a
-client spawns a process on the server, the server will request the module
-source from that client. When a client spawns a process on another client, the
-server will first populate its own cache with that process's module, then the
-receiving client will request the module from the server.
-
 ### Rendering
 
 ### ECS
+
+### Assets
+
+Assets are multipurpose, hash-identified binary blobs that are exchanged
+on-demand over the Hearth network. To distribute modules to other peers, Hearth
+first hashes each asset and uses that hash as an identifier to other peers. If
+a peer does not own a copy of an asset, it will not recognize the hash of that
+asset in its cache, and it will request the asset's data from another peer.
+Client peers request asset data from the server, and the server requests asset
+data from the client that has referenced the unrecognized ID.
+
+Before assets can be specialized for different kinds of content, they must be
+loaded. Different asset classes, like meshes, textures, and WebAssembly modules
+have different named identifiers. The names for those asset classes may be
+`Mesh`, `Texture`, or `WebAssembly`, for example. Once an asset is loaded, it
+may be passed into the engine in the places that expect a loaded asset, such as
+in a mesh renderer component. Wasm processes are also spawned using a loaded
+WebAssembly module asset as the executable source.
+
+Processes may create their own assets in memory and read a foreign asset's data
+back into process memory. In this way, processes may procedurally generate
+runtime Hearth content into the space, load content data formats that the
+core Hearth runtime does not recognize, or pipeline assets through multiple
+processes that each perform some transformation on them.
+
+Note that because Wasm modules are loaded from assets and because assets can be
+dynamically created by processes, Hearth processes may generate and load Wasm
+modules at runtime. This may be used, for example, in a WebAssembly compiler
+running inside of Hearth itself.
+
+Processes have the ability to send and receive the IDs of assets to other
+processes. However, the runtime may not be aware that those IDs are being
+exchanged, so a process running on a remote peer may receive an ID in a message
+but the runtime will have no way of tracing it back to a peer that has that
+ID's data. To remedy this, processes have a host call that explicitly warms a
+target peer's asset cache with a given asset, and must use that host call when
+referencing asset IDs to a remote process that does not have the asset.
 
 ### Terminal Emulator
 
