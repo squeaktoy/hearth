@@ -1,5 +1,7 @@
 use remoc::rtc::{remote, CallError};
 
+pub use remoc;
+
 pub type CallResult<T> = Result<T, CallError>;
 
 /// An interface for acquiring access to a client's remote APIs.
