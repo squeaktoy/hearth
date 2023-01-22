@@ -4,8 +4,18 @@ members = [
   "crates/hearth-cognito",
   "crates/hearth-core",
   "crates/hearth-guest",
+  "crates/hearth-rpc",
   "crates/hearth-wasm",
 ]
 
 [workspace.dependencies]
 hearth-wasm = { path = "crates/hearth-wasm" }
+
+[workspace.dependencies.remoc]
+version = "0.10"
+default-features = false
+features = ["default-codec-bincode"]
+
+[workspace.dependencies.serde]
+version = "1"
+features = ["derive"]
