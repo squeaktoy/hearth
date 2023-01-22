@@ -9,6 +9,7 @@ members = [
 ]
 
 [workspace.dependencies]
+hearth-rpc = { path = "crates/hearth-rpc" }
 hearth-wasm = { path = "crates/hearth-wasm" }
 
 [workspace.dependencies.remoc]

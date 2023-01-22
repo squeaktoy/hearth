@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 wasmtime = "5.0.0"
+hearth-rpc = { workspace = true }
 hearth-wasm = { workspace = true }
