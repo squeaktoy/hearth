@@ -1,6 +1,18 @@
 use hearth_rpc::ProcessApi;
 use hearth_wasm::{GuestMemory, WasmLinker};
 use wasmtime::{Caller, Linker};
+use hearth_macros::impl_wasm_linker;
+
+pub struct CogTest {
+    pub api: Box<dyn ProcessApi + Send + Sync>,
+}
+
+#[impl_wasm_linker]
+impl CogTest {
+    pub async fn print_hello_world(&self) {
+        self.api.print_hello_world().await.unwrap()
+    }
+}
 
 /// This contains all script-accessible process-related stuff.
 pub struct Cognito {

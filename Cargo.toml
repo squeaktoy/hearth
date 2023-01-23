@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/font-mud",
+  "crates/hearth-macros",
   "crates/hearth-cognito",
   "crates/hearth-core",
   "crates/hearth-guest",
@@ -11,6 +12,7 @@ members = [
 [workspace.dependencies]
 hearth-rpc = { path = "crates/hearth-rpc" }
 hearth-wasm = { path = "crates/hearth-wasm" }
+hearth-macros = { path = "crates/hearth-macros" }
 
 [workspace.dependencies.remoc]
 version = "0.10"
