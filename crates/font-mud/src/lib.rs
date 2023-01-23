@@ -1,6 +1,6 @@
-mod error;
-mod glyph_atlas;
-mod glyph_bitmap;
+pub mod error;
+pub mod glyph_atlas;
+pub mod glyph_bitmap;
 
 #[cfg(test)]
 mod tests {
