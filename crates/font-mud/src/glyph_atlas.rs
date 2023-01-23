@@ -27,7 +27,7 @@ impl GlyphAtlas {
         let mut glyph_shape_errors = vec![];
         let scale = Self::PX_PER_EM / face.units_per_em() as f64;
         for c in 0..face.number_of_glyphs() {
-            let glyph = GlyphBitmap::new(scale, Self::RANGE, Self::ANGLE_THRESHOLD, &face, GlyphId(c));
+            let glyph = GlyphBitmap::new(scale, Self::RANGE, Self::ANGLE_THRESHOLD, face, GlyphId(c));
             match glyph {
                 Ok(glyph) => {
                     glyphs.push(Some(glyph));
@@ -55,7 +55,7 @@ impl GlyphAtlas {
                 }
                 Some(glyph) => {
                     if let Some(rect) = packer.pack(glyph.width as i32, glyph.height as i32, false) {
-                        glyph.copy_into_bitmap(&mut final_map, rect.x as usize, rect.y as usize, width as usize);
+                        glyph.copy_into_bitmap(&mut final_map, rect.x as usize, rect.y as usize, width);
                         glyph_info.push(Some(
                             GlyphInfo {
                                 position: (rect.x as usize, rect.y as usize),

@@ -19,7 +19,7 @@ impl GlyphBitmap {
         let config: MsdfGeneratorConfig = MsdfGeneratorConfig::default();
         let mut shape = face
             .glyph_shape(glyph)
-            .ok_or(FontError::GlyphShape(GlyphShapeError(glyph.clone())))?;
+            .ok_or(FontError::GlyphShape(GlyphShapeError(glyph)))?;
         shape.edge_coloring_simple(angle_threshold, 0);
         let bounds = shape.get_bound();
         let width = (bounds.width() * scale).ceil() as usize + 2;
@@ -33,9 +33,9 @@ impl GlyphBitmap {
                 range,
             })?;
         let mut bitmap = Bitmap::<Rgb<f32>>::new(width as u32, height as u32);
-        shape.generate_msdf(&mut bitmap, &framing, config);
-        shape.correct_sign(&mut bitmap, &framing, FillRule::default());
-        shape.correct_msdf_error(&mut bitmap, &framing, config);
+        shape.generate_msdf(&mut bitmap, framing, config);
+        shape.correct_sign(&mut bitmap, framing, FillRule::default());
+        shape.correct_msdf_error(&mut bitmap, framing, config);
         Ok(Self {
             data: bitmap,
             width,
