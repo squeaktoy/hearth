@@ -17,7 +17,7 @@ pub struct GlyphAtlas {
 
 impl GlyphAtlas {
     pub const SCALE: f64 = 0.02;
-    pub const RANGE: Range<f64> = Range::Px(4.0);
+    pub const RANGE: Range<f64> = Range::Px(2.0);
     pub const ANGLE_THRESHOLD: f64 = 3.0;
 
     /// turns a face into a glyph atlas.
