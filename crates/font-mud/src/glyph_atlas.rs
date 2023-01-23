@@ -17,10 +17,9 @@ pub struct GlyphAtlas {
 
 impl GlyphAtlas {
     pub const SCALE: f64 = 0.02;
-    pub const RANGE: Range<f64> = Range::Px(0.05);
-    pub const ANGLE_THRESHOLD: f64 = 0.3;
-    pub const PACKING_BORDER: usize = 1;
-    pub const PACKING_PADDING: usize = 3;
+    pub const RANGE: Range<f64> = Range::Px(4.0);
+    pub const ANGLE_THRESHOLD: f64 = 3.0;
+
     /// turns a face into a glyph atlas.
     /// all fonts have some glyph shape errors for some reason, we pass those through, as we treat them as non-fatal errors.
     pub fn new(face: &Face) -> FontResult<(GlyphAtlas, Vec<GlyphShapeError>)> {
@@ -77,13 +76,15 @@ impl GlyphAtlas {
             glyphs: glyph_info
         }, glyph_shape_errors))
     }
+
     fn generate_packer(glyphs: &Vec<Option<GlyphBitmap>>) -> Packer {
         let mut config = rect_packer::Config {
-            width: 4,
-            height: 4,
-            border_padding: Self::PACKING_BORDER as i32,
-            rectangle_padding: Self::PACKING_PADDING as i32,
+            width: 256,
+            height: 256,
+            border_padding: 0,
+            rectangle_padding: 0,
         };
+
         let mut packer = Packer::new(config);
         let mut last_switched_width = false;
         loop {
