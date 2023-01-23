@@ -16,7 +16,7 @@ pub struct GlyphAtlas {
 }
 
 impl GlyphAtlas {
-    pub const SCALE: f64 = 0.02;
+    pub const PX_PER_EM: f64 = 24.0;
     pub const RANGE: Range<f64> = Range::Px(2.0);
     pub const ANGLE_THRESHOLD: f64 = 3.0;
 
@@ -25,8 +25,9 @@ impl GlyphAtlas {
     pub fn new(face: &Face) -> FontResult<(GlyphAtlas, Vec<GlyphShapeError>)> {
         let mut glyphs = vec![];
         let mut glyph_shape_errors = vec![];
+        let scale = Self::PX_PER_EM / face.units_per_em() as f64;
         for c in 0..face.number_of_glyphs() {
-            let glyph = GlyphBitmap::new(Self::SCALE, Self::RANGE, Self::ANGLE_THRESHOLD, &face, GlyphId(c));
+            let glyph = GlyphBitmap::new(scale, Self::RANGE, Self::ANGLE_THRESHOLD, &face, GlyphId(c));
             match glyph {
                 Ok(glyph) => {
                     glyphs.push(Some(glyph));

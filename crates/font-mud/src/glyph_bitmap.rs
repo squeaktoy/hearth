@@ -20,7 +20,6 @@ impl GlyphBitmap {
         let mut shape = face
             .glyph_shape(glyph)
             .ok_or(FontError::GlyphShape(GlyphShapeError(glyph.clone())))?;
-        shape.normalize();
         shape.edge_coloring_simple(angle_threshold, 0);
         let bounds = shape.get_bound();
         let width = (bounds.width() * scale).ceil() as usize + 2;
