@@ -12,6 +12,9 @@ impl CogTest {
     pub async fn print_hello_world(&self) {
         self.api.print_hello_world().await.unwrap()
     }
+    pub async fn do_number(&self, number: u32) -> u32 {
+        self.api.do_number(number).await.unwrap()
+    }
 }
 
 /// This contains all script-accessible process-related stuff.

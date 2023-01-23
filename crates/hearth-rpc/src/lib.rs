@@ -20,4 +20,5 @@ pub trait ClientApiProvider {
 #[remote]
 pub trait ProcessApi {
     async fn print_hello_world(&self) -> CallResult<()>;
+    async fn do_number(&self, number: u32) -> CallResult<u32>;
 }
