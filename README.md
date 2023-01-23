@@ -271,24 +271,50 @@ meaningfully contributing in the long run.
 
 ## Phase 1: Pre-Alpha
 
-Hearth's core host-side components can generally be decoupled from each other
-into several different areas of development:
+In phase 1, each subsystem of Hearth is developed, and the details of its
+design aspects are made concrete. The whole system has not yet been tied
+together, and low-level design decisions are considered in isolation of each
+other.
 
-1. IPC and TUI interfaces.
+Hearth's core host-side components can generally be decoupled from each other
+into several different areas of development or subsystems:
+
+1. IPC, TUI, and CLI interfaces.
 2. Client-server networking.
 3. Process management.
 4. ECS integration.
 5. Virtual terminal emulator development.
 
-Because these different areas are independent, the early-stage development plan
-for Hearth is to work on each of these areas in parallel. During this point of
-development, it's important that multiple developers work in coordination with
-each other in order to progress to beta as quickly as possible. Mock interfaces
-and placeholder data where functioning inter-component code would otherwise go
-are used to develop each component separately.
+Because these different areas are independent, the goal is to work on each of
+these areas in parallel. During this point of development, it's important that
+multiple developers work in coordination with each other in order to progress
+to alpha as quickly as possible. Mock interfaces and placeholder data where
+functioning inter-component code would otherwise go are used to develop each
+component separately.
 
 ## Phase 2: Alpha
 
+In phase 2, Hearth begins to come together as a whole. Each subsystem is hooked
+into the others, and the developers work together to synthesize their work into
+a single functioning application. Although at this point in development network
+servers are started up for testing, the protocols between subsystems are
+highly unstable, so long-lived, self-sustaining virtual spaces are still
+unfeasible.
+
 ## Phase 3: Beta
+
+In phase 3, Hearth's protocols and system interfaces are mature and relatively
+stable, so a long-lived development space is created. In this space, developers
+work together on exploring the capabilities of Hearth processes, and implement
+practical applications in Hearth using Hearth's fundamental toolkit. If
+oversights or missing features are found in Hearth's interfaces, they are
+addressed as fit. However, because the fundamentals of Hearth's implementation
+are complete, changes to interfaces are infrequent and often non-breaking.
+
+A major focus of this phase is to refine the design principles of writing
+Hearth processes through rapid iteration, collaboration, and peer review. This
+makes phase 3 the most difficult phase to complete, as Hearth's goal during
+this step is to explore uncharted design territory in a unique execution
+environment.
 
 ## Phase 4: Release
