@@ -19,7 +19,7 @@ jobs:
       run: cargo build --workspace --verbose --all-features
     - name: Run tests
       run: cargo test --workspace --verbose --all-features
-  build:
+  clippy_check:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
