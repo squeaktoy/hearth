@@ -5,9 +5,9 @@ use crate::error::{FontError, FontResult, GlyphShapeError};
 use crate::glyph_bitmap::GlyphBitmap;
 
 pub struct GlyphInfo {
-    pub width: usize,
-    pub height: usize,
-    pub anchor: (usize, usize),
+    pub position: (usize, usize),
+    pub size: (usize, usize),
+    pub anchor: (f32, f32),
 }
 
 pub struct GlyphAtlas {
@@ -58,9 +58,9 @@ impl GlyphAtlas {
                         glyph.copy_into_bitmap(&mut final_map, rect.x as usize, rect.y as usize, width as usize);
                         glyph_info.push(Some(
                             GlyphInfo {
-                                width: glyph.width,
-                                height: glyph.height,
-                                anchor: (rect.x as usize, rect.y as usize),
+                                position: (rect.x as usize, rect.y as usize),
+                                size: (glyph.width, glyph.height),
+                                anchor: (0.0, 0.0),
                             }
                         ))
                     }
