@@ -264,6 +264,8 @@ meaningfully contributing in the long run.
 - [x] Create a GitHub repository
 - [ ] Onboard 3-4 core developers who can contribute to Hearth long-term
 - [ ] Design a project logo
+- [ ] Set up continuous integration to check pull requests
+- [ ] Write a CONTRIBUTORS.md describing contribution workflow
 - [ ] Design a workspace structure
 - [ ] Finalize the rest of the phases of the roadmap
 - [ ] Create mocks for all of the codebase components
