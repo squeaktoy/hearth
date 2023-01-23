@@ -29,3 +29,10 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         args: --all-features
+  rustfmt:
+    runs-on: ubuntu-latest
+    step:
+    - uses: actions/checkout@v1
+    - uses: LoliGothick/rustfmt-check@v0.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
