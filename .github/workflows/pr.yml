@@ -33,6 +33,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - uses: LoliGothick/rustfmt-check@v0.2
+    - uses: LoliGothick/rustfmt-check@master
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
