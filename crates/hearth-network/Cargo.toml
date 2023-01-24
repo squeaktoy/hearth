@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+argon2 = "0.4"
+chacha20poly1305 = { version = "0.10", features = [ "stream"] }
+opaque-ke = { version = "2.0", features = ["argon2"] }
+tokio = "1.24"
+
+[dev-dependencies]
+tokio = { version = "1.24", features = ["io-util", "macros", "rt"] }
