@@ -1,26 +1,21 @@
-use proc_macro2::{Literal, Punct, Spacing, Span, TokenStream};
-use quote::{quote, ToTokens};
-use syn::parse::{ParseBuffer, ParseStream};
-use syn::punctuated::Punctuated;
-use syn::token::Comma;
-use syn::{
-    parse_macro_input, FnArg, Ident, ImplItem, ImplItemMethod, ItemFn, Pat, PatIdent, PatType, Type,
-};
+use proc_macro2::{Literal, Span, TokenStream};
+use quote::quote;
+use syn::{parse_macro_input, FnArg, Ident, ImplItem, ImplItemMethod, Pat, PatIdent, Type};
 
 #[proc_macro_attribute]
 pub fn impl_wasm_linker(
-    attr: proc_macro::TokenStream,
+    _attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let impl_item = parse_macro_input!(item as syn::ItemImpl);
 
     let fn_items = impl_item.items;
-    let impl_type = impl_item.self_ty.clone();
+    let impl_type = impl_item.self_ty;
 
     let mut items_within_impl = vec![];
     let mut link_wrapped_fns = vec![];
     let mut wasm_linker_fns = vec![];
-    for fn_item in fn_items.clone() {
+    for fn_item in fn_items {
         items_within_impl.push(quote! {
             #fn_item
         });
@@ -44,10 +39,7 @@ pub fn impl_wasm_linker(
         }
     }
     .into();
-
-    println!("{}", return_token_stream);
     return_token_stream
-    //quote!{}.into()
 }
 fn handle_fn_item(
     link_wrapped_fns: &mut Vec<TokenStream>,
@@ -157,7 +149,7 @@ fn generate_closure_args(fn_method: &ImplItemMethod) -> TokenStream {
     let caller_arg = quote! {
       mut caller: Caller<'_, T>
     };
-    let mut fn_args = remove_guest_memory_if_exists(get_fn_args(fn_method));
+    let fn_args = remove_guest_memory_if_exists(get_fn_args(fn_method));
     quote! {
         #caller_arg, #(#fn_args),*
     }
@@ -170,7 +162,7 @@ fn generate_func_wrap_ident(fn_method: &ImplItemMethod) -> Ident {
     }
     let str = match is_async {
         true => {
-            format!("func_wrap{}_async", num_args)
+            format!("func_wrap{num_args}_async")
         }
         false => String::from("func_wrap"),
     };
@@ -186,7 +178,7 @@ fn get_internal_args(fn_method: &ImplItemMethod) -> TokenStream {
     }
 }
 fn get_internal_parameters(fn_method: &ImplItemMethod) -> TokenStream {
-    let mut args = get_fn_args(fn_method);
+    let args = get_fn_args(fn_method);
     let args: Vec<_> = args
         .into_iter()
         .map(|arg| match arg {
@@ -209,7 +201,7 @@ fn get_internal_parameters(fn_method: &ImplItemMethod) -> TokenStream {
 }
 fn get_link_fn_ident(fn_method: &ImplItemMethod) -> Ident {
     let fn_name = get_fn_name(fn_method);
-    let str = format!("link_{}", fn_name);
+    let str = format!("link_{fn_name}");
     Ident::new(str.as_str(), Span::call_site())
 }
 fn get_fn_name(fn_method: &ImplItemMethod) -> Ident {
@@ -222,7 +214,7 @@ fn get_module_literal(impl_type_ident: &Ident) -> Literal {
     Literal::string(impl_type_ident.to_string().to_lowercase().as_str())
 }
 fn get_fn_args(fn_method: &ImplItemMethod) -> Vec<FnArg> {
-    let mut args: Vec<FnArg> = fn_method.sig.inputs.iter().map(|arg| arg.clone()).collect();
+    let mut args: Vec<FnArg> = fn_method.sig.inputs.iter().cloned().collect();
     // removing the 'self' parameter
     args.remove(0);
     args
@@ -237,16 +229,15 @@ fn has_guest_memory(fn_args: &Vec<FnArg>) -> bool {
     for fn_arg in fn_args {
         match fn_arg {
             FnArg::Receiver(_) => {}
-            FnArg::Typed(typed) => match typed.ty.as_ref() {
-                Type::Path(path) => {
+            FnArg::Typed(typed) => {
+                if let Type::Path(path) = typed.ty.as_ref() {
                     for seg in path.path.segments.iter() {
-                        if seg.ident.to_string() == "GuestMemory" {
+                        if seg.ident == "GuestMemory" {
                             return true;
                         }
                     }
                 }
-                _ => {}
-            },
+            }
         }
     }
     false
@@ -257,16 +248,15 @@ fn remove_guest_memory_if_exists(fn_args: Vec<FnArg>) -> Vec<FnArg> {
         new_args.push(fn_arg.clone());
         match fn_arg.clone() {
             FnArg::Receiver(_) => {}
-            FnArg::Typed(typed) => match typed.ty.as_ref() {
-                Type::Path(path) => {
+            FnArg::Typed(typed) => {
+                if let Type::Path(path) = typed.ty.as_ref() {
                     for seg in path.path.segments.iter() {
-                        if seg.ident.to_string() == "GuestMemory" {
+                        if seg.ident == "GuestMemory" {
                             new_args.pop();
                         }
                     }
                 }
-                _ => {}
-            },
+            }
         }
     }
     new_args
