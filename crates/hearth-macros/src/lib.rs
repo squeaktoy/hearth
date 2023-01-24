@@ -1,16 +1,17 @@
-#![feature(proc_macro_quote)]
-
-
 use proc_macro2::{Literal, Punct, Spacing, Span, TokenStream};
 use quote::{quote, ToTokens};
-use syn::{ImplItem, ImplItemMethod, Type, Ident, parse_macro_input, FnArg, PatType, Pat, PatIdent, ItemFn};
 use syn::parse::{ParseBuffer, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-
+use syn::{
+    parse_macro_input, FnArg, Ident, ImplItem, ImplItemMethod, ItemFn, Pat, PatIdent, PatType, Type,
+};
 
 #[proc_macro_attribute]
-pub fn impl_wasm_linker(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn impl_wasm_linker(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     let impl_item = parse_macro_input!(item as syn::ItemImpl);
 
     let fn_items = impl_item.items;
@@ -20,15 +21,16 @@ pub fn impl_wasm_linker(attr: proc_macro::TokenStream, item: proc_macro::TokenSt
     let mut link_wrapped_fns = vec![];
     let mut wasm_linker_fns = vec![];
     for fn_item in fn_items.clone() {
-        items_within_impl.push(
-            quote! {
-                #fn_item
-            }
+        items_within_impl.push(quote! {
+            #fn_item
+        });
+        handle_fn_item(
+            &mut link_wrapped_fns,
+            &mut wasm_linker_fns,
+            impl_type.clone(),
+            fn_item,
         );
-        handle_fn_item(&mut link_wrapped_fns, &mut wasm_linker_fns, impl_type.clone(), fn_item);
     }
-
-
 
     let return_token_stream: proc_macro::TokenStream = quote! {
         impl #impl_type {
@@ -40,13 +42,19 @@ pub fn impl_wasm_linker(attr: proc_macro::TokenStream, item: proc_macro::TokenSt
                 #(#wasm_linker_fns)*
             }
         }
-    }.into();
+    }
+    .into();
 
     println!("{}", return_token_stream);
     return_token_stream
     //quote!{}.into()
 }
-fn handle_fn_item(link_wrapped_fns: &mut Vec<TokenStream>, wasm_linker_fns: &mut Vec<TokenStream>, impl_type: Box<Type>, fn_item: ImplItem) {
+fn handle_fn_item(
+    link_wrapped_fns: &mut Vec<TokenStream>,
+    wasm_linker_fns: &mut Vec<TokenStream>,
+    impl_type: Box<Type>,
+    fn_item: ImplItem,
+) {
     let fn_method = get_fn_method(fn_item);
     let impl_type = get_impl_type_ident(impl_type);
     let link_fn_ident = get_link_fn_ident(&fn_method);
@@ -55,9 +63,12 @@ fn handle_fn_item(link_wrapped_fns: &mut Vec<TokenStream>, wasm_linker_fns: &mut
     let wasm_linker_fn = generate_add_to_linker_call(&link_fn_ident);
     link_wrapped_fns.push(linker_function);
     wasm_linker_fns.push(wasm_linker_fn);
-
 }
-fn generate_linker_function(link_fn_ident: &Ident, fn_method: &ImplItemMethod, impl_type: &Ident) -> TokenStream {
+fn generate_linker_function(
+    link_fn_ident: &Ident,
+    fn_method: &ImplItemMethod,
+    impl_type: &Ident,
+) -> TokenStream {
     let link_fn_ident = link_fn_ident.clone();
     let internal_function = generate_internal_function(fn_method, impl_type);
     let func_wrap_call = generate_func_wrap(fn_method, impl_type);
@@ -77,7 +88,7 @@ fn generate_internal_function(fn_method: &ImplItemMethod, impl_type: &Ident) -> 
     let return_type = fn_method.sig.output.clone();
     match is_async {
         true => {
-            quote!{
+            quote! {
                 async fn #fn_name <T: AsRef<#impl_type> + Send>(#internal_args) #return_type {
                     let this = caller.data().as_ref();
                     this.#fn_name(#internal_parameters).await
@@ -85,7 +96,7 @@ fn generate_internal_function(fn_method: &ImplItemMethod, impl_type: &Ident) -> 
             }
         }
         false => {
-            quote !{
+            quote! {
                 fn #fn_name <T: AsRef<#impl_type> + Send>(#internal_args) #return_type {
                     let this = caller.data().as_ref();
                     this.#fn_name(#internal_parameters)
@@ -96,7 +107,7 @@ fn generate_internal_function(fn_method: &ImplItemMethod, impl_type: &Ident) -> 
 }
 fn generate_add_to_linker_call(link_fn_ident: &Ident) -> TokenStream {
     let link_fn_ident = link_fn_ident.clone();
-    quote!{
+    quote! {
         Self::#link_fn_ident(linker);
     }
 }
@@ -143,7 +154,7 @@ fn generate_closure_call_params(fn_method: &ImplItemMethod) -> TokenStream {
     get_internal_parameters(fn_method)
 }
 fn generate_closure_args(fn_method: &ImplItemMethod) -> TokenStream {
-    let caller_arg= quote! {
+    let caller_arg = quote! {
       mut caller: Caller<'_, T>
     };
     let mut fn_args = remove_guest_memory_if_exists(get_fn_args(fn_method));
@@ -161,14 +172,12 @@ fn generate_func_wrap_ident(fn_method: &ImplItemMethod) -> Ident {
         true => {
             format!("func_wrap{}_async", num_args)
         }
-        false => {
-            String::from("func_wrap")
-        }
+        false => String::from("func_wrap"),
     };
     Ident::new(str.as_str(), Span::call_site())
 }
 fn get_internal_args(fn_method: &ImplItemMethod) -> TokenStream {
-    let caller_arg= quote! {
+    let caller_arg = quote! {
       mut caller: Caller<'_, T>
     };
     let fn_args = get_fn_args(fn_method);
@@ -178,25 +187,22 @@ fn get_internal_args(fn_method: &ImplItemMethod) -> TokenStream {
 }
 fn get_internal_parameters(fn_method: &ImplItemMethod) -> TokenStream {
     let mut args = get_fn_args(fn_method);
-    let args: Vec<_> = args.into_iter().map(|arg| {
-        match arg {
+    let args: Vec<_> = args
+        .into_iter()
+        .map(|arg| match arg {
             FnArg::Receiver(_) => panic!(),
-            FnArg::Typed(typed) => {
-                match typed.pat.as_ref() {
-                    Pat::Ident(ident) => {
-                        Pat::Ident(PatIdent {
-                            attrs: vec![],
-                            by_ref: None,
-                            mutability: None,
-                            ident: ident.ident.clone(),
-                            subpat: None
-                        })
-                    }
-                    _ => panic!(),
-                }
-            }
-        }
-    }).collect();
+            FnArg::Typed(typed) => match typed.pat.as_ref() {
+                Pat::Ident(ident) => Pat::Ident(PatIdent {
+                    attrs: vec![],
+                    by_ref: None,
+                    mutability: None,
+                    ident: ident.ident.clone(),
+                    subpat: None,
+                }),
+                _ => panic!(),
+            },
+        })
+        .collect();
     quote! {
         #(#args),*
     }
@@ -216,37 +222,31 @@ fn get_module_literal(impl_type_ident: &Ident) -> Literal {
     Literal::string(impl_type_ident.to_string().to_lowercase().as_str())
 }
 fn get_fn_args(fn_method: &ImplItemMethod) -> Vec<FnArg> {
-    let mut args: Vec<FnArg> = fn_method.sig.inputs.iter().map(|arg| {
-        arg.clone()
-    }).collect();
+    let mut args: Vec<FnArg> = fn_method.sig.inputs.iter().map(|arg| arg.clone()).collect();
     // removing the 'self' parameter
     args.remove(0);
     args
 }
 fn get_impl_type_ident(impl_type: Box<Type>) -> Ident {
     match impl_type.as_ref() {
-        Type::Path(path) => {
-            path.path.get_ident().unwrap().clone()
-        }
-        _ => panic!()
+        Type::Path(path) => path.path.get_ident().unwrap().clone(),
+        _ => panic!(),
     }
 }
 fn has_guest_memory(fn_args: &Vec<FnArg>) -> bool {
     for fn_arg in fn_args {
         match fn_arg {
             FnArg::Receiver(_) => {}
-            FnArg::Typed(typed) => {
-                match typed.ty.as_ref() {
-                    Type::Path(path) => {
-                        for seg in path.path.segments.iter() {
-                            if seg.ident.to_string() == "GuestMemory" {
-                                return true;
-                            }
+            FnArg::Typed(typed) => match typed.ty.as_ref() {
+                Type::Path(path) => {
+                    for seg in path.path.segments.iter() {
+                        if seg.ident.to_string() == "GuestMemory" {
+                            return true;
                         }
                     }
-                    _ => {}
                 }
-            }
+                _ => {}
+            },
         }
     }
     false
@@ -257,18 +257,16 @@ fn remove_guest_memory_if_exists(fn_args: Vec<FnArg>) -> Vec<FnArg> {
         new_args.push(fn_arg.clone());
         match fn_arg.clone() {
             FnArg::Receiver(_) => {}
-            FnArg::Typed(typed) => {
-                match typed.ty.as_ref() {
-                    Type::Path(path) => {
-                        for seg in path.path.segments.iter() {
-                            if seg.ident.to_string() == "GuestMemory" {
-                                new_args.pop();
-                            }
+            FnArg::Typed(typed) => match typed.ty.as_ref() {
+                Type::Path(path) => {
+                    for seg in path.path.segments.iter() {
+                        if seg.ident.to_string() == "GuestMemory" {
+                            new_args.pop();
                         }
                     }
-                    _ => {}
                 }
-            }
+                _ => {}
+            },
         }
     }
     new_args
