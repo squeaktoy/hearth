@@ -91,6 +91,10 @@ mod tests {
             println!("Hello, world!");
             Ok(())
         }
+
+        async fn do_number(&self, number: u32) -> CallResult<u32> {
+            Ok(number)
+        }
     }
 
     #[test]
