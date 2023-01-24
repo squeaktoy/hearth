@@ -1,7 +1,7 @@
+use hearth_macros::impl_wasm_linker;
 use hearth_rpc::ProcessApi;
 use hearth_wasm::{GuestMemory, WasmLinker};
 use wasmtime::{Caller, Linker};
-use hearth_macros::{impl_wasm_linker};
 
 /// This contains all script-accessible process-related stuff.
 pub struct Cognito {
@@ -106,12 +106,14 @@ mod tests {
     }
 
     struct MockStructure {
-        pub cognito: Cognito
+        pub cognito: Cognito,
     }
     impl Default for MockStructure {
         fn default() -> Self {
             Self {
-                cognito: Cognito { api: Box::new(MockProcessApi) }
+                cognito: Cognito {
+                    api: Box::new(MockProcessApi),
+                },
             }
         }
     }
@@ -135,14 +137,23 @@ mod tests {
     #[test]
     fn print_hello_world() {
         let (linker, mut store) = get_wasmtime_objs();
-        let r#extern = linker.get(&mut store, "cognito", "print_hello_world").unwrap();
-        let typed_func = r#extern.into_func().unwrap().typed::<(), ()>(&store).unwrap();
+        let r#extern = linker
+            .get(&mut store, "cognito", "print_hello_world")
+            .unwrap();
+        let typed_func = r#extern
+            .into_func()
+            .unwrap()
+            .typed::<(), ()>(&store)
+            .unwrap();
     }
     #[test]
     fn do_number() {
         let (linker, mut store) = get_wasmtime_objs();
         let r#extern = linker.get(&mut store, "cognito", "do_number").unwrap();
-        let typed_func = r#extern.into_func().unwrap().typed::<u32, u32>(&store).unwrap();
+        let typed_func = r#extern
+            .into_func()
+            .unwrap()
+            .typed::<u32, u32>(&store)
+            .unwrap();
     }
-
 }
