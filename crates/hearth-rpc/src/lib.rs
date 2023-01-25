@@ -22,7 +22,7 @@ pub trait ClientApiProvider {
 #[remote]
 pub trait ProcessApi {
     async fn print_hello_world(&self) -> CallResult<()>;
-    async fn spawn(&self, module: AssetId, peer: PeerId, linked: bool) -> CallResult<AssetId>;
+    async fn spawn(&self, module: AssetId, peer: PeerId, linked: bool) -> CallResult<ProcessId>;
     async fn link(&self, pid: ProcessId) -> CallResult<()>; // TODO watcher channel for child errors?
     async fn unlink(&self, pid: ProcessId) -> CallResult<()>;
     async fn kill(&self, pid: ProcessId) -> CallResult<()>;
