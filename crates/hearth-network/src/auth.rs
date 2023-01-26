@@ -70,13 +70,11 @@ impl ServerAuthenticator {
         &self,
         client: &mut T,
     ) -> Result<Key, AuthenticationError> {
-        eprintln!("Receiving login request");
         let request_len = CredentialRequestLen::<CS>::to_usize();
         let mut request_msg = vec![0u8; request_len];
         client.read_exact(&mut request_msg).await?;
         let request = CredentialRequest::deserialize(&request_msg)?;
 
-        eprintln!("Sending login response");
         let mut rng = OsRng;
         let login_start = ServerLogin::start(
             &mut rng,
@@ -91,7 +89,6 @@ impl ServerAuthenticator {
         client.write_all(&response_msg).await?;
         client.flush().await?;
 
-        eprintln!("Receiving login finalization");
         let finalize_len = CredentialFinalizationLen::<CS>::to_usize();
         let mut finalize_msg = vec![0u8; finalize_len];
         client.read_exact(&mut finalize_msg).await?;
@@ -106,20 +103,17 @@ pub async fn login<T: AsyncRead + AsyncWrite + Unpin>(
     server: &mut T,
     pw: &[u8],
 ) -> Result<Key, AuthenticationError> {
-    eprintln!("Sending login request");
     let mut rng = OsRng;
     let start = ClientLogin::<CS>::start(&mut rng, pw)?;
     let start_msg = start.message.serialize();
     server.write_all(&start_msg).await?;
     server.flush().await?;
 
-    eprintln!("Receiving login response");
     let response_len = CredentialResponseLen::<CS>::to_usize();
     let mut response_msg = vec![0u8; response_len];
     server.read_exact(&mut response_msg).await?;
     let response = CredentialResponse::<CS>::deserialize(&response_msg)?;
 
-    eprintln!("Sending login finalization");
     let finish = start.state.finish(pw, response, Default::default())?;
     let finish_msg = finish.message.serialize();
     server.write_all(&finish_msg).await?;
