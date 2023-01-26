@@ -1,8 +1,8 @@
+use crate::error::{FontError, FontResult, GlyphShapeError};
+use crate::glyph_bitmap::GlyphBitmap;
 use msdfgen::{Bitmap, Range, Rgb};
 use rect_packer::Packer;
 use ttf_parser::{Face, GlyphId};
-use crate::error::{FontError, FontResult, GlyphShapeError};
-use crate::glyph_bitmap::GlyphBitmap;
 
 pub struct GlyphInfo {
     pub position: (usize, usize),
@@ -27,7 +27,8 @@ impl GlyphAtlas {
         let mut glyph_shape_errors = vec![];
         let scale = Self::PX_PER_EM / face.units_per_em() as f64;
         for c in 0..face.number_of_glyphs() {
-            let glyph = GlyphBitmap::new(scale, Self::RANGE, Self::ANGLE_THRESHOLD, face, GlyphId(c));
+            let glyph =
+                GlyphBitmap::new(scale, Self::RANGE, Self::ANGLE_THRESHOLD, face, GlyphId(c));
             match glyph {
                 Ok(glyph) => {
                     glyphs.push(Some(glyph));
@@ -54,15 +55,19 @@ impl GlyphAtlas {
                     glyph_info.push(None);
                 }
                 Some(glyph) => {
-                    if let Some(rect) = packer.pack(glyph.width as i32, glyph.height as i32, false) {
-                        glyph.copy_into_bitmap(&mut final_map, rect.x as usize, rect.y as usize, width);
-                        glyph_info.push(Some(
-                            GlyphInfo {
-                                position: (rect.x as usize, rect.y as usize),
-                                size: (glyph.width, glyph.height),
-                                anchor: (0.0, 0.0),
-                            }
-                        ))
+                    if let Some(rect) = packer.pack(glyph.width as i32, glyph.height as i32, false)
+                    {
+                        glyph.copy_into_bitmap(
+                            &mut final_map,
+                            rect.x as usize,
+                            rect.y as usize,
+                            width,
+                        );
+                        glyph_info.push(Some(GlyphInfo {
+                            position: (rect.x as usize, rect.y as usize),
+                            size: (glyph.width, glyph.height),
+                            anchor: (0.0, 0.0),
+                        }))
                     }
                 }
             }
@@ -70,12 +75,15 @@ impl GlyphAtlas {
         let bitmap = GlyphBitmap {
             data: final_map,
             width,
-            height
+            height,
         };
-        Ok((GlyphAtlas {
-            bitmap,
-            glyphs: glyph_info
-        }, glyph_shape_errors))
+        Ok((
+            GlyphAtlas {
+                bitmap,
+                glyphs: glyph_info,
+            },
+            glyph_shape_errors,
+        ))
     }
 
     fn generate_packer(glyphs: &Vec<Option<GlyphBitmap>>) -> Packer {
