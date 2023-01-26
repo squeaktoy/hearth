@@ -77,16 +77,39 @@ impl<T: AsRef<Cognito> + Send + 'static> WasmLinker<T> for Cognito {
 mod tests {
     use super::*;
 
+    use hearth_rpc::hearth_types::*;
     use hearth_rpc::{remoc, CallResult};
     use remoc::rtc::async_trait;
 
     struct MockProcessApi;
 
     #[async_trait]
+    #[allow(unused)]
     impl ProcessApi for MockProcessApi {
         async fn print_hello_world(&self) -> CallResult<()> {
             println!("Hello, world!");
             Ok(())
+        }
+
+        async fn spawn(
+            &self,
+            module: AssetId,
+            peer: PeerId,
+            linked: bool,
+        ) -> CallResult<ProcessId> {
+            unimplemented!()
+        }
+
+        async fn link(&self, pid: ProcessId) -> CallResult<()> {
+            unimplemented!()
+        }
+
+        async fn unlink(&self, pid: ProcessId) -> CallResult<()> {
+            unimplemented!()
+        }
+
+        async fn kill(&self, pid: ProcessId) -> CallResult<()> {
+            unimplemented!()
         }
     }
 
