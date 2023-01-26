@@ -3,6 +3,7 @@ use hearth_types::*;
 use remoc::rtc::{remote, CallError};
 
 pub use remoc;
+pub use hearth_types;
 
 pub type CallResult<T> = Result<T, CallError>;
 
