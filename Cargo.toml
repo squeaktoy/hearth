@@ -4,6 +4,7 @@ members = [
   "crates/hearth-cognito",
   "crates/hearth-core",
   "crates/hearth-guest",
+  "crates/hearth-network",
   "crates/hearth-rpc",
   "crates/hearth-types",
   "crates/hearth-wasm",
