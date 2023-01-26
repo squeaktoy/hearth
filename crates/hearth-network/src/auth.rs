@@ -1,3 +1,5 @@
+use crate::encryption::Key;
+
 use chacha20::cipher::Unsigned;
 use opaque_ke::errors::*;
 use opaque_ke::*;
@@ -67,7 +69,7 @@ impl ServerAuthenticator {
     pub async fn login<T: AsyncRead + AsyncWrite + Unpin>(
         &self,
         client: &mut T,
-    ) -> Result<(), AuthenticationError> {
+    ) -> Result<Key, AuthenticationError> {
         eprintln!("Receiving login request");
         let request_len = CredentialRequestLen::<CS>::to_usize();
         let mut request_msg = vec![0u8; request_len];
@@ -95,15 +97,15 @@ impl ServerAuthenticator {
         client.read_exact(&mut finalize_msg).await?;
         let finalize = CredentialFinalization::<CS>::deserialize(&finalize_msg)?;
         let finish = login_start.state.finish(finalize)?;
-
-        Ok(())
+        let key = Key::clone_from_slice(finish.session_key[..32].into());
+        Ok(key)
     }
 }
 
 pub async fn login<T: AsyncRead + AsyncWrite + Unpin>(
     server: &mut T,
     pw: &[u8],
-) -> Result<(), AuthenticationError> {
+) -> Result<Key, AuthenticationError> {
     eprintln!("Sending login request");
     let mut rng = OsRng;
     let start = ClientLogin::<CS>::start(&mut rng, pw)?;
@@ -123,7 +125,8 @@ pub async fn login<T: AsyncRead + AsyncWrite + Unpin>(
     server.write_all(&finish_msg).await?;
     server.flush().await?;
 
-    Ok(())
+    let key = Key::clone_from_slice(finish.session_key[..32].into());
+    Ok(key)
 }
 
 #[cfg(test)]
@@ -143,9 +146,9 @@ mod tests {
         let server_join = tokio::spawn(async move { auth.login(&mut client).await });
         let client_result = login(&mut server, password).await;
         let server_result = server_join.await.unwrap();
-        let server_secret = server_result.unwrap();
-        let client_secret = client_result.unwrap();
-        assert_eq!(server_secret, client_secret);
+        let server_key = server_result.unwrap();
+        let client_key = client_result.unwrap();
+        assert_eq!(server_key, client_key);
     }
 
     #[tokio::test]
