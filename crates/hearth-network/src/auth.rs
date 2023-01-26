@@ -1,7 +1,7 @@
-use chacha20poly1305::aead::generic_array::typenum::Unsigned;
-use chacha20poly1305::aead::OsRng;
+use chacha20::cipher::Unsigned;
 use opaque_ke::errors::*;
 use opaque_ke::*;
+use rand::rngs::OsRng;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Debug)]

@@ -5,8 +5,9 @@ edition = "2021"
 
 [dependencies]
 argon2 = "0.4"
-chacha20poly1305 = { version = "0.10", features = [ "stream"] }
+chacha20 = { version = "0.9", features = ["std", "zeroize"] }
 opaque-ke = { version = "2.0", features = ["argon2"] }
+rand = { version = "0.8", features = ["getrandom"] }
 tokio = "1.24"
 
 [dev-dependencies]
