@@ -1,13 +1,13 @@
+use crate::error::{FontError, FontResult, GlyphShapeError};
+use crate::glyph_bitmap::GlyphBitmap;
 use msdfgen::{Bitmap, Range, Rgb};
 use rect_packer::Packer;
 use ttf_parser::{Face, GlyphId};
-use crate::error::{FontError, FontResult, GlyphShapeError};
-use crate::glyph_bitmap::GlyphBitmap;
 
 pub struct GlyphInfo {
-    pub width: usize,
-    pub height: usize,
-    pub anchor: (usize, usize),
+    pub position: (usize, usize),
+    pub size: (usize, usize),
+    pub anchor: (f32, f32),
 }
 
 pub struct GlyphAtlas {
@@ -16,18 +16,19 @@ pub struct GlyphAtlas {
 }
 
 impl GlyphAtlas {
-    pub const SCALE: f64 = 0.02;
-    pub const RANGE: Range<f64> = Range::Px(0.05);
-    pub const ANGLE_THRESHOLD: f64 = 0.3;
-    pub const PACKING_BORDER: usize = 1;
-    pub const PACKING_PADDING: usize = 3;
+    pub const PX_PER_EM: f64 = 24.0;
+    pub const RANGE: Range<f64> = Range::Px(2.0);
+    pub const ANGLE_THRESHOLD: f64 = 3.0;
+
     /// turns a face into a glyph atlas.
     /// all fonts have some glyph shape errors for some reason, we pass those through, as we treat them as non-fatal errors.
     pub fn new(face: &Face) -> FontResult<(GlyphAtlas, Vec<GlyphShapeError>)> {
         let mut glyphs = vec![];
         let mut glyph_shape_errors = vec![];
+        let scale = Self::PX_PER_EM / face.units_per_em() as f64;
         for c in 0..face.number_of_glyphs() {
-            let glyph = GlyphBitmap::new(Self::SCALE, Self::RANGE, Self::ANGLE_THRESHOLD, &face, GlyphId(c));
+            let glyph =
+                GlyphBitmap::new(scale, Self::RANGE, Self::ANGLE_THRESHOLD, face, GlyphId(c));
             match glyph {
                 Ok(glyph) => {
                     glyphs.push(Some(glyph));
@@ -54,15 +55,19 @@ impl GlyphAtlas {
                     glyph_info.push(None);
                 }
                 Some(glyph) => {
-                    if let Some(rect) = packer.pack(glyph.width as i32, glyph.height as i32, false) {
-                        glyph.copy_into_bitmap(&mut final_map, rect.x as usize, rect.y as usize, width as usize);
-                        glyph_info.push(Some(
-                            GlyphInfo {
-                                width: glyph.width,
-                                height: glyph.height,
-                                anchor: (rect.x as usize, rect.y as usize),
-                            }
-                        ))
+                    if let Some(rect) = packer.pack(glyph.width as i32, glyph.height as i32, false)
+                    {
+                        glyph.copy_into_bitmap(
+                            &mut final_map,
+                            rect.x as usize,
+                            rect.y as usize,
+                            width,
+                        );
+                        glyph_info.push(Some(GlyphInfo {
+                            position: (rect.x as usize, rect.y as usize),
+                            size: (glyph.width, glyph.height),
+                            anchor: (0.0, 0.0),
+                        }))
                     }
                 }
             }
@@ -70,20 +75,25 @@ impl GlyphAtlas {
         let bitmap = GlyphBitmap {
             data: final_map,
             width,
-            height
+            height,
         };
-        Ok((GlyphAtlas {
-            bitmap,
-            glyphs: glyph_info
-        }, glyph_shape_errors))
+        Ok((
+            GlyphAtlas {
+                bitmap,
+                glyphs: glyph_info,
+            },
+            glyph_shape_errors,
+        ))
     }
+
     fn generate_packer(glyphs: &Vec<Option<GlyphBitmap>>) -> Packer {
         let mut config = rect_packer::Config {
-            width: 4,
-            height: 4,
-            border_padding: Self::PACKING_BORDER as i32,
-            rectangle_padding: Self::PACKING_PADDING as i32,
+            width: 256,
+            height: 256,
+            border_padding: 0,
+            rectangle_padding: 0,
         };
+
         let mut packer = Packer::new(config);
         let mut last_switched_width = false;
         loop {

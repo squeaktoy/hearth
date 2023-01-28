@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-msdfgen = {version = "0.2.1", features = ["ttf-parser"]}
+msdfgen = {version = "0.2.1", default-features = false, features = ["ttf-parser", "png"]}
 ttf-parser = "0.18.1"
 rect_packer = "0.2.1"
 
