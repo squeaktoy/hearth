@@ -8,7 +8,7 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use auth::ServerAuthenticator;
-    use encryption::{AsyncDecryptor, AsyncEncryptor};
+    use encryption::{AsyncDecryptor, AsyncEncryptor, Key};
 
     #[tokio::test]
     async fn auth_then_encrypt() {
@@ -20,10 +20,12 @@ mod tests {
         let (mut client, mut server) = tokio::io::duplex(128);
 
         tokio::spawn(async move {
-            let key = authenticator.login(&mut client).await.unwrap();
+            let session_key = authenticator.login(&mut client).await.unwrap();
+            let client_key = Key::from_client_session(&session_key);
+            let server_key = Key::from_server_session(&session_key);
             let (rx, tx) = tokio::io::split(client);
-            let mut decryptor = AsyncDecryptor::new(&key, rx);
-            let mut encryptor = AsyncEncryptor::new(&key, tx);
+            let mut decryptor = AsyncDecryptor::new(&client_key, rx);
+            let mut encryptor = AsyncEncryptor::new(&server_key, tx);
 
             let mut sent = vec![0u8; SENT.len()];
             decryptor.read_exact(&mut sent).await.unwrap();
@@ -33,10 +35,12 @@ mod tests {
             encryptor.flush().await.unwrap();
         });
 
-        let key = auth::login(&mut server, PASSWORD).await.unwrap();
+        let session_key = auth::login(&mut server, PASSWORD).await.unwrap();
+        let client_key = Key::from_client_session(&session_key);
+        let server_key = Key::from_server_session(&session_key);
         let (rx, tx) = tokio::io::split(server);
-        let mut decryptor = AsyncDecryptor::new(&key, rx);
-        let mut encryptor = AsyncEncryptor::new(&key, tx);
+        let mut decryptor = AsyncDecryptor::new(&server_key, rx);
+        let mut encryptor = AsyncEncryptor::new(&client_key, tx);
 
         encryptor.write_all(SENT).await.unwrap();
         encryptor.flush().await.unwrap();
