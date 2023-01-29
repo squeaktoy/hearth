@@ -2,8 +2,9 @@ use std::net::SocketAddr;
 
 use clap::Parser;
 use hearth_network::auth::login;
+use hearth_rpc::{ClientApiProvider, ClientApiProviderClient};
 use tokio::net::TcpStream;
-use tracing::{debug, info, error};
+use tracing::{debug, error, info};
 
 /// Client program to the Hearth virtual space server.
 #[derive(Parser, Debug)]
@@ -35,13 +36,36 @@ async fn main() {
     };
 
     info!("Authenticating...");
-    let key = match login(&mut socket, args.password.as_bytes()).await {
+    let session_key = match login(&mut socket, args.password.as_bytes()).await {
         Ok(key) => key,
         Err(err) => {
             error!("Failed to authenticate with server: {:?}", err);
             return;
         }
     };
+
+    use hearth_network::encryption::{AsyncDecryptor, AsyncEncryptor, Key};
+    let client_key = Key::from_client_session(&session_key);
+    let server_key = Key::from_server_session(&session_key);
+
+    let (server_rx, server_tx) = tokio::io::split(socket);
+    let server_rx = AsyncDecryptor::new(&server_key, server_rx);
+    let server_tx = AsyncEncryptor::new(&client_key, server_tx);
+
+    use remoc::rch::base::{Receiver, Sender};
+    let cfg = remoc::Cfg::default();
+    let (conn, _tx, mut rx): (_, Sender<()>, Receiver<ClientApiProviderClient>) =
+        match remoc::Connect::io(cfg, server_rx, server_tx).await {
+            Ok(v) => v,
+            Err(err) => {
+                error!("Remoc connection failure: {:?}", err);
+                return;
+            }
+        };
+
+    tokio::spawn(conn);
+
+    let provider = rx.recv().await.unwrap().unwrap();
 
     info!("Successfully connected!");
 }
