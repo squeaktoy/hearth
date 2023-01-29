@@ -1,16 +1,19 @@
 [workspace]
 members = [
   "crates/font-mud",
+  "crates/hearth-client",
   "crates/hearth-cognito",
   "crates/hearth-core",
   "crates/hearth-guest",
   "crates/hearth-network",
   "crates/hearth-rpc",
+  "crates/hearth-server",
   "crates/hearth-types",
   "crates/hearth-wasm",
 ]
 
 [workspace.dependencies]
+hearth-network = { path = "crates/hearth-network" }
 hearth-rpc = { path = "crates/hearth-rpc" }
 hearth-types = { path = "crates/hearth-types" }
 hearth-wasm = { path = "crates/hearth-wasm" }
