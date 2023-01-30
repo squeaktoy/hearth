@@ -1,15 +1,15 @@
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use clap::Parser;
 use hearth_network::auth::ServerAuthenticator;
-use hearth_rpc::{
-    CallResult, ClientApiProvider, ClientApiProviderClient, ClientApiProviderServerShared,
-    ProcessApiClient,
-};
-use remoc::rtc::{async_trait, ServerShared};
+use hearth_rpc::*;
+use hearth_types::*;
+use remoc::robs::hash_map::{HashMapSubscription, ObservableHashMap};
+use remoc::rtc::{async_trait, LocalRwLock, ServerSharedMut};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 /// The Hearth virtual space server program.
 #[derive(Parser, Debug)]
@@ -36,7 +36,7 @@ async fn main() {
     let authenticator = ServerAuthenticator::from_password(args.password.as_bytes()).unwrap();
     let authenticator = Arc::new(authenticator);
 
-    info!("Binding to {:?}...", args.bind);
+    info!("Binding to {:?}", args.bind);
     let listener = match TcpListener::bind(args.bind).await {
         Ok(l) => l,
         Err(err) => {
@@ -44,6 +44,9 @@ async fn main() {
             return;
         }
     };
+
+    let peer_provider = PeerProviderImpl::new();
+    let peer_provider = Arc::new(LocalRwLock::new(peer_provider));
 
     info!("Listening");
     loop {
@@ -56,19 +59,21 @@ async fn main() {
         };
 
         info!("Connection from {:?}", addr);
+        let peer_provider = peer_provider.clone();
         let authenticator = authenticator.clone();
         tokio::task::spawn(async move {
-            on_accept(authenticator, socket, addr).await;
+            on_accept(peer_provider, authenticator, socket, addr).await;
         });
     }
 }
 
 async fn on_accept(
+    peer_provider: Arc<LocalRwLock<PeerProviderImpl>>,
     authenticator: Arc<ServerAuthenticator>,
     mut client: TcpStream,
     addr: SocketAddr,
 ) {
-    info!("Authenticating with client {:?}...", addr);
+    info!("Authenticating with client {:?}", addr);
     let session_key = match authenticator.login(&mut client).await {
         Ok(key) => key,
         Err(err) => {
@@ -86,9 +91,10 @@ async fn on_accept(
     let client_rx = AsyncDecryptor::new(&client_key, client_rx);
     let client_tx = AsyncEncryptor::new(&server_key, client_tx);
 
+    debug!("Initializing Remoc connection");
     use remoc::rch::base::{Receiver, Sender};
     let cfg = remoc::Cfg::default();
-    let (conn, mut tx, _rx): (_, Sender<ClientApiProviderClient>, Receiver<()>) =
+    let (conn, mut tx, mut rx): (_, Sender<ServerOffer>, Receiver<ClientOffer>) =
         match remoc::Connect::io(cfg, client_rx, client_tx).await {
             Ok(v) => v,
             Err(err) => {
@@ -97,24 +103,121 @@ async fn on_accept(
             }
         };
 
-    tokio::spawn(conn);
+    debug!("Spawning Remoc connection thread");
+    let join_connection = tokio::spawn(conn);
 
-    let server = ClientApiProviderImpl;
-    let server = std::sync::Arc::new(server);
-    let (provider, provider_client) =
-        ClientApiProviderServerShared::<_, remoc::codec::Default>::new(server, 1024);
+    let (peer_provider_server, peer_provider_client) =
+        PeerProviderServerSharedMut::<_, remoc::codec::Default>::new(peer_provider.clone(), 1024);
+
+    debug!("Spawning peer provider server");
     tokio::spawn(async move {
-        provider.serve(true).await;
+        debug!("Running peer provider server");
+        peer_provider_server.serve(true).await;
     });
-    tx.send(provider_client).await.unwrap();
+
+    debug!("Generating peer ID");
+    let peer_id = peer_provider.write().await.get_next_peer();
+    info!("Generated peer ID for new client: {:?}", peer_id);
+
+    debug!("Sending server offer to client");
+    tx.send(ServerOffer {
+        peer_provider: peer_provider_client,
+        new_id: peer_id,
+    })
+    .await
+    .unwrap();
+
+    debug!("Receiving client offer");
+    let offer: ClientOffer = match rx.recv().await {
+        Ok(Some(o)) => o,
+        Ok(None) => {
+            error!("Client hung up while waiting for offer");
+            return;
+        }
+        Err(err) => {
+            error!("Failed to receive client offer: {:?}", err);
+            return;
+        }
+    };
+
+    debug!("Getting peer {:?} info", peer_id);
+    let peer_info = match offer.peer_api.get_info().await {
+        Ok(i) => i,
+        Err(err) => {
+            error!("Failed to retrieve client peer info: {:?}", err);
+            return;
+        }
+    };
+
+    debug!("Adding peer {:?} to peer provider", peer_id);
+    peer_provider
+        .write()
+        .await
+        .add_peer(peer_id, offer.peer_api, peer_info);
+
+    debug!("Waiting to join Remoc connection thread");
+    match join_connection.await {
+        Err(err) => {
+            error!(
+                "Tokio error while joining peer {:?} connection thread: {:?}",
+                peer_id, err
+            );
+        }
+        Ok(Err(remoc::chmux::ChMuxError::StreamClosed)) => {
+            info!("Peer {:?} disconnected", peer_id);
+        }
+        Ok(Err(err)) => {
+            error!(
+                "Remoc chmux error while joining peer {:?} connection thread: {:?}",
+                peer_id, err
+            );
+        }
+        Ok(Ok(())) => {}
+    }
+
+    debug!("Removing peer from peer provider");
+    peer_provider.write().await.remove_peer(peer_id);
 }
 
-struct ClientApiProviderImpl;
+struct PeerProviderImpl {
+    next_peer: PeerId,
+    peer_list: ObservableHashMap<PeerId, PeerInfo>,
+    peer_apis: HashMap<PeerId, PeerApiClient>,
+}
 
 #[async_trait]
-impl ClientApiProvider for ClientApiProviderImpl {
-    async fn get_process_api(&self) -> CallResult<ProcessApiClient> {
-        error!("ClientApiProviderImpl::get_process_api() is unimplemented");
-        Err(remoc::rtc::CallError::Dropped)
+impl PeerProvider for PeerProviderImpl {
+    async fn find_peer(&self, id: PeerId) -> CallResult<Option<PeerApiClient>> {
+        Ok(self.peer_apis.get(&id).cloned())
+    }
+
+    async fn follow_peer_list(&self) -> CallResult<HashMapSubscription<PeerId, PeerInfo>> {
+        Ok(self.peer_list.subscribe(1024))
+    }
+}
+
+impl PeerProviderImpl {
+    pub fn new() -> Self {
+        Self {
+            next_peer: PeerId(0),
+            peer_list: Default::default(),
+            peer_apis: Default::default(),
+        }
+    }
+
+    pub fn get_next_peer(&mut self) -> PeerId {
+        let id = self.next_peer;
+        self.next_peer.0 += 1;
+        id
+    }
+
+    pub fn add_peer(&mut self, id: PeerId, api: PeerApiClient, info: PeerInfo) {
+        self.peer_list.insert(id, info);
+        self.peer_apis.insert(id, api);
+    }
+
+    pub fn remove_peer(&mut self, id: PeerId) {
+        self.peer_list.remove(&id);
+        self.peer_apis.remove(&id);
     }
 }
