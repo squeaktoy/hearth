@@ -9,5 +9,5 @@ hearth-network = { workspace = true }
 hearth-rpc = { workspace = true }
 remoc = { workspace = true, features = ["full"] }
 tokio = { version = "1.24", features = ["full"] }
-tracing = "0.1.37"
+tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.16", features = ["fmt"] }
