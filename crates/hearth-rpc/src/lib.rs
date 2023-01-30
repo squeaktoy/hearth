@@ -37,6 +37,16 @@ pub struct ClientOffer {
     pub peer_api: PeerApiClient,
 }
 
+/// The data sent from an IPC daemon to a client on connection.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DaemonOffer {
+    /// A [PeerProvider] to all peers on the daemon's network.
+    pub peer_provider: PeerProviderClient,
+
+    /// The ID of this daemon's peer.
+    pub peer_id: PeerId,
+}
+
 /// Top-level interface for a peer. Provides access to its metadata as well as
 /// its lower-level interfaces.
 ///
