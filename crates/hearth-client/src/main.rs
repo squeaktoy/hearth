@@ -96,6 +96,22 @@ async fn main() {
 
     info!("Successfully connected!");
 
+    debug!("Initializing IPC");
+    let daemon_listener = match hearth_ipc::Listener::new().await {
+        Ok(l) => l,
+        Err(err) => {
+            tracing::error!("IPC listener setup error: {:?}", err);
+            return;
+        }
+    };
+
+    let daemon_offer = DaemonOffer {
+        peer_provider: offer.peer_provider.clone(),
+        peer_id: offer.new_id,
+    };
+
+    hearth_ipc::listen(daemon_listener, daemon_offer);
+
     debug!("Waiting to join connection thread");
     join_connection.await.unwrap().unwrap();
 }
