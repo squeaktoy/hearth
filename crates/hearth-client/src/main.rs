@@ -2,7 +2,8 @@ use std::net::SocketAddr;
 
 use clap::Parser;
 use hearth_network::auth::login;
-use hearth_rpc::{ClientApiProvider, ClientApiProviderClient};
+use hearth_rpc::*;
+use remoc::rtc::{async_trait, ServerShared};
 use tokio::net::TcpStream;
 use tracing::{debug, error, info};
 
@@ -29,7 +30,7 @@ async fn main() {
         .event_format(format)
         .init();
 
-    info!("Connecting to server at {:?}...", args.server);
+    info!("Connecting to server at {:?}", args.server);
     let mut socket = match TcpStream::connect(args.server).await {
         Ok(s) => s,
         Err(err) => {
@@ -38,7 +39,7 @@ async fn main() {
         }
     };
 
-    info!("Authenticating...");
+    info!("Authenticating");
     let session_key = match login(&mut socket, args.password.as_bytes()).await {
         Ok(key) => key,
         Err(err) => {
@@ -57,7 +58,7 @@ async fn main() {
 
     use remoc::rch::base::{Receiver, Sender};
     let cfg = remoc::Cfg::default();
-    let (conn, _tx, mut rx): (_, Sender<()>, Receiver<ClientApiProviderClient>) =
+    let (conn, mut tx, mut rx): (_, Sender<ClientOffer>, Receiver<ServerOffer>) =
         match remoc::Connect::io(cfg, server_rx, server_tx).await {
             Ok(v) => v,
             Err(err) => {
@@ -66,9 +67,51 @@ async fn main() {
             }
         };
 
-    tokio::spawn(conn);
+    debug!("Spawning Remoc connection thread");
+    let join_connection = tokio::spawn(conn);
 
-    let provider = rx.recv().await.unwrap().unwrap();
+    debug!("Receiving server offer");
+    let offer = rx.recv().await.unwrap().unwrap();
+
+    info!("Assigned peer ID {:?}", offer.new_id);
+
+    let peer_api = PeerApiImpl {
+        info: PeerInfo { nickname: None },
+    };
+
+    let peer_api = std::sync::Arc::new(peer_api);
+    let (peer_api_server, peer_api_client) =
+        PeerApiServerShared::<_, remoc::codec::Default>::new(peer_api, 1024);
+
+    debug!("Spawning peer API server thread");
+    tokio::spawn(async move {
+        peer_api_server.serve(true).await;
+    });
+
+    tx.send(ClientOffer {
+        peer_api: peer_api_client,
+    })
+    .await
+    .unwrap();
 
     info!("Successfully connected!");
+
+    debug!("Waiting to join connection thread");
+    join_connection.await.unwrap().unwrap();
+}
+
+pub struct PeerApiImpl {
+    pub info: PeerInfo,
+}
+
+#[async_trait]
+impl PeerApi for PeerApiImpl {
+    async fn get_info(&self) -> CallResult<PeerInfo> {
+        Ok(self.info.clone())
+    }
+
+    async fn get_process_store(&self) -> CallResult<ProcessStoreClient> {
+        error!("Process stores are unimplemented");
+        Err(remoc::rtc::CallError::RemoteForward)
+    }
 }
