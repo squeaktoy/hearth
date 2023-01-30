@@ -2,6 +2,7 @@
 members = [
   "crates/font-mud",
   "crates/hearth-client",
+  "crates/hearth-ctl",
   "crates/hearth-cognito",
   "crates/hearth-core",
   "crates/hearth-guest",
