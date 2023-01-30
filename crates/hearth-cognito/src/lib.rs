@@ -1,18 +1,15 @@
-use hearth_rpc::ProcessApi;
 use hearth_wasm::{GuestMemory, WasmLinker};
 use wasmtime::{Caller, Linker};
 
 /// This contains all script-accessible process-related stuff.
-pub struct Cognito {
-    pub api: Box<dyn ProcessApi + Send + Sync>,
-}
+pub struct Cognito {}
 
 // Should automatically generate link_print_hello_world:
 // #[impl_wasm_linker]
 // should work for any struct, not just Cognito
 impl Cognito {
     pub async fn print_hello_world(&self) {
-        self.api.print_hello_world().await.unwrap();
+        eprintln!("Hello, world!");
     }
 
     // impl_wasm_linker should also work with non-async functions
@@ -77,46 +74,9 @@ impl<T: AsRef<Cognito> + Send + 'static> WasmLinker<T> for Cognito {
 mod tests {
     use super::*;
 
-    use hearth_rpc::hearth_types::*;
-    use hearth_rpc::{remoc, CallResult};
-    use remoc::rtc::async_trait;
-
-    struct MockProcessApi;
-
-    #[async_trait]
-    #[allow(unused)]
-    impl ProcessApi for MockProcessApi {
-        async fn print_hello_world(&self) -> CallResult<()> {
-            println!("Hello, world!");
-            Ok(())
-        }
-
-        async fn spawn(
-            &self,
-            module: AssetId,
-            peer: PeerId,
-            linked: bool,
-        ) -> CallResult<ProcessId> {
-            unimplemented!()
-        }
-
-        async fn link(&self, pid: ProcessId) -> CallResult<()> {
-            unimplemented!()
-        }
-
-        async fn unlink(&self, pid: ProcessId) -> CallResult<()> {
-            unimplemented!()
-        }
-
-        async fn kill(&self, pid: ProcessId) -> CallResult<()> {
-            unimplemented!()
-        }
-    }
-
-    #[test]
-    fn host_works() {
-        let api = Box::new(MockProcessApi);
-        let cognito = Cognito { api };
-        cognito.print_hello_world();
+    #[tokio::test]
+    async fn host_works() {
+        let cognito = Cognito {};
+        cognito.print_hello_world().await;
     }
 }
