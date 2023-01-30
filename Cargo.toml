@@ -5,6 +5,7 @@ members = [
   "crates/hearth-cognito",
   "crates/hearth-core",
   "crates/hearth-guest",
+  "crates/hearth-ipc",
   "crates/hearth-network",
   "crates/hearth-rpc",
   "crates/hearth-server",
@@ -13,6 +14,7 @@ members = [
 ]
 
 [workspace.dependencies]
+hearth-ipc = { path = "crates/hearth-ipc" }
 hearth-network = { path = "crates/hearth-network" }
 hearth-rpc = { path = "crates/hearth-rpc" }
 hearth-types = { path = "crates/hearth-types" }
