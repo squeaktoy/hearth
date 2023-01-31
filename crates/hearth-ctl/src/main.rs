@@ -8,10 +8,15 @@ pub struct Args {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum Commands {}
+pub enum Commands {
+    Placeholder,
+}
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
-
+    let daemon = hearth_ipc::connect()
+        .await
+        .expect("Failed to connect to Hearth daemon");
     println!("Hello, world!");
 }
