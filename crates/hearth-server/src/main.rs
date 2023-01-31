@@ -7,9 +7,12 @@ use hearth_network::auth::ServerAuthenticator;
 use hearth_rpc::*;
 use hearth_types::*;
 use remoc::robs::hash_map::{HashMapSubscription, ObservableHashMap};
-use remoc::rtc::{async_trait, LocalRwLock, ServerSharedMut};
+use remoc::rtc::{async_trait, LocalRwLock, ServerShared, ServerSharedMut};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
+
+/// The constant peer ID for this peer (the server).
+pub const SELF_PEER_ID: PeerId = PeerId(0);
 
 /// The Hearth virtual space server program.
 #[derive(Parser, Debug)]
@@ -40,7 +43,24 @@ async fn main() {
         }
     };
 
-    let peer_provider = PeerProviderImpl::new();
+    debug!("Creating peer API");
+    let peer_info = PeerInfo { nickname: None };
+    let peer_api = hearth_core::PeerApiImpl {
+        info: peer_info.clone(),
+    };
+
+    let peer_api = Arc::new(peer_api);
+    let (peer_api_server, peer_api) =
+        PeerApiServerShared::<_, remoc::codec::Default>::new(peer_api, 1024);
+
+    debug!("Spawning peer API server thread");
+    tokio::spawn(async move {
+        peer_api_server.serve(true).await;
+    });
+
+    debug!("Creating peer provider");
+    let mut peer_provider = PeerProviderImpl::new();
+    peer_provider.add_peer(SELF_PEER_ID, peer_api, peer_info);
     let peer_provider = Arc::new(LocalRwLock::new(peer_provider));
 
     info!("Listening");
@@ -194,7 +214,7 @@ impl PeerProvider for PeerProviderImpl {
 impl PeerProviderImpl {
     pub fn new() -> Self {
         Self {
-            next_peer: PeerId(0),
+            next_peer: PeerId(1), // start from 1 to accomodate [SELF_PEER_ID]
             peer_list: Default::default(),
             peer_apis: Default::default(),
         }
