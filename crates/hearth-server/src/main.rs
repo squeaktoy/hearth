@@ -72,6 +72,22 @@ async fn main() {
         peer_provider_server.serve(true).await;
     });
 
+    debug!("Initializing IPC");
+    let daemon_listener = match hearth_ipc::Listener::new().await {
+        Ok(l) => l,
+        Err(err) => {
+            error!("IPC listener setup error: {:?}", err);
+            return;
+        }
+    };
+
+    let daemon_offer = DaemonOffer {
+        peer_provider: peer_provider_client.to_owned(),
+        peer_id: SELF_PEER_ID,
+    };
+
+    hearth_ipc::listen(daemon_listener, daemon_offer);
+
     info!("Listening");
     loop {
         let (socket, addr) = match listener.accept().await {

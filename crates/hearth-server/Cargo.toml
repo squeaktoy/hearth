@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 hearth-core = { workspace = true }
+hearth-ipc = { workspace = true }
 hearth-network = { workspace = true }
 hearth-rpc = { workspace = true }
 remoc = { workspace = true, features = ["full"] }
