@@ -7,4 +7,4 @@ edition = "2021"
 clap = { version = "4.1", features = ["derive"] }
 hearth-ipc = { workspace = true }
 hearth-rpc = { workspace = true }
-tokio = { version = "1.24", features = ["macros", "net", "rt-multi-thread"] }
+tokio = { version = "1.24", features = ["macros", "net", "rt"] }
