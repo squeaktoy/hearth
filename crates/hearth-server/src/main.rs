@@ -26,12 +26,7 @@ pub struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-
-    let format = tracing_subscriber::fmt::format().compact();
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .event_format(format)
-        .init();
+    hearth_core::init_logging();
 
     let authenticator = ServerAuthenticator::from_password(args.password.as_bytes()).unwrap();
     let authenticator = Arc::new(authenticator);
