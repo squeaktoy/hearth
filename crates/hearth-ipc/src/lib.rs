@@ -146,3 +146,59 @@ async fn on_accept(socket: UnixStream, offer: DaemonOffer) {
 
     tx.send(offer).await.unwrap();
 }
+
+/// Connects to the Hearth daemon and returns its offer.
+pub async fn connect() -> std::io::Result<DaemonOffer> {
+    use std::io::{Error, ErrorKind};
+
+    let sock_path = match get_socket_path() {
+        Some(p) => p,
+        None => {
+            let kind = ErrorKind::NotFound;
+            let msg = "Failed to find a socket path";
+            tracing::error!(msg);
+            return Err(Error::new(kind, msg));
+        }
+    };
+
+    let socket = UnixStream::connect(&sock_path).await?;
+    let (sock_rx, sock_tx) = tokio::io::split(socket);
+
+    use hearth_rpc::remoc::{
+        rch::base::{Receiver, Sender},
+        Cfg, Connect,
+    };
+
+    let cfg = Cfg::default();
+    let (conn, _tx, mut rx): (_, Sender<()>, Receiver<DaemonOffer>) =
+        match Connect::io(cfg, sock_rx, sock_tx).await {
+            Ok(v) => v,
+            Err(err) => {
+                let kind = ErrorKind::NotFound;
+                let msg = format!("Remoc connection failure: {:?}", err);
+                tracing::error!(msg);
+                return Err(Error::new(kind, msg));
+            }
+        };
+
+    tokio::spawn(conn);
+
+    match rx.recv().await {
+        Ok(Some(offer)) => Ok(offer),
+        Ok(None) => {
+            let kind = ErrorKind::ConnectionReset;
+            let msg = "Daemon unexpectedly hung up while waiting for offer";
+            tracing::error!(msg);
+            return Err(Error::new(kind, msg));
+        }
+        Err(err) => {
+            let kind = ErrorKind::InvalidData;
+            let msg = format!(
+                "Remoc chmxu error while waiting for daemon offer: {:?}",
+                err
+            );
+            tracing::error!(msg);
+            return Err(Error::new(kind, msg));
+        }
+    }
+}

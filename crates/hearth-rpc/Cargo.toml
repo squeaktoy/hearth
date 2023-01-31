@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 hearth-types = { workspace = true }
-remoc = { workspace = true, features = ["rtc"] }
+remoc = { workspace = true, features = ["robs", "rtc"] }
 serde = { workspace = true }
