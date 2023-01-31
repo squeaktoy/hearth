@@ -63,6 +63,15 @@ async fn main() {
     peer_provider.add_peer(SELF_PEER_ID, peer_api, peer_info);
     let peer_provider = Arc::new(LocalRwLock::new(peer_provider));
 
+    let (peer_provider_server, peer_provider_client) =
+        PeerProviderServerSharedMut::<_, remoc::codec::Default>::new(peer_provider.clone(), 1024);
+
+    debug!("Spawning peer provider server");
+    tokio::spawn(async move {
+        debug!("Running peer provider server");
+        peer_provider_server.serve(true).await;
+    });
+
     info!("Listening");
     loop {
         let (socket, addr) = match listener.accept().await {
@@ -75,15 +84,24 @@ async fn main() {
 
         info!("Connection from {:?}", addr);
         let peer_provider = peer_provider.clone();
+        let peer_provider_client = peer_provider_client.to_owned();
         let authenticator = authenticator.clone();
         tokio::task::spawn(async move {
-            on_accept(peer_provider, authenticator, socket, addr).await;
+            on_accept(
+                peer_provider,
+                peer_provider_client,
+                authenticator,
+                socket,
+                addr,
+            )
+            .await;
         });
     }
 }
 
 async fn on_accept(
     peer_provider: Arc<LocalRwLock<PeerProviderImpl>>,
+    peer_provider_client: PeerProviderClient,
     authenticator: Arc<ServerAuthenticator>,
     mut client: TcpStream,
     addr: SocketAddr,
@@ -120,15 +138,6 @@ async fn on_accept(
 
     debug!("Spawning Remoc connection thread");
     let join_connection = tokio::spawn(conn);
-
-    let (peer_provider_server, peer_provider_client) =
-        PeerProviderServerSharedMut::<_, remoc::codec::Default>::new(peer_provider.clone(), 1024);
-
-    debug!("Spawning peer provider server");
-    tokio::spawn(async move {
-        debug!("Running peer provider server");
-        peer_provider_server.serve(true).await;
-    });
 
     debug!("Generating peer ID");
     let peer_id = peer_provider.write().await.get_next_peer();
