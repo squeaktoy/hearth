@@ -86,33 +86,46 @@ async fn main() {
         peer_id: SELF_PEER_ID,
     };
 
+    listen(listener, peer_provider, peer_provider_client, authenticator);
     hearth_ipc::listen(daemon_listener, daemon_offer);
+    hearth_core::wait_for_interrupt().await;
+    info!("Interrupt received; exiting server");
+}
 
-    info!("Listening");
-    loop {
-        let (socket, addr) = match listener.accept().await {
-            Ok(v) => v,
-            Err(err) => {
-                error!("Listening error: {:?}", err);
-                continue;
-            }
-        };
+fn listen(
+    listener: TcpListener,
+    peer_provider: Arc<LocalRwLock<PeerProviderImpl>>,
+    peer_provider_client: PeerProviderClient,
+    authenticator: Arc<ServerAuthenticator>,
+) {
+    debug!("Spawning listen thread");
+    tokio::spawn(async move {
+        info!("Listening");
+        loop {
+            let (socket, addr) = match listener.accept().await {
+                Ok(v) => v,
+                Err(err) => {
+                    error!("Listening error: {:?}", err);
+                    continue;
+                }
+            };
 
-        info!("Connection from {:?}", addr);
-        let peer_provider = peer_provider.clone();
-        let peer_provider_client = peer_provider_client.to_owned();
-        let authenticator = authenticator.clone();
-        tokio::task::spawn(async move {
-            on_accept(
-                peer_provider,
-                peer_provider_client,
-                authenticator,
-                socket,
-                addr,
-            )
-            .await;
-        });
-    }
+            info!("Connection from {:?}", addr);
+            let peer_provider = peer_provider.clone();
+            let peer_provider_client = peer_provider_client.to_owned();
+            let authenticator = authenticator.clone();
+            tokio::task::spawn(async move {
+                on_accept(
+                    peer_provider,
+                    peer_provider_client,
+                    authenticator,
+                    socket,
+                    addr,
+                )
+                .await;
+            });
+        }
+    });
 }
 
 async fn on_accept(
