@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use clap::Parser;
 use hearth_network::auth::login;
 use hearth_rpc::*;
-use remoc::rtc::{async_trait, ServerShared};
+use remoc::rtc::ServerShared;
 use tokio::net::TcpStream;
 use tracing::{debug, error, info};
 
@@ -23,12 +23,7 @@ pub struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-
-    let format = tracing_subscriber::fmt::format().compact();
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .event_format(format)
-        .init();
+    hearth_core::init_logging();
 
     info!("Connecting to server at {:?}", args.server);
     let mut socket = match TcpStream::connect(args.server).await {
@@ -75,7 +70,7 @@ async fn main() {
 
     info!("Assigned peer ID {:?}", offer.new_id);
 
-    let peer_api = PeerApiImpl {
+    let peer_api = hearth_core::PeerApiImpl {
         info: PeerInfo { nickname: None },
     };
 
@@ -112,22 +107,12 @@ async fn main() {
 
     hearth_ipc::listen(daemon_listener, daemon_offer);
 
-    debug!("Waiting to join connection thread");
-    join_connection.await.unwrap().unwrap();
-}
-
-pub struct PeerApiImpl {
-    pub info: PeerInfo,
-}
-
-#[async_trait]
-impl PeerApi for PeerApiImpl {
-    async fn get_info(&self) -> CallResult<PeerInfo> {
-        Ok(self.info.clone())
-    }
-
-    async fn get_process_store(&self) -> CallResult<ProcessStoreClient> {
-        error!("Process stores are unimplemented");
-        Err(remoc::rtc::CallError::RemoteForward)
+    tokio::select! {
+        result = join_connection => {
+            result.unwrap().unwrap();
+        }
+        _ = hearth_core::wait_for_interrupt() => {
+            info!("Ctrl+C hit; quitting client");
+        }
     }
 }

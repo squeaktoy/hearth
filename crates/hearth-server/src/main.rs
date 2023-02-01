@@ -7,9 +7,12 @@ use hearth_network::auth::ServerAuthenticator;
 use hearth_rpc::*;
 use hearth_types::*;
 use remoc::robs::hash_map::{HashMapSubscription, ObservableHashMap};
-use remoc::rtc::{async_trait, LocalRwLock, ServerSharedMut};
+use remoc::rtc::{async_trait, LocalRwLock, ServerShared, ServerSharedMut};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
+
+/// The constant peer ID for this peer (the server).
+pub const SELF_PEER_ID: PeerId = PeerId(0);
 
 /// The Hearth virtual space server program.
 #[derive(Parser, Debug)]
@@ -26,12 +29,7 @@ pub struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-
-    let format = tracing_subscriber::fmt::format().compact();
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .event_format(format)
-        .init();
+    hearth_core::init_logging();
 
     let authenticator = ServerAuthenticator::from_password(args.password.as_bytes()).unwrap();
     let authenticator = Arc::new(authenticator);
@@ -45,30 +43,94 @@ async fn main() {
         }
     };
 
-    let peer_provider = PeerProviderImpl::new();
+    debug!("Creating peer API");
+    let peer_info = PeerInfo { nickname: None };
+    let peer_api = hearth_core::PeerApiImpl {
+        info: peer_info.clone(),
+    };
+
+    let peer_api = Arc::new(peer_api);
+    let (peer_api_server, peer_api) =
+        PeerApiServerShared::<_, remoc::codec::Default>::new(peer_api, 1024);
+
+    debug!("Spawning peer API server thread");
+    tokio::spawn(async move {
+        peer_api_server.serve(true).await;
+    });
+
+    debug!("Creating peer provider");
+    let mut peer_provider = PeerProviderImpl::new();
+    peer_provider.add_peer(SELF_PEER_ID, peer_api, peer_info);
     let peer_provider = Arc::new(LocalRwLock::new(peer_provider));
 
-    info!("Listening");
-    loop {
-        let (socket, addr) = match listener.accept().await {
-            Ok(v) => v,
-            Err(err) => {
-                error!("Listening error: {:?}", err);
-                continue;
-            }
-        };
+    let (peer_provider_server, peer_provider_client) =
+        PeerProviderServerSharedMut::<_, remoc::codec::Default>::new(peer_provider.clone(), 1024);
 
-        info!("Connection from {:?}", addr);
-        let peer_provider = peer_provider.clone();
-        let authenticator = authenticator.clone();
-        tokio::task::spawn(async move {
-            on_accept(peer_provider, authenticator, socket, addr).await;
-        });
-    }
+    debug!("Spawning peer provider server");
+    tokio::spawn(async move {
+        debug!("Running peer provider server");
+        peer_provider_server.serve(true).await;
+    });
+
+    debug!("Initializing IPC");
+    let daemon_listener = match hearth_ipc::Listener::new().await {
+        Ok(l) => l,
+        Err(err) => {
+            error!("IPC listener setup error: {:?}", err);
+            return;
+        }
+    };
+
+    let daemon_offer = DaemonOffer {
+        peer_provider: peer_provider_client.to_owned(),
+        peer_id: SELF_PEER_ID,
+    };
+
+    listen(listener, peer_provider, peer_provider_client, authenticator);
+    hearth_ipc::listen(daemon_listener, daemon_offer);
+    hearth_core::wait_for_interrupt().await;
+    info!("Interrupt received; exiting server");
+}
+
+fn listen(
+    listener: TcpListener,
+    peer_provider: Arc<LocalRwLock<PeerProviderImpl>>,
+    peer_provider_client: PeerProviderClient,
+    authenticator: Arc<ServerAuthenticator>,
+) {
+    debug!("Spawning listen thread");
+    tokio::spawn(async move {
+        info!("Listening");
+        loop {
+            let (socket, addr) = match listener.accept().await {
+                Ok(v) => v,
+                Err(err) => {
+                    error!("Listening error: {:?}", err);
+                    continue;
+                }
+            };
+
+            info!("Connection from {:?}", addr);
+            let peer_provider = peer_provider.clone();
+            let peer_provider_client = peer_provider_client.to_owned();
+            let authenticator = authenticator.clone();
+            tokio::task::spawn(async move {
+                on_accept(
+                    peer_provider,
+                    peer_provider_client,
+                    authenticator,
+                    socket,
+                    addr,
+                )
+                .await;
+            });
+        }
+    });
 }
 
 async fn on_accept(
     peer_provider: Arc<LocalRwLock<PeerProviderImpl>>,
+    peer_provider_client: PeerProviderClient,
     authenticator: Arc<ServerAuthenticator>,
     mut client: TcpStream,
     addr: SocketAddr,
@@ -105,15 +167,6 @@ async fn on_accept(
 
     debug!("Spawning Remoc connection thread");
     let join_connection = tokio::spawn(conn);
-
-    let (peer_provider_server, peer_provider_client) =
-        PeerProviderServerSharedMut::<_, remoc::codec::Default>::new(peer_provider.clone(), 1024);
-
-    debug!("Spawning peer provider server");
-    tokio::spawn(async move {
-        debug!("Running peer provider server");
-        peer_provider_server.serve(true).await;
-    });
 
     debug!("Generating peer ID");
     let peer_id = peer_provider.write().await.get_next_peer();
@@ -199,7 +252,7 @@ impl PeerProvider for PeerProviderImpl {
 impl PeerProviderImpl {
     pub fn new() -> Self {
         Self {
-            next_peer: PeerId(0),
+            next_peer: PeerId(1), // start from 1 to accomodate [SELF_PEER_ID]
             peer_list: Default::default(),
             peer_apis: Default::default(),
         }
