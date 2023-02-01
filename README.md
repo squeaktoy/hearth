@@ -86,11 +86,23 @@ Hearth operates over TCP socket connections. Although other real-time
 networking options like GameNetworkingSockets or QUIC have significantly
 better performance, TCP is being used because it doesn't require NAT traversal
 and it performs packet ordering and error checking without help from userspace.
-When a connection to a Hearth server is made, the client and server will
-perform a handshake to exchange encryption keys, and all further communication
-will be  encrypted. Hearth assumes that peers are friendly, but not that
-man-in-the-middle attacks are impossible. The specific encryption protocol is
-TBD.
+
+Hearth spaces are password-protected. Hearth assumes that peers are friendly,
+but not that all network nodes with access to the server can become peers, or
+that man-in-the-middle attacks are impossible. When a connection to a Hearth
+server is made, the client and server execute a password-authenticated
+key-exchange (PAKE) protocol, then use the resulting session key to encrypt
+all future communication between them.
+
+The specific PAKE method used is
+[Facebook's OPAQUE protocol](https://github.com/facebook/opaque-ke) with
+[Argon2](https://en.wikipedia.org/wiki/Argon2) as the password hash derivation
+function. OPAQUE has been audited by NCC Group and Argon2 is well-established
+for password hashing and is highly popular. After exchanging session keys,
+[ChaCha20](https://en.wikipedia.org/wiki/Salsa20) is directly applied to TCP
+communication. ChaCha20 is another well-established cryptography protocol.
+
+TODO: write about future cryptography plans.
 
 ## Scripting
 
