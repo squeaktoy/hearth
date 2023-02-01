@@ -131,42 +131,55 @@ load and execute the compiled module into Hearth using IPC.
 
 ## ECS
 
-## Assets
+## Lumps
 
-Assets are multipurpose, hash-identified binary blobs that are exchanged
-on-demand over the Hearth network. To distribute modules to other peers, Hearth
-first hashes each asset and uses that hash as an identifier to other peers. If
-a peer does not own a copy of an asset, it will not recognize the hash of that
-asset in its cache, and it will request the asset's data from another peer.
-Client peers request asset data from the server, and the server requests asset
+Lumps are multipurpose, hash-identified binary blobs that are exchanged
+on-demand over the Hearth network. To distribute lumps to other peers, Hearth
+first hashes each lump and uses that hash as an identifier to other peers. If
+a peer does not own a copy of a lump, it will not recognize the hash of that
+lump in its cache, and it will request the lump's data from another peer.
+Client peers request lump data from the server, and the server requests lump
 data from the client that has referenced the unrecognized ID.
 
-Before assets can be specialized for different kinds of content, they must be
-loaded. Different asset classes, like meshes, textures, and WebAssembly modules
-have different named identifiers. The names for those asset classes may be
-`Mesh`, `Texture`, or `WebAssembly`, for example. Once an asset is loaded, it
-may be passed into the engine in the places that expect a loaded asset, such as
-in a mesh renderer component. Wasm processes are also spawned using a loaded
-WebAssembly module asset as the executable source.
-
-Processes may create their own assets in memory and read a foreign asset's data
-back into process memory. In this way, processes may procedurally generate
+Processes may both create their own lump in memory and read a foreign lump's
+data back into process memory. In this way, processes may procedurally generate
 runtime Hearth content into the space, load content data formats that the
-core Hearth runtime does not recognize, or pipeline assets through multiple
+core Hearth runtime does not recognize, or pipeline lumps through multiple
 processes that each perform some transformation on them.
 
-Note that because Wasm modules are loaded from assets and because assets can be
-dynamically created by processes, Hearth processes may generate and load Wasm
-modules at runtime. This may be used, for example, in a WebAssembly compiler
-running inside of Hearth itself.
+Processes may send and receive the hashed IDs of lumps to other processes via
+messages. When an ID is sent to a process on a remote peer, however, the
+remote runtime may not recognize that a lump's ID has been referenced. The
+result is that the remote process obtains an ID for a lump but no way to access
+its data. To remedy this, processes have a host call that explicitly transfers
+a lump's data to a remote peer. This way, processes can ensure that remote
+processes have access to lumps that are being transferred.
 
-Processes have the ability to send and receive the IDs of assets to other
-processes. However, the runtime may not be aware that those IDs are being
-exchanged, so a process running on a remote peer may receive an ID in a message
-but the runtime will have no way of tracing it back to a peer that has that
-ID's data. To remedy this, processes have a host call that explicitly warms a
-target peer's asset cache with a given asset, and must use that host call when
-referencing asset IDs to a remote process that does not have the asset.
+## Assets
+
+Before lumps can be specialized for different kinds of content, they must be
+loaded into assets. Different asset classes, like meshes, textures, and
+WebAssembly modules have different named identifiers. The names for those asset
+classes may be `Mesh`, `Texture`, or `WebAssembly`, for example. An asset is
+loaded with the name of the asset class and the lump containing that asset's
+data. Once an asset is loaded, it may be passed into the engine in the places
+that expect a loaded asset, such as in a mesh renderer component. Wasm
+processes are also spawned using a loaded WebAssembly module asset as the
+executable source.
+
+Assets are peer-local and there is no way to transfer them between peers. This
+is because they have been specialized from a non-specialized binary blob into
+a specialized data format that may or may not be peer-specific. Processes have
+the responsibility and the privilege of converting opaque lumps into usable
+assets on their host peer.
+
+Note that lumps (and therefore assets) can be created by processes and that
+Wasm modules are a kind of asset. As a consequence of this, Hearth processes
+may generate and load Wasm modules at runtime. This allows a WebAssembly
+compiler that can create new Hearth processes to be in of itself a Wasm Hearth
+process. A major field of research in Hearth's [beta phase](#phase-3-beta) is
+to study the possibilities of a self-hosting Hearth environment using this
+technique.
 
 ## Terminal Emulator
 
