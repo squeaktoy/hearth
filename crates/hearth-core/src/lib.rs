@@ -1,6 +1,6 @@
 use hearth_rpc::*;
 use remoc::rtc::async_trait;
-use tracing::error;
+use tracing::{debug, error, info};
 
 /// Helper function to set up console logging with reasonable defaults.
 pub fn init_logging() {
@@ -25,5 +25,14 @@ impl PeerApi for PeerApiImpl {
     async fn get_process_store(&self) -> CallResult<ProcessStoreClient> {
         error!("Process stores are unimplemented");
         Err(remoc::rtc::CallError::RemoteForward)
+    }
+}
+
+/// Helper function to wait for Ctrl+C with nice logging.
+pub async fn wait_for_interrupt() {
+    debug!("Waiting for interrupt signal");
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => info!("Interrupt signal received"),
+        Err(err) => error!("Interrupt await error: {:?}", err),
     }
 }
