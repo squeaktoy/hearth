@@ -107,6 +107,12 @@ async fn main() {
 
     hearth_ipc::listen(daemon_listener, daemon_offer);
 
-    debug!("Waiting to join connection thread");
-    join_connection.await.unwrap().unwrap();
+    tokio::select! {
+        result = join_connection => {
+            result.unwrap().unwrap();
+        }
+        _ = hearth_core::wait_for_interrupt() => {
+            info!("Ctrl+C hit; quitting client");
+        }
+    }
 }
