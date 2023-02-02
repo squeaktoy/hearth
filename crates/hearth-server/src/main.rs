@@ -45,18 +45,7 @@ async fn main() {
 
     debug!("Creating peer API");
     let peer_info = PeerInfo { nickname: None };
-    let peer_api = hearth_core::PeerApiImpl {
-        info: peer_info.clone(),
-    };
-
-    let peer_api = Arc::new(peer_api);
-    let (peer_api_server, peer_api) =
-        PeerApiServerShared::<_, remoc::codec::Default>::new(peer_api, 1024);
-
-    debug!("Spawning peer API server thread");
-    tokio::spawn(async move {
-        peer_api_server.serve(true).await;
-    });
+    let peer_api = hearth_core::api::spawn_peer_api(peer_info.clone());
 
     debug!("Creating peer provider");
     let mut peer_provider = PeerProviderImpl::new();
