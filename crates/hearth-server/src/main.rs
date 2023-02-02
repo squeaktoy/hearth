@@ -240,8 +240,11 @@ struct PeerProviderImpl {
 
 #[async_trait]
 impl PeerProvider for PeerProviderImpl {
-    async fn find_peer(&self, id: PeerId) -> CallResult<Option<PeerApiClient>> {
-        Ok(self.peer_apis.get(&id).cloned())
+    async fn find_peer(&self, id: PeerId) -> ResourceResult<PeerApiClient> {
+        self.peer_apis
+            .get(&id)
+            .cloned()
+            .ok_or(ResourceError::Unavailable)
     }
 
     async fn follow_peer_list(&self) -> CallResult<HashMapSubscription<PeerId, PeerInfo>> {
