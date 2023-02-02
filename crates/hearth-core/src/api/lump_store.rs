@@ -1,31 +1,85 @@
-use hearth_rpc::remoc::robj::lazy_blob::LazyBlob;
+use std::collections::HashMap;
+
+use bytes::Buf;
+use hearth_rpc::remoc::{self, rtc::CallError};
+use remoc::robj::lazy_blob::{LazyBlob, Provider as BlobProvider};
+use tokio::sync::RwLock;
 
 use super::*;
 
-pub struct LumpStoreImpl {}
+struct Lump {
+    provider: BlobProvider,
+    blob: LazyBlob,
+}
+
+pub struct LumpStoreImpl {
+    store: RwLock<HashMap<LumpId, Lump>>,
+}
 
 #[async_trait]
 impl LumpStore for LumpStoreImpl {
     async fn upload_lump(&self, id: Option<LumpId>, data: LazyBlob) -> ResourceResult<LumpId> {
-        Ok(LumpId([0; 32]))
+        if let Some(id) = id {
+            if self.store.read().await.contains_key(&id) {
+                return Ok(id);
+            }
+        }
+
+        let data = match data.get().await {
+            Ok(data) => data,
+            Err(err) => {
+                eprintln!("Downloading lump failed: {:?}", err);
+                return Err(ResourceError::Unavailable);
+            }
+        };
+
+        let checked_id = LumpId(
+            blake3::Hasher::new()
+                .update(data.chunk())
+                .finalize()
+                .as_bytes()
+                .to_owned(),
+        );
+
+        if let Some(expected_id) = id {
+            if expected_id != checked_id {
+                error!(
+                    "Lump hash mismatch (expected {}, got {})",
+                    expected_id, checked_id
+                );
+
+                return Err(ResourceError::BadParams);
+            }
+        }
+
+        let (blob, provider) = LazyBlob::provided(data.into());
+        let lump = Lump { provider, blob };
+        let mut store = self.store.write().await;
+        store.insert(checked_id, lump);
+        Ok(checked_id)
     }
 
     async fn download_lump(&self, id: LumpId) -> ResourceResult<LazyBlob> {
-        Err(ResourceError::Unavailable)
+        self.store
+            .read()
+            .await
+            .get(&id)
+            .ok_or(ResourceError::Unavailable)
+            .map(|l| l.blob.to_owned())
     }
 }
 
 impl LumpStoreImpl {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            store: Default::default(),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use bytes::Buf;
 
     fn make_id(bytes: &[u8]) -> LumpId {
         LumpId(
