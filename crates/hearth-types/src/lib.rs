@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, Result as FmtResult};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
@@ -28,3 +30,13 @@ pub struct AssetId(pub u32);
 /// Identifier for a lump (digest of BLAKE3 cryptographic hash).
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub struct LumpId(pub [u8; 32]);
+
+impl Display for LumpId {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        for byte in self.0.iter() {
+            write!(fmt, "{:02x}", byte)?;
+        }
+
+        Ok(())
+    }
+}
