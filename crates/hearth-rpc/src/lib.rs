@@ -147,6 +147,9 @@ pub trait ProcessStore {
 pub trait LumpStore {
     /// Uploads a new lump to this store.
     ///
+    /// If the uploading of the lump fails, this request will fail with
+    /// [ResourceResult::Unavailable].
+    ///
     /// Has an optional [LumpId] parameter to skip the uploading of a lump if
     /// the lump is already available. If an ID is provided but the data's
     /// hash does not match that ID, this request will fail with
