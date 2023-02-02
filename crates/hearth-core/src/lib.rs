@@ -1,3 +1,5 @@
+use tracing::{debug, error, info};
+
 /// Implementations of the `hearth-rpc` crate's RPC interfaces.
 pub mod api;
 
