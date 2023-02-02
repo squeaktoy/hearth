@@ -9,3 +9,12 @@ pub fn init_logging() {
         .event_format(format)
         .init();
 }
+
+/// Helper function to wait for Ctrl+C with nice logging.
+pub async fn wait_for_interrupt() {
+    debug!("Waiting for interrupt signal");
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => info!("Interrupt signal received"),
+        Err(err) => error!("Interrupt await error: {:?}", err),
+    }
+}
