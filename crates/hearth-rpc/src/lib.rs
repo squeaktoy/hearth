@@ -11,11 +11,33 @@ pub use remoc;
 
 pub type CallResult<T> = Result<T, CallError>;
 
+/// Wrapper around a [CallError] for requests involving resources.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum ResourceError {
+    /// A resource being referenced is unavailable.
+    Unavailable,
+
+    /// A resource was referenced in the context of invalid parameters.
+    BadParams,
+
+    /// There was a Remoc [CallError],
+    CallError(CallError),
+}
+
+impl From<CallError> for ResourceError {
+    fn from(err: CallError) -> Self {
+        ResourceError::CallError(err)
+    }
+}
+
+/// See [ResourceError] for more info.
+pub type ResourceResult<T> = Result<T, ResourceError>;
+
 /// An interface for acquiring access to the other peers on the network.
 #[remote]
 pub trait PeerProvider {
     /// Retrieves the [PeerApi] of a peer by its ID, if there is a peer with that ID.
-    async fn find_peer(&self, id: PeerId) -> CallResult<Option<PeerApiClient>>;
+    async fn find_peer(&self, id: PeerId) -> ResourceResult<PeerApiClient>;
 
     /// Subscribes to the list of peers in the space.
     async fn follow_peer_list(&self) -> CallResult<HashMapSubscription<PeerId, PeerInfo>>;
@@ -86,25 +108,24 @@ pub trait ProcessStore {
     async fn print_hello_world(&self) -> CallResult<()>;
 
     /// Spawns a new process.
-    async fn spawn(&self, module: LumpId) -> CallResult<LocalProcessId>;
+    async fn spawn(&self, module: LumpId) -> ResourceResult<LocalProcessId>;
 
     /// Kills a process.
-    async fn kill(&self, pid: LocalProcessId) -> CallResult<()>;
+    async fn kill(&self, pid: LocalProcessId) -> ResourceResult<()>;
 
     /// Registers a process as a named service.
     ///
-    /// Returns `Ok(true)` if the process was successfully registered or
-    /// `Ok(false)` if the service name is taken.
-    async fn register_service(&self, pid: LocalProcessId, name: String) -> CallResult<bool>;
+    /// Returns [ResourceError::BadParams] if the service name is taken.
+    async fn register_service(&self, pid: LocalProcessId, name: String) -> ResourceResult<()>;
 
     /// Deregisters a service.
-    async fn deregister_service(&self, name: String) -> CallResult<()>;
+    async fn deregister_service(&self, name: String) -> ResourceResult<()>;
 
     /// Subscribes to a process's log.
     async fn follow_process_log(
         &self,
         pid: LocalProcessId,
-    ) -> CallResult<ListSubscription<ProcessLogEvent>>;
+    ) -> ResourceResult<ListSubscription<ProcessLogEvent>>;
 
     /// Subscribes to this store's process list.
     ///
@@ -126,14 +147,14 @@ pub trait ProcessStore {
 pub trait LumpStore {
     /// Uploads a new lump to this store.
     ///
-    /// Will skip downloading the lump data if the ID is already found in the
-    /// store. If the data's calculated hash does not match the given hash,
-    /// this request will fail.
-    async fn upload_lump(&self, id: LumpId, data: LazyBlob) -> CallResult<LumpId>;
+    /// Has an optional [LumpId] parameter to skip the uploading of a lump if
+    /// the lump is already available. If an ID is provided but the data's
+    /// hash does not match that ID, this request will fail with
+    /// [ResourceResult::BadParams].
+    async fn upload_lump(&self, id: Option<LumpId>, data: LazyBlob) -> ResourceResult<LumpId>;
 
-    /// Downloads a lump from this store. Returns `None` if the lump was not
-    /// found in this store.
-    async fn download_lump(&self, id: LumpId) -> CallResult<Option<LazyBlob>>;
+    /// Downloads a lump from this store.
+    async fn download_lump(&self, id: LumpId) -> ResourceResult<LazyBlob>;
 }
 
 /// Log event emitted by a process.
