@@ -1,5 +1,6 @@
 use hearth_types::*;
 
+use remoc::robj::lazy_blob::LazyBlob;
 use remoc::robs::hash_map::HashMapSubscription;
 use remoc::robs::list::ListSubscription;
 use remoc::rtc::{remote, CallError};
@@ -63,6 +64,9 @@ pub trait PeerApi {
 
     /// Gets this peer's process store.
     async fn get_process_store(&self) -> CallResult<ProcessStoreClient>;
+
+    /// Gets this peer's lump store.
+    async fn get_lump_store(&self) -> CallResult<LumpStoreClient>;
 }
 
 /// A peer's metadata.
@@ -115,6 +119,21 @@ pub trait ProcessStore {
     async fn follow_service_list(&self) -> CallResult<HashMapSubscription<String, LocalProcessId>>;
 
     // TODO Lunatic Supervisor-like child API?
+}
+
+/// Interface to a peer's local lumps.
+#[remote]
+pub trait LumpStore {
+    /// Uploads a new lump to this store.
+    ///
+    /// Will skip downloading the lump data if the ID is already found in the
+    /// store. If the data's calculated hash does not match the given hash,
+    /// this request will fail.
+    async fn upload_lump(&self, id: LumpId, data: LazyBlob) -> CallResult<LumpId>;
+
+    /// Downloads a lump from this store. Returns `None` if the lump was not
+    /// found in this store.
+    async fn download_lump(&self, id: LumpId) -> CallResult<Option<LazyBlob>>;
 }
 
 /// Log event emitted by a process.
