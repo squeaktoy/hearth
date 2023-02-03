@@ -271,9 +271,39 @@ node in the rend3 frame graph with a custom shader.
 
 ## WebAssembly
 
-## TUIs
+### Loading Lumps
 
-## CLIs
+### Logging From Wasm
+
+## CLI
+
+Hearth provides a command-line interface (CLI) utility program to perform
+simple interactions with the daemon. This may be invoked with an interactive
+shell or by shell scripts. Scripts may chain together multiple invocations of
+the CLI to create more complex workflows. This allows Hearth users to
+repeatedly perform complex actions without needing to compile and spawn a
+new Hearth process or to compile and run a new native process.
+
+The CLI program is named `hearth-ctl` and has multiple subcommands that each
+perform a different operation on the runtime. Hearth may add more subcommands
+as needed, but at the current time of writing it is known that they include:
+
+- `load-lump`: load a lump
+- `list-processes`: list processes
+- `kill`: kill a process
+- `spawn`: spawn a process
+- `tail`: tail a process's log
+- `send`: send a process a message
+
+`hearth-ctl` follows POSIX-like conventions for user interaction. It returns
+reasonable exit codes according to the POSIX standard, and displays output to
+`stdout` in lightly- or un-formatted strings that can be easily processed by a
+shell script.
+
+Exit codes are provided by the
+[yacexits](https://crates.io/crates/yacexits) crate.
+
+## TUI
 
 # Roadmap
 
