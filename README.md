@@ -305,6 +305,20 @@ Exit codes are provided by the
 
 ## TUI
 
+A more advanced alternative to `hearth-ctl` is `hearth-console`, a terminal
+user interface (TUI) utility program. `hearth-console` provides a long-running
+live view into the status of the connected Hearth daemon, and user-friendly
+controls (at least for users acclimated to GUIs) to administrate the Hearth
+runtime.
+
+Features include, but are not limited to:
+- a live, `htop`-like process view displaying all processes and services (TODO: and their children?)
+- tabbed process logs to follow multiple process logs simultaneously
+- TODO: resource consumption?
+
+`hearth-console` uses the [tui](https://crates.io/crates/tui) crate as the
+base TUI framework.
+
 # Roadmap
 
 ## Phase 0: Pre-Production
