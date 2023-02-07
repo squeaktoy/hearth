@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rend3::InstanceAdapterDevice;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
@@ -31,7 +33,7 @@ pub struct WindowCtx {
     event_tx: mpsc::UnboundedSender<WindowTxMessage>,
     window: Window,
     iad: InstanceAdapterDevice,
-    surface: wgpu::Surface,
+    surface: Arc<wgpu::Surface>,
     config: wgpu::SurfaceConfiguration,
 }
 
@@ -50,6 +52,7 @@ impl WindowCtx {
         let iad =
             runtime.block_on(async { rend3::create_iad(None, None, None, None).await.unwrap() });
         let surface = unsafe { iad.instance.create_surface(&window) };
+        let surface = Arc::new(surface);
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
