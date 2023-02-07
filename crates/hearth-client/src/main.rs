@@ -19,11 +19,21 @@ pub struct Args {
     pub password: String,
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let args = Args::parse();
     hearth_core::init_logging();
 
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    runtime.block_on(async move {
+        async_main(args).await;
+    });
+}
+
+async fn async_main(args: Args) {
     info!("Connecting to server at {:?}", args.server);
     let mut socket = match TcpStream::connect(args.server).await {
         Ok(s) => s,
