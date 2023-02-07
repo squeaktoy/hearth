@@ -1,3 +1,4 @@
+use rend3::InstanceAdapterDevice;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
 use winit::event::{Event, WindowEvent};
@@ -29,9 +30,7 @@ pub struct WindowCtx {
     event_loop: EventLoop<WindowRxMessage>,
     event_tx: mpsc::UnboundedSender<WindowTxMessage>,
     window: Window,
-    adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    iad: InstanceAdapterDevice,
     surface: wgpu::Surface,
     config: wgpu::SurfaceConfiguration,
 }
@@ -48,33 +47,9 @@ impl WindowCtx {
 
         let size = window.inner_size();
         let swapchain_format = wgpu::TextureFormat::Bgra8UnormSrgb;
-        let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
-        let surface = unsafe { instance.create_surface(&window) };
-
-        let (adapter, device, queue) = runtime.block_on(async {
-            let adapter = instance
-                .request_adapter(&wgpu::RequestAdapterOptions {
-                    power_preference: wgpu::PowerPreference::default(),
-                    force_fallback_adapter: false,
-                    compatible_surface: Some(&surface),
-                })
-                .await
-                .expect("Failed to find an appropiate adapter");
-
-            let (device, queue) = adapter
-                .request_device(
-                    &wgpu::DeviceDescriptor {
-                        label: None,
-                        features: wgpu::Features::empty(),
-                        limits: wgpu::Limits::default(),
-                    },
-                    None,
-                )
-                .await
-                .expect("Failed to create device");
-
-            (adapter, device, queue)
-        });
+        let iad =
+            runtime.block_on(async { rend3::create_iad(None, None, None, None).await.unwrap() });
+        let surface = unsafe { iad.instance.create_surface(&window) };
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -84,7 +59,7 @@ impl WindowCtx {
             present_mode: wgpu::PresentMode::Immediate,
         };
 
-        surface.configure(&device, &config);
+        surface.configure(&iad.device, &config);
         let (event_rx, event_tx) = mpsc::unbounded_channel();
 
         offer_sender
@@ -98,9 +73,7 @@ impl WindowCtx {
             event_loop,
             event_tx: event_rx,
             window,
-            adapter,
-            device,
-            queue,
+            iad,
             surface,
             config,
         }
@@ -111,8 +84,7 @@ impl WindowCtx {
             event_loop,
             event_tx,
             window,
-            device,
-            queue,
+            iad,
             surface,
             mut config,
             ..
@@ -139,7 +111,7 @@ impl WindowCtx {
                             let size = window.inner_size();
                             config.width = size.width;
                             config.height = size.height;
-                            surface.configure(&device, &config);
+                            surface.configure(&iad.device, &config);
                             window.request_redraw();
                             return;
                         }
@@ -150,7 +122,7 @@ impl WindowCtx {
                     };
 
                     let view = frame.texture.create_view(&Default::default());
-                    let mut encoder = device.create_command_encoder(&Default::default());
+                    let mut encoder = iad.device.create_command_encoder(&Default::default());
                     {
                         let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                             label: None,
@@ -166,7 +138,7 @@ impl WindowCtx {
                         });
                     }
 
-                    queue.submit(Some(encoder.finish()));
+                    iad.queue.submit(Some(encoder.finish()));
                     frame.present();
                 }
                 Event::UserEvent(WindowRxMessage::Quit) => {
