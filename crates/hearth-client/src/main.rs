@@ -6,6 +6,8 @@ use hearth_rpc::*;
 use tokio::net::TcpStream;
 use tracing::{debug, error, info};
 
+mod window;
+
 /// Client program to the Hearth virtual space server.
 #[derive(Parser, Debug)]
 pub struct Args {
@@ -23,14 +25,38 @@ fn main() {
     let args = Args::parse();
     hearth_core::init_logging();
 
+    let (window_tx, window_rx) = tokio::sync::oneshot::channel();
+    let window = window::WindowCtx::new(window_tx);
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
 
-    runtime.block_on(async move {
-        async_main(args).await;
+    runtime.block_on(async {
+        let mut window = window_rx.await.unwrap();
+        let mut join_main = runtime.spawn(async move {
+            async_main(args).await;
+        });
+
+        runtime.spawn(async move {
+            loop {
+                tokio::select! {
+                    event = window.event_tx.recv() => {
+                        debug!("window event: {:?}", event);
+                    }
+                    _ = &mut join_main => {
+                        debug!("async_main joined");
+                        window.event_rx.send_event(window::WindowRxMessage::Quit).unwrap();
+                        break;
+                    }
+                }
+            }
+        });
     });
+
+    debug!("Running window event loop");
+    window.run();
 }
 
 async fn async_main(args: Args) {
