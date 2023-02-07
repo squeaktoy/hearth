@@ -25,13 +25,13 @@ fn main() {
     let args = Args::parse();
     hearth_core::init_logging();
 
-    let (window_tx, window_rx) = tokio::sync::oneshot::channel();
-    let window = window::WindowCtx::new(window_tx);
-
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
+
+    let (window_tx, window_rx) = tokio::sync::oneshot::channel();
+    let window = window::WindowCtx::new(&runtime, window_tx);
 
     runtime.block_on(async {
         let mut window = window_rx.await.unwrap();
