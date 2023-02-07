@@ -44,6 +44,9 @@ fn main() {
                 tokio::select! {
                     event = window.event_tx.recv() => {
                         debug!("window event: {:?}", event);
+                        if let Some(window::WindowTxMessage::Quit) = event {
+                            break;
+                        }
                     }
                     _ = &mut join_main => {
                         debug!("async_main joined");
