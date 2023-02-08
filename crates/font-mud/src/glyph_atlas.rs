@@ -1,13 +1,21 @@
 use crate::error::{FontError, FontResult, GlyphShapeError};
 use crate::glyph_bitmap::GlyphBitmap;
+use glam::Vec2;
 use msdfgen::Range;
 use rect_packer::Packer;
 use ttf_parser::{Face, GlyphId};
+
+#[derive(Copy, Clone, Debug)]
+pub struct GlyphVertex {
+    pub position: Vec2,
+    pub tex_coords: Vec2,
+}
 
 pub struct GlyphInfo {
     pub position: (usize, usize),
     pub size: (usize, usize),
     pub anchor: (f32, f32),
+    pub vertices: [GlyphVertex; 4],
 }
 
 pub struct GlyphAtlas {
@@ -53,6 +61,7 @@ impl GlyphAtlas {
         let mut packer = Self::generate_packer(&glyphs);
         let width = packer.config().width as usize;
         let height = packer.config().height as usize;
+        let texture_size = Vec2::new(width as f32, height as f32);
         let mut bitmap = GlyphBitmap::new(width, height);
         let mut glyph_info = vec![];
         for glyph in glyphs {
@@ -65,10 +74,41 @@ impl GlyphAtlas {
                     {
                         glyph.copy_to(&mut bitmap, rect.x as usize, rect.y as usize);
 
+                        let anchor = Vec2::ZERO;
+
+                        let position = Vec2::new(rect.x as f32, rect.y as f32);
+                        let position = position / texture_size;
+
+                        let size = Vec2::new(glyph.width as f32, glyph.height as f32);
+                        let size = size / texture_size;
+
+                        let v1 = Vec2::ZERO;
+                        let v2 = Vec2::new(size.x, 0.0);
+                        let v3 = Vec2::new(0.0, size.y);
+                        let v4 = size;
+
                         glyph_info.push(Some(GlyphInfo {
                             position: (rect.x as usize, rect.y as usize),
                             size: (glyph.width, glyph.height),
                             anchor: (0.0, 0.0),
+                            vertices: [
+                                GlyphVertex {
+                                    position: v1 - anchor,
+                                    tex_coords: v1 + position,
+                                },
+                                GlyphVertex {
+                                    position: v2 - anchor,
+                                    tex_coords: v2 + position,
+                                },
+                                GlyphVertex {
+                                    position: v3 - anchor,
+                                    tex_coords: v3 + position,
+                                },
+                                GlyphVertex {
+                                    position: v4 - anchor,
+                                    tex_coords: v4 + position,
+                                },
+                            ],
                         }))
                     }
                 }
