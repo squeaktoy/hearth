@@ -60,7 +60,7 @@ impl GlyphBitmap {
                 .iter()
                 .map(|p| {
                     fn conv(f: f32) -> u32 {
-                        (f * 128.0 + 128.0).round() as u8 as _
+                        (f * 256.0).round() as u8 as _
                     }
 
                     (conv(p.r) << 24) | (conv(p.g) << 16) | (conv(p.b) << 8) | conv(p.a)
