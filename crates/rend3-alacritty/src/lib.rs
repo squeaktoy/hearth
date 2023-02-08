@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use alacritty_terminal::ansi::Color;
@@ -72,6 +73,56 @@ impl GlyphVertex {
     };
 }
 
+struct DynamicMesh<T> {
+    vertex_buffer: Buffer,
+    index_buffer: Buffer,
+    index_num: u32,
+    _data: PhantomData<T>,
+}
+
+impl<T: Pod> DynamicMesh<T> {
+    pub fn new(device: &Device) -> Self {
+        Self {
+            vertex_buffer: device.create_buffer(&BufferDescriptor {
+                label: Some("AlacrittyRoutine vertex buffer"),
+                size: 0,
+                mapped_at_creation: false,
+                usage: BufferUsages::VERTEX,
+            }),
+            index_buffer: device.create_buffer(&BufferDescriptor {
+                label: Some("AlacrittyRoutine vertex buffer"),
+                size: 0,
+                mapped_at_creation: false,
+                usage: BufferUsages::INDEX,
+            }),
+            index_num: 0,
+            _data: PhantomData,
+        }
+    }
+
+    pub fn update(&mut self, device: &Device, vertices: &[T], indices: &[u32]) {
+        self.vertex_buffer = device.create_buffer_init(&util::BufferInitDescriptor {
+            label: Some("AlacrittyRoutine vertex buffer"),
+            contents: bytemuck::cast_slice(vertices),
+            usage: BufferUsages::VERTEX,
+        });
+
+        self.index_buffer = device.create_buffer_init(&util::BufferInitDescriptor {
+            label: Some("AlacrittyRoutine index buffer"),
+            contents: bytemuck::cast_slice(indices),
+            usage: BufferUsages::INDEX,
+        });
+
+        self.index_num = indices.len() as u32;
+    }
+
+    pub fn draw<'a>(&'a self, rpass: &mut RenderPass<'a>) {
+        rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        rpass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
+        rpass.draw_indexed(0..self.index_num, 0, 0..1);
+    }
+}
+
 /// Generates a pipeline for either a glyph shader or a solid shader.
 fn make_pipeline(
     device: &Device,
@@ -126,9 +177,7 @@ pub struct AlacrittyRoutine {
     bind_group: BindGroup,
     solid_pipeline: RenderPipeline,
     glyph_pipeline: RenderPipeline,
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
-    index_num: u32,
+    glyph_mesh: DynamicMesh<GlyphVertex>,
 }
 
 impl AlacrittyRoutine {
@@ -208,22 +257,6 @@ impl AlacrittyRoutine {
             format,
         );
 
-        let vertex_buffer = renderer.device.create_buffer(&BufferDescriptor {
-            label: Some("AlacrittyRoutine vertex buffer"),
-            size: 0,
-            mapped_at_creation: false,
-            usage: BufferUsages::VERTEX,
-        });
-
-        let index_buffer = renderer.device.create_buffer(&BufferDescriptor {
-            label: Some("AlacrittyRoutine vertex buffer"),
-            size: 0,
-            mapped_at_creation: false,
-            usage: BufferUsages::INDEX,
-        });
-
-        let index_num = 0;
-
         let (glyph_atlas, _errors) =
             font_mud::glyph_atlas::GlyphAtlas::new(atlas_face.as_face_ref()).unwrap();
 
@@ -292,9 +325,7 @@ impl AlacrittyRoutine {
             bind_group,
             solid_pipeline,
             glyph_pipeline,
-            vertex_buffer,
-            index_buffer,
-            index_num,
+            glyph_mesh: DynamicMesh::new(&renderer.device),
         }
     }
 
@@ -358,19 +389,7 @@ impl AlacrittyRoutine {
             ]);
         }
 
-        self.vertex_buffer = self.device.create_buffer_init(&util::BufferInitDescriptor {
-            label: Some("AlacrittyRoutine vertex buffer"),
-            contents: bytemuck::cast_slice(vertices.as_slice()),
-            usage: BufferUsages::VERTEX,
-        });
-
-        self.index_buffer = self.device.create_buffer_init(&util::BufferInitDescriptor {
-            label: Some("AlacrittyRoutine index buffer"),
-            contents: bytemuck::cast_slice(indices.as_slice()),
-            usage: BufferUsages::INDEX,
-        });
-
-        self.index_num = indices.len() as u32;
+        self.glyph_mesh.update(&self.device, &vertices, &indices);
     }
 
     pub fn add_to_graph<'node>(
@@ -403,9 +422,7 @@ impl AlacrittyRoutine {
                 let rpass = encoder_or_pass.get_rpass(rpass_handle);
                 rpass.set_pipeline(&this.glyph_pipeline);
                 rpass.set_bind_group(0, &this.bind_group, &[]);
-                rpass.set_vertex_buffer(0, this.vertex_buffer.slice(..));
-                rpass.set_index_buffer(this.index_buffer.slice(..), IndexFormat::Uint32);
-                rpass.draw_indexed(0..this.index_num, 0, 0..1);
+                this.glyph_mesh.draw(rpass);
             },
         );
     }
