@@ -29,7 +29,11 @@ impl rend3_framework::App for Demo {
         _routines: &Arc<rend3_framework::DefaultRoutines>,
         surface_format: rend3::types::TextureFormat,
     ) {
-        let alacritty_routine = rend3_alacritty::AlacrittyRoutine::new(&renderer, surface_format);
+        let ttf_src = include_bytes!("../../../resources/mononoki/mononoki-Regular.ttf");
+        let face = ttf_parser::Face::parse(ttf_src, 0).unwrap();
+        let (glyph_atlas, _errors) = font_mud::glyph_atlas::GlyphAtlas::new(&face).unwrap();
+        let alacritty_routine =
+            rend3_alacritty::AlacrittyRoutine::new(glyph_atlas, &renderer, surface_format);
         self.inner = Some(DemoInner { alacritty_routine });
     }
 

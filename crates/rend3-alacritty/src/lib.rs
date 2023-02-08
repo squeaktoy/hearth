@@ -1,17 +1,51 @@
+use font_mud::glyph_atlas::GlyphAtlas;
 use rend3::graph::{
     RenderGraph, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets, RenderTargetHandle,
 };
 use rend3::Renderer;
-use wgpu::{Color, RenderPipeline, TextureFormat};
+use wgpu::{Color, RenderPipeline, Texture, TextureFormat};
 
 pub struct AlacrittyRoutine {
+    glyph_atlas: GlyphAtlas,
+    glyph_texture: Texture,
     pipeline: RenderPipeline,
 }
 
 impl AlacrittyRoutine {
     /// This routine runs after tonemapping, so `format` is the format of the
     /// final swapchain image format.
-    pub fn new(renderer: &Renderer, format: TextureFormat) -> Self {
+    pub fn new(glyph_atlas: GlyphAtlas, renderer: &Renderer, format: TextureFormat) -> Self {
+        let atlas_size = wgpu::Extent3d {
+            width: glyph_atlas.bitmap.width as u32,
+            height: glyph_atlas.bitmap.height as u32,
+            depth_or_array_layers: 1,
+        };
+        let glyph_texture = renderer.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("AlacrittyRoutine::glyph_texture"),
+            size: atlas_size.clone(),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        });
+
+        renderer.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &glyph_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            glyph_atlas.bitmap.data_bytes(),
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(4 * glyph_atlas.bitmap.width as u32),
+                rows_per_image: std::num::NonZeroU32::new(glyph_atlas.bitmap.height as u32),
+            },
+            atlas_size,
+        );
+
         let shader_desc = wgpu::include_wgsl!("shader.wgsl");
         let shader = renderer.device.create_shader_module(&shader_desc);
 
@@ -62,7 +96,11 @@ impl AlacrittyRoutine {
                 multiview: None,
             });
 
-        Self { pipeline }
+        Self {
+            glyph_atlas,
+            glyph_texture,
+            pipeline,
+        }
     }
 
     pub fn add_to_graph<'node>(

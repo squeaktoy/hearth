@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+font-mud = { path = "../font-mud" }
 rend3 = "0.3"
 rend3-routine = "0.3"
 wgpu = "^0.12"
@@ -11,4 +12,5 @@ wgpu = "^0.12"
 [dev-dependencies]
 glam = "0.20"
 rend3-framework = "0.3"
+ttf-parser = "0.18.1"
 winit = "0.26"
