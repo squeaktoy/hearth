@@ -3,11 +3,14 @@ use rend3::graph::{
     RenderGraph, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets, RenderTargetHandle,
 };
 use rend3::Renderer;
-use wgpu::{Color, RenderPipeline, Texture, TextureFormat};
+use wgpu::{BindGroup, Color, RenderPipeline, Sampler, Texture, TextureFormat, TextureView};
 
 pub struct AlacrittyRoutine {
     glyph_atlas: GlyphAtlas,
-    glyph_texture: Texture,
+    atlas_texture: Texture,
+    atlas_view: TextureView,
+    atlas_sampler: Sampler,
+    bind_group: BindGroup,
     pipeline: RenderPipeline,
 }
 
@@ -20,7 +23,8 @@ impl AlacrittyRoutine {
             height: glyph_atlas.bitmap.height as u32,
             depth_or_array_layers: 1,
         };
-        let glyph_texture = renderer.device.create_texture(&wgpu::TextureDescriptor {
+
+        let atlas_texture = renderer.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("AlacrittyRoutine::glyph_texture"),
             size: atlas_size.clone(),
             mip_level_count: 1,
@@ -32,7 +36,7 @@ impl AlacrittyRoutine {
 
         renderer.queue.write_texture(
             wgpu::ImageCopyTexture {
-                texture: &glyph_texture,
+                texture: &atlas_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
@@ -46,14 +50,66 @@ impl AlacrittyRoutine {
             atlas_size,
         );
 
+        let atlas_view = atlas_texture.create_view(&Default::default());
+        let atlas_sampler = renderer.device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
         let shader_desc = wgpu::include_wgsl!("shader.wgsl");
         let shader = renderer.device.create_shader_module(&shader_desc);
+
+        let bgl = renderer
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("AlacrittyRoutine bind group layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let bind_group = renderer
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&atlas_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&atlas_sampler),
+                    },
+                ],
+            });
 
         let layout = renderer
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("AlacrittyRoutine pipeline layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&bgl],
                 push_constant_ranges: &[],
             });
 
@@ -75,7 +131,7 @@ impl AlacrittyRoutine {
                     bias: wgpu::DepthBiasState::default(),
                 }),
                 primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw,
                     cull_mode: Some(wgpu::Face::Back),
@@ -98,7 +154,10 @@ impl AlacrittyRoutine {
 
         Self {
             glyph_atlas,
-            glyph_texture,
+            atlas_texture,
+            atlas_view,
+            atlas_sampler,
+            bind_group,
             pipeline,
         }
     }
@@ -132,7 +191,8 @@ impl AlacrittyRoutine {
                 let this = pt.get(pt_handle);
                 let rpass = encoder_or_pass.get_rpass(rpass_handle);
                 rpass.set_pipeline(&this.pipeline);
-                rpass.draw(0..3, 0..1);
+                rpass.set_bind_group(0, &this.bind_group, &[]);
+                rpass.draw(0..4, 0..1);
             },
         );
     }
