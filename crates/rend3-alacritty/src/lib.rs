@@ -111,6 +111,66 @@ impl AlacrittyRoutine {
     /// This routine runs after tonemapping, so `format` is the format of the
     /// final swapchain image format.
     pub fn new(atlas_face: OwnedFace, renderer: &Renderer, format: TextureFormat) -> Self {
+        let shader_desc = include_wgsl!("glyph.wgsl");
+        let shader = renderer.device.create_shader_module(&shader_desc);
+
+        let bgl = renderer
+            .device
+            .create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("AlacrittyRoutine bind group layout"),
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: TextureViewDimension::D2,
+                            sample_type: TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let layout = renderer
+            .device
+            .create_pipeline_layout(&PipelineLayoutDescriptor {
+                label: Some("AlacrittyRoutine pipeline layout"),
+                bind_group_layouts: &[&bgl],
+                push_constant_ranges: &[],
+            });
+
+        let pipeline = make_pipeline(
+            &renderer.device,
+            Some("AlacrittyRoutine glyph pipeline"),
+            &shader,
+            Vertex::LAYOUT,
+            &layout,
+            format,
+        );
+
+        let vertex_buffer = renderer.device.create_buffer(&BufferDescriptor {
+            label: Some("AlacrittyRoutine vertex buffer"),
+            size: 0,
+            mapped_at_creation: false,
+            usage: BufferUsages::VERTEX,
+        });
+
+        let index_buffer = renderer.device.create_buffer(&BufferDescriptor {
+            label: Some("AlacrittyRoutine vertex buffer"),
+            size: 0,
+            mapped_at_creation: false,
+            usage: BufferUsages::INDEX,
+        });
+
+        let index_num = 0;
+
         let (glyph_atlas, _errors) =
             font_mud::glyph_atlas::GlyphAtlas::new(atlas_face.as_face_ref()).unwrap();
 
@@ -157,33 +217,6 @@ impl AlacrittyRoutine {
             ..Default::default()
         });
 
-        let shader_desc = include_wgsl!("glyph.wgsl");
-        let shader = renderer.device.create_shader_module(&shader_desc);
-
-        let bgl = renderer
-            .device
-            .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("AlacrittyRoutine bind group layout"),
-                entries: &[
-                    BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: TextureViewDimension::D2,
-                            sample_type: TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-
         let bind_group = renderer.device.create_bind_group(&BindGroupDescriptor {
             label: None,
             layout: &bgl,
@@ -198,39 +231,6 @@ impl AlacrittyRoutine {
                 },
             ],
         });
-
-        let layout = renderer
-            .device
-            .create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: Some("AlacrittyRoutine pipeline layout"),
-                bind_group_layouts: &[&bgl],
-                push_constant_ranges: &[],
-            });
-
-        let pipeline = make_pipeline(
-            &renderer.device,
-            Some("AlacrittyRoutine glyph pipeline"),
-            &shader,
-            Vertex::LAYOUT,
-            &layout,
-            format,
-        );
-
-        let vertex_buffer = renderer.device.create_buffer(&BufferDescriptor {
-            label: Some("AlacrittyRoutine vertex buffer"),
-            size: 0,
-            mapped_at_creation: false,
-            usage: BufferUsages::VERTEX,
-        });
-
-        let index_buffer = renderer.device.create_buffer(&BufferDescriptor {
-            label: Some("AlacrittyRoutine vertex buffer"),
-            size: 0,
-            mapped_at_creation: false,
-            usage: BufferUsages::INDEX,
-        });
-
-        let index_num = 0;
 
         Self {
             device: renderer.device.to_owned(),
