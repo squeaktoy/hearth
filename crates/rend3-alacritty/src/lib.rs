@@ -238,9 +238,9 @@ impl AlacrittyRoutine {
 
         let content = term.renderable_content();
         for cell in content.display_iter.into_iter() {
-            let col = cell.point.column.0 as f32;
-            let row = cell.point.line.0 as f32;
-            let pos = glam::Vec2::new(col / 50.0, row / 20.0) - 0.9;
+            let col = cell.point.column.0 as f32 / 50.0 - 0.9;
+            let row = cell.point.line.0 as f32 / -25.0 + 0.9;
+            let pos = glam::Vec2::new(col, row);
 
             let rgb = match cell.fg {
                 Color::Named(name) => colors[name].unwrap(),
