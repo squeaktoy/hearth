@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rend3::InstanceAdapterDevice;
+use rend3::{InstanceAdapterDevice, Renderer};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
 use winit::event::{Event, WindowEvent};
@@ -34,6 +34,10 @@ pub struct Window {
     iad: InstanceAdapterDevice,
     surface: Arc<wgpu::Surface>,
     config: wgpu::SurfaceConfiguration,
+    renderer: Arc<Renderer>,
+    pbr_routine: rend3_routine::pbr::PbrRoutine,
+    tonemapping_routine: rend3_routine::tonemapping::TonemappingRoutine,
+    base_rendergraph: rend3_routine::base::BaseRenderGraph,
 }
 
 impl Window {
@@ -61,12 +65,36 @@ impl Window {
         surface.configure(&iad.device, &config);
         let (event_rx, event_tx) = mpsc::unbounded_channel();
 
+        let renderer =
+            rend3::Renderer::new(iad.to_owned(), rend3::types::Handedness::Right, None).unwrap();
+
+        let base_rendergraph = rend3_routine::base::BaseRenderGraph::new(&renderer);
+
+        let mut data_core = renderer.data_core.lock();
+        let pbr_routine = rend3_routine::pbr::PbrRoutine::new(
+            &renderer,
+            &mut data_core,
+            &base_rendergraph.interfaces,
+        );
+
+        drop(data_core);
+
+        let tonemapping_routine = rend3_routine::tonemapping::TonemappingRoutine::new(
+            &renderer,
+            &base_rendergraph.interfaces,
+            swapchain_format,
+        );
+
         let window = Self {
             event_tx: event_rx,
             window,
             iad,
             surface,
             config,
+            renderer,
+            base_rendergraph,
+            pbr_routine,
+            tonemapping_routine,
         };
 
         let offer = WindowOffer {
@@ -98,25 +126,29 @@ impl Window {
             }
         };
 
-        let view = frame.texture.create_view(&Default::default());
-        let mut encoder = self.iad.device.create_command_encoder(&Default::default());
-        {
-            let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: true,
-                    },
-                }],
-                depth_stencil_attachment: None,
-            });
-        }
+        let frame = rend3::util::output::OutputFrame::SurfaceAcquired {
+            view: frame.texture.create_view(&Default::default()),
+            surface_tex: frame,
+        };
 
-        self.iad.queue.submit(Some(encoder.finish()));
-        frame.present();
+        let (cmd_bufs, ready) = self.renderer.ready();
+        let mut graph = rend3::graph::RenderGraph::new();
+
+        let size = self.window.inner_size();
+        let resolution = glam::UVec2::new(size.width, size.height);
+
+        self.base_rendergraph.add_to_graph(
+            &mut graph,
+            &ready,
+            &self.pbr_routine,
+            None,
+            &self.tonemapping_routine,
+            resolution,
+            rend3::types::SampleCount::One,
+            glam::Vec4::ONE,
+        );
+
+        graph.execute(&self.renderer, frame, cmd_bufs, &ready);
     }
 }
 
