@@ -13,6 +13,7 @@ members = [
   "crates/hearth-server",
   "crates/hearth-types",
   "crates/hearth-wasm",
+  "crates/rend3-alacritty",
 ]
 
 [workspace.dependencies]

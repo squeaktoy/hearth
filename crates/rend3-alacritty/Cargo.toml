@@ -1,0 +1,13 @@
+[package]
+name = "rend3-alacritty"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rend3 = "0.3"
+rend3-routine = "0.3"
+
+[dev-dependencies]
+glam = "0.20"
+rend3-framework = "0.3"
+winit = "0.26"
