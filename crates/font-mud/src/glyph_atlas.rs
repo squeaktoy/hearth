@@ -27,8 +27,14 @@ impl GlyphAtlas {
         let mut glyph_shape_errors = vec![];
         let scale = Self::PX_PER_EM / face.units_per_em() as f64;
         for c in 0..face.number_of_glyphs() {
-            let glyph =
-                GlyphBitmap::new(scale, Self::RANGE, Self::ANGLE_THRESHOLD, face, GlyphId(c));
+            let glyph = GlyphBitmap::generate_mtsdf(
+                scale,
+                Self::RANGE,
+                Self::ANGLE_THRESHOLD,
+                face,
+                GlyphId(c),
+            );
+
             match glyph {
                 Ok(glyph) => {
                     glyphs.push(Some(glyph));
@@ -47,7 +53,7 @@ impl GlyphAtlas {
         let mut packer = Self::generate_packer(&glyphs);
         let width = packer.config().width as usize;
         let height = packer.config().height as usize;
-        let mut final_map = Bitmap::<Rgb<f32>>::new(width as u32, height as u32);
+        let mut bitmap = GlyphBitmap::new(width, height);
         let mut glyph_info = vec![];
         for glyph in glyphs {
             match glyph {
@@ -57,12 +63,8 @@ impl GlyphAtlas {
                 Some(glyph) => {
                     if let Some(rect) = packer.pack(glyph.width as i32, glyph.height as i32, false)
                     {
-                        glyph.copy_into_bitmap(
-                            &mut final_map,
-                            rect.x as usize,
-                            rect.y as usize,
-                            width,
-                        );
+                        glyph.copy_to(&mut bitmap, rect.x as usize, rect.y as usize);
+
                         glyph_info.push(Some(GlyphInfo {
                             position: (rect.x as usize, rect.y as usize),
                             size: (glyph.width, glyph.height),
@@ -72,11 +74,7 @@ impl GlyphAtlas {
                 }
             }
         }
-        let bitmap = GlyphBitmap {
-            data: final_map,
-            width,
-            height,
-        };
+
         Ok((
             GlyphAtlas {
                 bitmap,
