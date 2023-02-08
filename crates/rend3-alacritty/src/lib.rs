@@ -1,5 +1,9 @@
+use std::sync::Arc;
+
+use alacritty_terminal::Term;
 use bytemuck::{Pod, Zeroable};
 use font_mud::glyph_atlas::GlyphAtlas;
+use owned_ttf_parser::{AsFaceRef, OwnedFace};
 use rend3::graph::{
     RenderGraph, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets, RenderTargetHandle,
 };
@@ -34,6 +38,8 @@ impl Vertex {
 }
 
 pub struct AlacrittyRoutine {
+    device: Arc<Device>,
+    atlas_face: OwnedFace,
     glyph_atlas: GlyphAtlas,
     atlas_texture: Texture,
     atlas_view: TextureView,
@@ -48,8 +54,9 @@ pub struct AlacrittyRoutine {
 impl AlacrittyRoutine {
     /// This routine runs after tonemapping, so `format` is the format of the
     /// final swapchain image format.
-    pub fn new(face: &ttf_parser::Face, renderer: &Renderer, format: TextureFormat) -> Self {
-        let (glyph_atlas, _errors) = font_mud::glyph_atlas::GlyphAtlas::new(&face).unwrap();
+    pub fn new(atlas_face: OwnedFace, renderer: &Renderer, format: TextureFormat) -> Self {
+        let (glyph_atlas, _errors) =
+            font_mud::glyph_atlas::GlyphAtlas::new(atlas_face.as_face_ref()).unwrap();
 
         let atlas_size = Extent3d {
             width: glyph_atlas.bitmap.width as u32,
@@ -183,73 +190,25 @@ impl AlacrittyRoutine {
                 multiview: None,
             });
 
-        let text = "According to all known laws of aviation...";
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
+        let vertex_buffer = renderer.device.create_buffer(&BufferDescriptor {
+            label: Some("AlacrittyRoutine vertex buffer"),
+            size: 0,
+            mapped_at_creation: false,
+            usage: BufferUsages::VERTEX,
+        });
 
-        let mut offset = glam::Vec2::new(-0.8, 0.0);
-        let atlas_bitmap = &glyph_atlas.bitmap;
-        let atlas_size = glam::Vec2::new(atlas_bitmap.width as f32, atlas_bitmap.height as f32);
-        for c in text.chars() {
-            offset.x += 0.03;
+        let index_buffer = renderer.device.create_buffer(&BufferDescriptor {
+            label: Some("AlacrittyRoutine vertex buffer"),
+            size: 0,
+            mapped_at_creation: false,
+            usage: BufferUsages::INDEX,
+        });
 
-            if let Some(glyph) = face.glyph_index(c) {
-                let index = vertices.len() as u32;
-                let bitmap = match glyph_atlas.glyphs[glyph.0 as usize].as_ref() {
-                    Some(b) => b,
-                    None => continue,
-                };
-
-                let anchor = glam::Vec2::from(bitmap.anchor);
-
-                let position = bitmap.position;
-                let position = glam::Vec2::new(position.0 as f32, position.1 as f32);
-                let position = position / atlas_size;
-
-                let size = bitmap.size;
-                let size = glam::Vec2::new(size.0 as f32, size.1 as f32);
-                let size = size / atlas_size;
-
-                let v1 = glam::Vec2::ZERO;
-                let v2 = glam::Vec2::new(size.x, 0.0);
-                let v3 = glam::Vec2::new(0.0, size.y);
-                let v4 = size;
-
-                vertices.extend([v1, v2, v3, v4].iter().map(|v| Vertex {
-                    position: offset + *v - anchor,
-                    tex_coords: position + *v,
-                }));
-
-                indices.extend_from_slice(&[
-                    index,
-                    index + 1,
-                    index + 2,
-                    index + 2,
-                    index + 1,
-                    index + 3,
-                ]);
-            }
-        }
-
-        let vertex_buffer = renderer
-            .device
-            .create_buffer_init(&util::BufferInitDescriptor {
-                label: Some("AlacrittyRoutine vertex buffer"),
-                contents: bytemuck::cast_slice(vertices.as_slice()),
-                usage: BufferUsages::VERTEX,
-            });
-
-        let index_buffer = renderer
-            .device
-            .create_buffer_init(&util::BufferInitDescriptor {
-                label: Some("AlacrittyRoutine index buffer"),
-                contents: bytemuck::cast_slice(indices.as_slice()),
-                usage: BufferUsages::INDEX,
-            });
-
-        let index_num = indices.len() as u32;
+        let index_num = 0;
 
         Self {
+            device: renderer.device.to_owned(),
+            atlas_face,
             glyph_atlas,
             atlas_texture,
             atlas_view,
@@ -260,6 +219,77 @@ impl AlacrittyRoutine {
             index_buffer,
             index_num,
         }
+    }
+
+    pub fn update<T: alacritty_terminal::event::EventListener>(&mut self, term: &Term<T>) {
+        let mut cells: Vec<(glam::Vec2, usize)> = Vec::new();
+
+        let content = term.renderable_content();
+        for cell in content.display_iter.into_iter() {
+            let col = cell.point.column.0 as f32;
+            let row = cell.point.line.0 as f32;
+            let pos = glam::Vec2::new(col / 50.0, row / 20.0) - 0.9;
+
+            if let Some(glyph) = self.atlas_face.as_face_ref().glyph_index(cell.c) {
+                cells.push((pos, glyph.0 as usize));
+            }
+        }
+
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        let atlas_bitmap = &self.glyph_atlas.bitmap;
+        let atlas_size = glam::Vec2::new(atlas_bitmap.width as f32, atlas_bitmap.height as f32);
+        for (offset, glyph) in cells {
+            let index = vertices.len() as u32;
+            let bitmap = match self.glyph_atlas.glyphs[glyph].as_ref() {
+                Some(b) => b,
+                None => continue,
+            };
+
+            let anchor = glam::Vec2::from(bitmap.anchor);
+
+            let position = bitmap.position;
+            let position = glam::Vec2::new(position.0 as f32, position.1 as f32);
+            let position = position / atlas_size;
+
+            let size = bitmap.size;
+            let size = glam::Vec2::new(size.0 as f32, size.1 as f32);
+            let size = size / atlas_size;
+
+            let v1 = glam::Vec2::ZERO;
+            let v2 = glam::Vec2::new(size.x, 0.0);
+            let v3 = glam::Vec2::new(0.0, size.y);
+            let v4 = size;
+
+            vertices.extend([v1, v2, v3, v4].iter().map(|v| Vertex {
+                position: offset + *v - anchor,
+                tex_coords: position + *v,
+            }));
+
+            indices.extend_from_slice(&[
+                index,
+                index + 1,
+                index + 2,
+                index + 2,
+                index + 1,
+                index + 3,
+            ]);
+        }
+
+        self.vertex_buffer = self.device.create_buffer_init(&util::BufferInitDescriptor {
+            label: Some("AlacrittyRoutine vertex buffer"),
+            contents: bytemuck::cast_slice(vertices.as_slice()),
+            usage: BufferUsages::VERTEX,
+        });
+
+        self.index_buffer = self.device.create_buffer_init(&util::BufferInitDescriptor {
+            label: Some("AlacrittyRoutine index buffer"),
+            contents: bytemuck::cast_slice(indices.as_slice()),
+            usage: BufferUsages::INDEX,
+        });
+
+        self.index_num = indices.len() as u32;
     }
 
     pub fn add_to_graph<'node>(
