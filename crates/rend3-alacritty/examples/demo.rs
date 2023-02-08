@@ -58,7 +58,7 @@ impl DemoInner {
 
         let (sender, term_events) = channel();
 
-        let shell = alacritty_terminal::config::Program::Just("/usr/bin/helix".into());
+        let shell = alacritty_terminal::config::Program::Just("/usr/bin/pipes".into());
 
         let term_config = alacritty_terminal::config::Config {
             pty_config: PtyConfig {
