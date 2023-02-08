@@ -4,7 +4,7 @@ use alacritty_terminal::event_loop::{
     EventLoop as TermEventLoop, Msg as TermMsg, State as TermState,
 };
 use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::term::color::Colors;
+use alacritty_terminal::term::color::{Colors, Rgb};
 use alacritty_terminal::tty::Pty;
 use alacritty_terminal::Term;
 use mio_extras::channel::Sender as MioSender;
@@ -159,6 +159,12 @@ impl DemoInner {
             color[*dst] = color[*src];
         }
     }
+
+    pub fn send_input(&mut self, input: &str) {
+        let bytes = input.as_bytes();
+        let cow = std::borrow::Cow::Owned(bytes.to_owned().into());
+        self.term_channel.send(TermMsg::Input(cow)).unwrap();
+    }
 }
 
 #[derive(Default)]
@@ -202,6 +208,27 @@ impl rend3_framework::App for Demo {
                 control_flow(ControlFlow::Exit);
             }
             Event::MainEventsCleared => {
+                let inner = self.inner.as_mut().unwrap();
+                while let Ok(event) = inner.term_events.try_recv() {
+                    match event {
+                        TermEvent::ColorRequest(index, format) => {
+                            let color = inner.colors[index].unwrap_or(Rgb {
+                                r: 255,
+                                g: 0,
+                                b: 255,
+                            });
+
+                            inner.send_input(&format(color));
+                        }
+                        TermEvent::PtyWrite(text) => inner.send_input(&text),
+                        TermEvent::Exit => {
+                            control_flow(ControlFlow::Exit);
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+
                 window.request_redraw();
             }
             Event::RedrawRequested(_) => {
