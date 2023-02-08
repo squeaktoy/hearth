@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use alacritty_terminal::ansi::Color;
+use alacritty_terminal::term::color::{Colors, Rgb};
 use alacritty_terminal::Term;
 use bytemuck::{Pod, Zeroable};
 use font_mud::glyph_atlas::GlyphAtlas;
@@ -16,6 +18,7 @@ use wgpu::*;
 pub struct Vertex {
     pub position: glam::Vec2,
     pub tex_coords: glam::Vec2,
+    pub color: u32,
 }
 
 impl Vertex {
@@ -32,6 +35,11 @@ impl Vertex {
                 offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
                 format: VertexFormat::Float32x2,
                 shader_location: 1,
+            },
+            VertexAttribute {
+                offset: std::mem::size_of::<[f32; 4]>() as BufferAddress,
+                format: VertexFormat::Unorm8x4,
+                shader_location: 2,
             },
         ],
     };
@@ -221,8 +229,12 @@ impl AlacrittyRoutine {
         }
     }
 
-    pub fn update<T: alacritty_terminal::event::EventListener>(&mut self, term: &Term<T>) {
-        let mut cells: Vec<(glam::Vec2, usize)> = Vec::new();
+    pub fn update<T: alacritty_terminal::event::EventListener>(
+        &mut self,
+        term: &Term<T>,
+        colors: &Colors,
+    ) {
+        let mut cells: Vec<(glam::Vec2, usize, u32)> = Vec::new();
 
         let content = term.renderable_content();
         for cell in content.display_iter.into_iter() {
@@ -230,15 +242,27 @@ impl AlacrittyRoutine {
             let row = cell.point.line.0 as f32;
             let pos = glam::Vec2::new(col / 50.0, row / 20.0) - 0.9;
 
+            let rgb = match cell.fg {
+                Color::Named(name) => colors[name].unwrap(),
+                Color::Spec(rgb) => rgb,
+                Color::Indexed(index) => colors[index as usize].unwrap_or(Rgb {
+                    r: 255,
+                    g: 0,
+                    b: 255,
+                }),
+            };
+
+            let color = ((rgb.r as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.b as u32) | 0xff;
+
             if let Some(glyph) = self.atlas_face.as_face_ref().glyph_index(cell.c) {
-                cells.push((pos, glyph.0 as usize));
+                cells.push((pos, glyph.0 as usize, color));
             }
         }
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
-        for (offset, glyph) in cells {
+        for (offset, glyph, color) in cells {
             let index = vertices.len() as u32;
             let bitmap = match self.glyph_atlas.glyphs[glyph].as_ref() {
                 Some(b) => b,
@@ -248,6 +272,7 @@ impl AlacrittyRoutine {
             vertices.extend(bitmap.vertices.iter().map(|v| Vertex {
                 position: v.position + offset,
                 tex_coords: v.tex_coords,
+                color,
             }));
 
             indices.extend_from_slice(&[
@@ -287,7 +312,7 @@ impl AlacrittyRoutine {
         let rpass_handle = builder.add_renderpass(RenderPassTargets {
             targets: vec![RenderPassTarget {
                 color: output_handle,
-                clear: Color::BLACK,
+                clear: rend3::types::Color::BLACK,
                 resolve: None,
             }],
             depth_stencil: Some(RenderPassDepthTarget {

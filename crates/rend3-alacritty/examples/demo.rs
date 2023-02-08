@@ -4,7 +4,7 @@ use alacritty_terminal::event_loop::{
     EventLoop as TermEventLoop, Msg as TermMsg, State as TermState,
 };
 use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::term::color::Rgb;
+use alacritty_terminal::term::color::Colors;
 use alacritty_terminal::tty::Pty;
 use alacritty_terminal::Term;
 use mio_extras::channel::Sender as MioSender;
@@ -41,6 +41,7 @@ pub struct DemoInner {
     term_channel: MioSender<TermMsg>,
     term_events: Receiver<TermEvent>,
     term: Arc<FairMutex<Term<TermListener>>>,
+    colors: Colors,
 }
 
 impl DemoInner {
@@ -81,12 +82,81 @@ impl DemoInner {
         let term_loop = TermEventLoop::new(term.clone(), term_listener, pty, false, false);
         let term_channel = term_loop.channel();
 
+        let mut colors = Colors::default();
+        Self::load_colors(&mut colors);
+
         Self {
             alacritty_routine,
             term,
             term_loop: term_loop.spawn(),
             term_channel,
             term_events,
+            colors,
+        }
+    }
+
+    pub fn load_colors(color: &mut Colors) {
+        use alacritty_terminal::ansi::NamedColor::*;
+        use alacritty_terminal::term::color::Rgb;
+
+        let maps = [
+            (Black, Rgb { r: 0, g: 0, b: 0 }),
+            (Red, Rgb { r: 255, g: 0, b: 0 }),
+            (Green, Rgb { r: 0, g: 255, b: 0 }),
+            (Blue, Rgb { r: 0, g: 0, b: 255 }),
+            (
+                Yellow,
+                Rgb {
+                    r: 255,
+                    g: 255,
+                    b: 0,
+                },
+            ),
+            (
+                Magenta,
+                Rgb {
+                    r: 255,
+                    g: 0,
+                    b: 255,
+                },
+            ),
+            (
+                Cyan,
+                Rgb {
+                    r: 0,
+                    g: 255,
+                    b: 255,
+                },
+            ),
+            (
+                White,
+                Rgb {
+                    r: 255,
+                    g: 255,
+                    b: 255,
+                },
+            ),
+        ];
+
+        for map in maps.iter() {
+            color[map.0] = Some(map.1);
+        }
+
+        let dupes = [
+            (Background, Black),
+            (Foreground, White),
+            (BrightBlack, Black),
+            (BrightRed, Red),
+            (BrightGreen, Green),
+            (BrightYellow, Yellow),
+            (BrightBlue, Blue),
+            (BrightMagenta, Magenta),
+            (BrightCyan, Cyan),
+            (BrightWhite, White),
+        ];
+
+        for (dst, src) in dupes.iter() {
+            color[*dst] = color[*src];
         }
     }
 }
@@ -168,7 +238,7 @@ impl rend3_framework::App for Demo {
 
                 let inner = self.inner.as_mut().unwrap();
                 let term = inner.term.lock();
-                inner.alacritty_routine.update(&term);
+                inner.alacritty_routine.update(&term, &inner.colors);
                 inner
                     .alacritty_routine
                     .add_to_graph(&mut graph, output, depth);
