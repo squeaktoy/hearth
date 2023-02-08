@@ -1,3 +1,4 @@
+use rend3_routine::base::BaseRenderGraphIntermediateState;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
 
@@ -5,8 +6,14 @@ use std::sync::Arc;
 
 const SAMPLE_COUNT: rend3::types::SampleCount = rend3::types::SampleCount::One;
 
+pub struct DemoInner {
+    alacritty_routine: rend3_alacritty::AlacrittyRoutine,
+}
+
 #[derive(Default)]
-pub struct Demo {}
+pub struct Demo {
+    inner: Option<DemoInner>,
+}
 
 impl rend3_framework::App for Demo {
     const HANDEDNESS: rend3::types::Handedness = rend3::types::Handedness::Right;
@@ -18,10 +25,12 @@ impl rend3_framework::App for Demo {
     fn setup(
         &mut self,
         _window: &winit::window::Window,
-        _renderer: &Arc<rend3::Renderer>,
+        renderer: &Arc<rend3::Renderer>,
         _routines: &Arc<rend3_framework::DefaultRoutines>,
-        _surface_format: rend3::types::TextureFormat,
+        surface_format: rend3::types::TextureFormat,
     ) {
+        let alacritty_routine = rend3_alacritty::AlacrittyRoutine::new(&renderer, surface_format);
+        self.inner = Some(DemoInner { alacritty_routine });
     }
 
     fn handle_event(
@@ -66,6 +75,21 @@ impl rend3_framework::App for Demo {
                     SAMPLE_COUNT,
                     glam::Vec4::ZERO,
                 );
+
+                let state = BaseRenderGraphIntermediateState::new(
+                    &mut graph,
+                    &ready,
+                    resolution,
+                    SAMPLE_COUNT,
+                );
+
+                let depth = state.depth;
+                let output = graph.add_surface_texture();
+                self.inner
+                    .as_mut()
+                    .unwrap()
+                    .alacritty_routine
+                    .add_to_graph(&mut graph, output, depth);
 
                 graph.execute(renderer, frame, cmd_bufs, &ready);
             }
