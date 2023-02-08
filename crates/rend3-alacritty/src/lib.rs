@@ -177,7 +177,9 @@ pub struct AlacrittyRoutine {
     bind_group: BindGroup,
     solid_pipeline: RenderPipeline,
     glyph_pipeline: RenderPipeline,
+    bg_mesh: DynamicMesh<SolidVertex>,
     glyph_mesh: DynamicMesh<GlyphVertex>,
+    overlay_mesh: DynamicMesh<SolidVertex>,
 }
 
 impl AlacrittyRoutine {
@@ -188,38 +190,14 @@ impl AlacrittyRoutine {
             .device
             .create_shader_module(&include_wgsl!("solid.wgsl"));
 
-        let solid_bgl = renderer
-            .device
-            .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("AlacrittyRoutine solid bind group layout"),
-                entries: &[],
-            });
-
-        let solid_layout = renderer
-            .device
-            .create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: Some("AlacrittyRoutine solid pipeline layout"),
-                bind_group_layouts: &[&solid_bgl],
-                push_constant_ranges: &[],
-            });
-
-        let solid_pipeline = make_pipeline(
-            &renderer.device,
-            Some("AlacrittyRoutine solid pipeline"),
-            &solid_shader,
-            SolidVertex::LAYOUT,
-            &solid_layout,
-            format,
-        );
-
         let glyph_shader = renderer
             .device
             .create_shader_module(&include_wgsl!("glyph.wgsl"));
 
-        let glyph_bgl = renderer
+        let bgl = renderer
             .device
             .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("AlacrittyRoutine glyph bind group layout"),
+                label: Some("AlacrittyRoutine bind group layout"),
                 entries: &[
                     BindGroupLayoutEntry {
                         binding: 0,
@@ -240,20 +218,29 @@ impl AlacrittyRoutine {
                 ],
             });
 
-        let glyph_layout = renderer
+        let layout = renderer
             .device
             .create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: Some("AlacrittyRoutine glyph pipeline layout"),
-                bind_group_layouts: &[&glyph_bgl],
+                label: Some("AlacrittyRoutine pipeline layout"),
+                bind_group_layouts: &[&bgl],
                 push_constant_ranges: &[],
             });
+
+        let solid_pipeline = make_pipeline(
+            &renderer.device,
+            Some("AlacrittyRoutine solid pipeline"),
+            &solid_shader,
+            SolidVertex::LAYOUT,
+            &layout,
+            format,
+        );
 
         let glyph_pipeline = make_pipeline(
             &renderer.device,
             Some("AlacrittyRoutine glyph pipeline"),
             &glyph_shader,
             GlyphVertex::LAYOUT,
-            &glyph_layout,
+            &layout,
             format,
         );
 
@@ -305,7 +292,7 @@ impl AlacrittyRoutine {
 
         let bind_group = renderer.device.create_bind_group(&BindGroupDescriptor {
             label: None,
-            layout: &glyph_bgl,
+            layout: &bgl,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
@@ -325,7 +312,9 @@ impl AlacrittyRoutine {
             bind_group,
             solid_pipeline,
             glyph_pipeline,
+            bg_mesh: DynamicMesh::new(&renderer.device),
             glyph_mesh: DynamicMesh::new(&renderer.device),
+            overlay_mesh: DynamicMesh::new(&renderer.device),
         }
     }
 
@@ -420,9 +409,16 @@ impl AlacrittyRoutine {
             move |pt, renderer, encoder_or_pass, temps, ready, graph_data| {
                 let this = pt.get(pt_handle);
                 let rpass = encoder_or_pass.get_rpass(rpass_handle);
-                rpass.set_pipeline(&this.glyph_pipeline);
+
                 rpass.set_bind_group(0, &this.bind_group, &[]);
+                rpass.set_pipeline(&this.solid_pipeline);
+                this.bg_mesh.draw(rpass);
+
+                rpass.set_pipeline(&this.glyph_pipeline);
                 this.glyph_mesh.draw(rpass);
+
+                rpass.set_pipeline(&this.solid_pipeline);
+                this.overlay_mesh.draw(rpass);
             },
         );
     }
