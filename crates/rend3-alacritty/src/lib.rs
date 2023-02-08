@@ -16,13 +16,39 @@ use wgpu::*;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct Vertex {
+pub struct SolidVertex {
+    pub position: glam::Vec2,
+    pub color: u32,
+}
+
+impl SolidVertex {
+    pub const LAYOUT: VertexBufferLayout<'static> = VertexBufferLayout {
+        array_stride: std::mem::size_of::<Self>() as BufferAddress,
+        step_mode: VertexStepMode::Vertex,
+        attributes: &[
+            VertexAttribute {
+                offset: 0,
+                format: VertexFormat::Float32x2,
+                shader_location: 0,
+            },
+            VertexAttribute {
+                offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
+                format: VertexFormat::Unorm8x4,
+                shader_location: 1,
+            },
+        ],
+    };
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct GlyphVertex {
     pub position: glam::Vec2,
     pub tex_coords: glam::Vec2,
     pub color: u32,
 }
 
-impl Vertex {
+impl GlyphVertex {
     pub const LAYOUT: VertexBufferLayout<'static> = VertexBufferLayout {
         array_stride: std::mem::size_of::<Self>() as BufferAddress,
         step_mode: VertexStepMode::Vertex,
@@ -97,11 +123,9 @@ pub struct AlacrittyRoutine {
     device: Arc<Device>,
     atlas_face: OwnedFace,
     glyph_atlas: GlyphAtlas,
-    atlas_texture: Texture,
-    atlas_view: TextureView,
-    atlas_sampler: Sampler,
     bind_group: BindGroup,
-    pipeline: RenderPipeline,
+    solid_pipeline: RenderPipeline,
+    glyph_pipeline: RenderPipeline,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     index_num: u32,
@@ -111,13 +135,42 @@ impl AlacrittyRoutine {
     /// This routine runs after tonemapping, so `format` is the format of the
     /// final swapchain image format.
     pub fn new(atlas_face: OwnedFace, renderer: &Renderer, format: TextureFormat) -> Self {
-        let shader_desc = include_wgsl!("glyph.wgsl");
-        let shader = renderer.device.create_shader_module(&shader_desc);
+        let solid_shader = renderer
+            .device
+            .create_shader_module(&include_wgsl!("solid.wgsl"));
 
-        let bgl = renderer
+        let solid_bgl = renderer
             .device
             .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("AlacrittyRoutine bind group layout"),
+                label: Some("AlacrittyRoutine solid bind group layout"),
+                entries: &[],
+            });
+
+        let solid_layout = renderer
+            .device
+            .create_pipeline_layout(&PipelineLayoutDescriptor {
+                label: Some("AlacrittyRoutine solid pipeline layout"),
+                bind_group_layouts: &[&solid_bgl],
+                push_constant_ranges: &[],
+            });
+
+        let solid_pipeline = make_pipeline(
+            &renderer.device,
+            Some("AlacrittyRoutine solid pipeline"),
+            &solid_shader,
+            SolidVertex::LAYOUT,
+            &solid_layout,
+            format,
+        );
+
+        let glyph_shader = renderer
+            .device
+            .create_shader_module(&include_wgsl!("glyph.wgsl"));
+
+        let glyph_bgl = renderer
+            .device
+            .create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("AlacrittyRoutine glyph bind group layout"),
                 entries: &[
                     BindGroupLayoutEntry {
                         binding: 0,
@@ -138,20 +191,20 @@ impl AlacrittyRoutine {
                 ],
             });
 
-        let layout = renderer
+        let glyph_layout = renderer
             .device
             .create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: Some("AlacrittyRoutine pipeline layout"),
-                bind_group_layouts: &[&bgl],
+                label: Some("AlacrittyRoutine glyph pipeline layout"),
+                bind_group_layouts: &[&glyph_bgl],
                 push_constant_ranges: &[],
             });
 
-        let pipeline = make_pipeline(
+        let glyph_pipeline = make_pipeline(
             &renderer.device,
             Some("AlacrittyRoutine glyph pipeline"),
-            &shader,
-            Vertex::LAYOUT,
-            &layout,
+            &glyph_shader,
+            GlyphVertex::LAYOUT,
+            &glyph_layout,
             format,
         );
 
@@ -219,7 +272,7 @@ impl AlacrittyRoutine {
 
         let bind_group = renderer.device.create_bind_group(&BindGroupDescriptor {
             label: None,
-            layout: &bgl,
+            layout: &glyph_bgl,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
@@ -236,11 +289,9 @@ impl AlacrittyRoutine {
             device: renderer.device.to_owned(),
             atlas_face,
             glyph_atlas,
-            atlas_texture,
-            atlas_view,
-            atlas_sampler,
             bind_group,
-            pipeline,
+            solid_pipeline,
+            glyph_pipeline,
             vertex_buffer,
             index_buffer,
             index_num,
@@ -291,7 +342,7 @@ impl AlacrittyRoutine {
                 None => continue,
             };
 
-            vertices.extend(bitmap.vertices.iter().map(|v| Vertex {
+            vertices.extend(bitmap.vertices.iter().map(|v| GlyphVertex {
                 position: v.position + offset,
                 tex_coords: v.tex_coords,
                 color,
@@ -350,7 +401,7 @@ impl AlacrittyRoutine {
             move |pt, renderer, encoder_or_pass, temps, ready, graph_data| {
                 let this = pt.get(pt_handle);
                 let rpass = encoder_or_pass.get_rpass(rpass_handle);
-                rpass.set_pipeline(&this.pipeline);
+                rpass.set_pipeline(&this.glyph_pipeline);
                 rpass.set_bind_group(0, &this.bind_group, &[]);
                 rpass.set_vertex_buffer(0, this.vertex_buffer.slice(..));
                 rpass.set_index_buffer(this.index_buffer.slice(..), IndexFormat::Uint32);
