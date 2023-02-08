@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use alacritty_terminal::ansi::Color;
+use alacritty_terminal::term::cell::Flags as CellFlags;
 use alacritty_terminal::term::color::{Colors, Rgb};
 use alacritty_terminal::Term;
 use bytemuck::{Pod, Zeroable};
@@ -238,6 +239,10 @@ impl AlacrittyRoutine {
 
         let content = term.renderable_content();
         for cell in content.display_iter.into_iter() {
+            if cell.flags.contains(CellFlags::HIDDEN) {
+                continue;
+            }
+
             let col = cell.point.column.0 as f32 / 50.0 - 0.9;
             let row = cell.point.line.0 as f32 / -25.0 + 0.9;
             let pos = glam::Vec2::new(col, row);
