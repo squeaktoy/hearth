@@ -1,6 +1,6 @@
 use crate::error::{FontError, FontResult, GlyphShapeError};
 use crate::glyph_bitmap::GlyphBitmap;
-use msdfgen::{Bitmap, Range, Rgb};
+use msdfgen::Range;
 use rect_packer::Packer;
 use ttf_parser::{Face, GlyphId};
 
