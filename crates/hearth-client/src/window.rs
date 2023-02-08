@@ -7,6 +7,59 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
 use winit::window::{Window as WinitWindow, WindowBuilder};
 
+fn vertex(pos: [f32; 3]) -> glam::Vec3 {
+    glam::Vec3::from(pos)
+}
+
+fn create_mesh() -> rend3::types::Mesh {
+    let vertex_positions = [
+        // far side (0.0, 0.0, 1.0)
+        vertex([-1.0, -1.0, 1.0]),
+        vertex([1.0, -1.0, 1.0]),
+        vertex([1.0, 1.0, 1.0]),
+        vertex([-1.0, 1.0, 1.0]),
+        // near side (0.0, 0.0, -1.0)
+        vertex([-1.0, 1.0, -1.0]),
+        vertex([1.0, 1.0, -1.0]),
+        vertex([1.0, -1.0, -1.0]),
+        vertex([-1.0, -1.0, -1.0]),
+        // right side (1.0, 0.0, 0.0)
+        vertex([1.0, -1.0, -1.0]),
+        vertex([1.0, 1.0, -1.0]),
+        vertex([1.0, 1.0, 1.0]),
+        vertex([1.0, -1.0, 1.0]),
+        // left side (-1.0, 0.0, 0.0)
+        vertex([-1.0, -1.0, 1.0]),
+        vertex([-1.0, 1.0, 1.0]),
+        vertex([-1.0, 1.0, -1.0]),
+        vertex([-1.0, -1.0, -1.0]),
+        // top (0.0, 1.0, 0.0)
+        vertex([1.0, 1.0, -1.0]),
+        vertex([-1.0, 1.0, -1.0]),
+        vertex([-1.0, 1.0, 1.0]),
+        vertex([1.0, 1.0, 1.0]),
+        // bottom (0.0, -1.0, 0.0)
+        vertex([1.0, -1.0, 1.0]),
+        vertex([-1.0, -1.0, 1.0]),
+        vertex([-1.0, -1.0, -1.0]),
+        vertex([1.0, -1.0, -1.0]),
+    ];
+
+    let index_data = &[
+        0, 1, 2, 2, 3, 0, // far
+        4, 5, 6, 6, 7, 4, // near
+        8, 9, 10, 10, 11, 8, // right
+        12, 13, 14, 14, 15, 12, // left
+        16, 17, 18, 18, 19, 16, // top
+        20, 21, 22, 22, 23, 20, // bottom
+    ];
+
+    rend3::types::MeshBuilder::new(vertex_positions.to_vec(), rend3::types::Handedness::Left)
+        .with_indices(index_data.to_vec())
+        .build()
+        .unwrap()
+}
+
 /// A message sent from the rest of the program to a window.
 #[derive(Clone, Debug)]
 pub enum WindowRxMessage {
@@ -38,6 +91,8 @@ pub struct Window {
     pbr_routine: rend3_routine::pbr::PbrRoutine,
     tonemapping_routine: rend3_routine::tonemapping::TonemappingRoutine,
     base_rendergraph: rend3_routine::base::BaseRenderGraph,
+    _object_handle: rend3::types::ResourceHandle<rend3::types::Object>,
+    _directional_handle: rend3::types::ResourceHandle<rend3::types::DirectionalLight>,
 }
 
 impl Window {
@@ -66,7 +121,7 @@ impl Window {
         let (event_rx, event_tx) = mpsc::unbounded_channel();
 
         let renderer =
-            rend3::Renderer::new(iad.to_owned(), rend3::types::Handedness::Right, None).unwrap();
+            rend3::Renderer::new(iad.to_owned(), rend3::types::Handedness::Left, None).unwrap();
 
         let base_rendergraph = rend3_routine::base::BaseRenderGraph::new(&renderer);
 
@@ -85,6 +140,43 @@ impl Window {
             swapchain_format,
         );
 
+        let mesh = create_mesh();
+        let mesh_handle = renderer.add_mesh(mesh);
+
+        let material = rend3_routine::pbr::PbrMaterial {
+            albedo: rend3_routine::pbr::AlbedoComponent::Value(glam::Vec4::new(0.0, 0.5, 0.5, 1.0)),
+            ..Default::default()
+        };
+
+        let material_handle = renderer.add_material(material);
+
+        let object = rend3::types::Object {
+            mesh_kind: rend3::types::ObjectMeshKind::Static(mesh_handle),
+            material: material_handle,
+            transform: glam::Mat4::IDENTITY,
+        };
+
+        let object_handle = renderer.add_object(object);
+
+        let view_location = glam::Vec3::new(3.0, 3.0, -5.0);
+        let view = glam::Mat4::from_euler(glam::EulerRot::XYZ, -0.55, 0.5, 0.0);
+        let view = view * glam::Mat4::from_translation(-view_location);
+
+        renderer.set_camera_data(rend3::types::Camera {
+            projection: rend3::types::CameraProjection::Perspective {
+                vfov: 60.0,
+                near: 0.1,
+            },
+            view,
+        });
+
+        let directional_handle = renderer.add_directional_light(rend3::types::DirectionalLight {
+            color: glam::Vec3::ONE,
+            intensity: 10.0,
+            direction: glam::Vec3::new(-1.0, -4.0, 2.0),
+            distance: 400.0,
+        });
+
         let window = Self {
             event_tx: event_rx,
             window,
@@ -95,6 +187,8 @@ impl Window {
             base_rendergraph,
             pbr_routine,
             tonemapping_routine,
+            _object_handle: object_handle,
+            _directional_handle: directional_handle,
         };
 
         let offer = WindowOffer {
@@ -110,6 +204,8 @@ impl Window {
         self.config.height = size.height;
         self.surface.configure(&self.iad.device, &self.config);
         self.window.request_redraw();
+        self.renderer
+            .set_aspect_ratio(size.width as f32 / size.height as f32);
     }
 
     pub fn on_draw(&mut self) {
@@ -145,7 +241,7 @@ impl Window {
             &self.tonemapping_routine,
             resolution,
             rend3::types::SampleCount::One,
-            glam::Vec4::ONE,
+            glam::Vec4::ZERO,
         );
 
         graph.execute(&self.renderer, frame, cmd_bufs, &ready);
