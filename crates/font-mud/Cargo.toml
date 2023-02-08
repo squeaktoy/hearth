@@ -9,5 +9,4 @@ ttf-parser = "0.18.1"
 rect_packer = "0.2.1"
 
 [dev-dependencies]
-notosans = "0.1.0"
 png = "0.17"
