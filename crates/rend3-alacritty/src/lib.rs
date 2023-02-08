@@ -110,7 +110,7 @@ impl AlacrittyRoutine {
             ..Default::default()
         });
 
-        let shader_desc = include_wgsl!("shader.wgsl");
+        let shader_desc = include_wgsl!("glyph.wgsl");
         let shader = renderer.device.create_shader_module(&shader_desc);
 
         let bgl = renderer
