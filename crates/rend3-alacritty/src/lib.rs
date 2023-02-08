@@ -238,8 +238,6 @@ impl AlacrittyRoutine {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
-        let atlas_bitmap = &self.glyph_atlas.bitmap;
-        let atlas_size = glam::Vec2::new(atlas_bitmap.width as f32, atlas_bitmap.height as f32);
         for (offset, glyph) in cells {
             let index = vertices.len() as u32;
             let bitmap = match self.glyph_atlas.glyphs[glyph].as_ref() {
@@ -247,24 +245,9 @@ impl AlacrittyRoutine {
                 None => continue,
             };
 
-            let anchor = glam::Vec2::from(bitmap.anchor);
-
-            let position = bitmap.position;
-            let position = glam::Vec2::new(position.0 as f32, position.1 as f32);
-            let position = position / atlas_size;
-
-            let size = bitmap.size;
-            let size = glam::Vec2::new(size.0 as f32, size.1 as f32);
-            let size = size / atlas_size;
-
-            let v1 = glam::Vec2::ZERO;
-            let v2 = glam::Vec2::new(size.x, 0.0);
-            let v3 = glam::Vec2::new(0.0, size.y);
-            let v4 = size;
-
-            vertices.extend([v1, v2, v3, v4].iter().map(|v| Vertex {
-                position: offset + *v - anchor,
-                tex_coords: position + *v,
+            vertices.extend(bitmap.vertices.iter().map(|v| Vertex {
+                position: v.position + offset,
+                tex_coords: v.tex_coords,
             }));
 
             indices.extend_from_slice(&[
