@@ -230,6 +230,18 @@ impl rend3_framework::App for Demo {
         surface_format: rend3::types::TextureFormat,
     ) {
         self.inner = Some(DemoInner::new(renderer, surface_format));
+
+        renderer.set_camera_data(rend3::types::Camera {
+            projection: rend3::types::CameraProjection::Perspective {
+                vfov: 60.0,
+                near: 0.1,
+            },
+            view: glam::Mat4::look_at_rh(
+                glam::Vec3::new(-0.5, 0.5, 2.0),
+                glam::Vec3::ZERO,
+                glam::Vec3::new(0.0, 1.0, 0.0),
+            ),
+        });
     }
 
     fn handle_event(
