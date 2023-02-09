@@ -76,7 +76,6 @@ impl GlyphAtlas {
 
                         let scale = (1.0 / glyph.px_per_em) as f32;
                         let offset = glyph.anchor;
-                        println!("{} {:?}", scale, offset);
 
                         let position = Vec2::new(rect.x as f32, rect.y as f32);
                         let position = position / texture_size;
