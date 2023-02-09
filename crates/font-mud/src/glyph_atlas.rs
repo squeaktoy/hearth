@@ -24,8 +24,8 @@ pub struct GlyphAtlas {
 }
 
 impl GlyphAtlas {
-    pub const PX_PER_EM: f64 = 48.0;
-    pub const RANGE: Range<f64> = Range::Px(2.0);
+    pub const PX_PER_EM: f64 = 24.0;
+    pub const RANGE: Range<f64> = Range::Px(8.0);
     pub const ANGLE_THRESHOLD: f64 = 3.0;
 
     /// turns a face into a glyph atlas.

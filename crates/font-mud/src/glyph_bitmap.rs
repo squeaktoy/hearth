@@ -35,8 +35,10 @@ impl GlyphMtsdf {
         shape.edge_coloring_simple(angle_threshold, 0);
         let bounds = shape.get_bound();
         let px_per_unit = px_per_em / units_per_em;
-        let width = (bounds.width() * px_per_unit).ceil() as u32 + 2;
-        let height = (bounds.height() * px_per_unit).ceil() as u32 + 2;
+        let width = (bounds.width() * px_per_unit).ceil() as u32 + 8;
+        let height = (bounds.height() * px_per_unit).ceil() as u32 + 8;
+        let width = width.max(16);
+        let height = height.max(16);
         let framing = bounds
             .autoframe(width as u32, height as u32, range, None)
             .ok_or(FontError::AutoFraming {
@@ -68,7 +70,7 @@ impl GlyphMtsdf {
             },
             anchor: Vec2::new(framing.translate.x as f32, framing.translate.y as f32)
                 / units_per_em as f32,
-            px_per_em: px_per_em * px_per_unit / framing.scale.x,
+            px_per_em: px_per_em * framing.scale.x / px_per_unit,
         })
     }
 }
