@@ -151,7 +151,7 @@ fn make_pipeline(
             topology: PrimitiveTopology::TriangleList,
             strip_index_format: None,
             front_face: FrontFace::Ccw,
-            cull_mode: Some(Face::Back),
+            cull_mode: None,
             unclipped_depth: false,
             polygon_mode: PolygonMode::Fill,
             conservative: false,
