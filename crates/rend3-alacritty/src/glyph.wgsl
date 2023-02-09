@@ -22,16 +22,22 @@ fn vs_main(in: VertexInput, [[builtin(vertex_index)]] in_vertex_index: u32) -> V
 [[group(0), binding(0)]] var t_msdf: texture_2d<f32>;
 [[group(0), binding(1)]] var s_msdf: sampler;
 
+fn screen_px_range(tex_coords: vec2<f32>) -> f32 {
+    let msdf_range = 8.0;
+    let unit_range = vec2<f32>(msdf_range) / vec2<f32>(textureDimensions(t_msdf, 0));
+    let screen_tex_size = vec2<f32>(1.0) / fwidth(tex_coords);
+    return max(0.5 * dot(unit_range, screen_tex_size), 1.0);
+}
+
 fn median(r: f32, g: f32, b: f32) -> f32 {
     return max(min(r, g), min(max(r, g), b));
 }
 
 [[stage(fragment)]]
 fn fs_main(frag: VertexOutput) -> [[location(0)]] vec4<f32> {
-    let sdf = textureSample(t_msdf, s_msdf, frag.tex_coords);
-    let dist = median(sdf.r, sdf.g, sdf.b) - 0.5;
-    let duv = fwidth(dist);
-    let pixel_dist = dist / max(duv, 0.001);
-    let alpha = clamp(pixel_dist, 0.0, 1.0);
+    let msd = textureSample(t_msdf, s_msdf, frag.tex_coords);
+    let sd = median(msd.r, msd.g, msd.b);
+    let dist = screen_px_range(frag.tex_coords) * (sd - 0.5);
+    let alpha = clamp(dist + 0.5, 0.0, 1.0);
     return vec4<f32>(frag.color.rgb, alpha);
 }
