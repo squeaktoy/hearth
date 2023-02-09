@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use alacritty_terminal::ansi::Color;
+use alacritty_terminal::ansi::{Color, NamedColor};
 use alacritty_terminal::term::cell::Flags as CellFlags;
 use alacritty_terminal::term::color::{Colors, Rgb};
 use alacritty_terminal::Term;
@@ -357,8 +357,8 @@ impl AlacrittyRoutine {
             let col = cell.point.column.0 as i32;
             let row = cell.point.line.0;
             let pos = grid_to_pos(col, row);
-            let mut fg = color_to_rgb(cell.fg);
-            let mut bg = color_to_rgb(cell.bg);
+            let mut fg = cell.fg;
+            let mut bg = cell.bg;
 
             if cell.flags.contains(CellFlags::INVERSE) {
                 let temp = fg;
@@ -367,9 +367,14 @@ impl AlacrittyRoutine {
             }
 
             if let Some(glyph) = self.atlas_face.as_face_ref().glyph_index(cell.c) {
-                cells.push((pos, glyph.0 as usize, fg));
+                cells.push((pos, glyph.0 as usize, color_to_rgb(fg)));
             }
 
+            if bg == Color::Named(NamedColor::Background) {
+                continue;
+            }
+
+            let bg = color_to_rgb(bg);
             let index = bg_vertices.len() as u32;
 
             bg_vertices.extend_from_slice(&[
