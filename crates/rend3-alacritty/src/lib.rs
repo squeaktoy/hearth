@@ -325,17 +325,8 @@ impl AlacrittyRoutine {
     ) {
         let mut cells: Vec<(glam::Vec2, usize, u32)> = Vec::new();
 
-        let content = term.renderable_content();
-        for cell in content.display_iter.into_iter() {
-            if cell.flags.contains(CellFlags::HIDDEN) {
-                continue;
-            }
-
-            let col = cell.point.column.0 as f32 / 50.0 - 0.9;
-            let row = cell.point.line.0 as f32 / -25.0 + 0.9;
-            let pos = glam::Vec2::new(col, row);
-
-            let rgb = match cell.fg {
+        let color_to_rgb = |color| -> u32 {
+            let rgb = match color {
                 Color::Named(name) => colors[name].unwrap(),
                 Color::Spec(rgb) => rgb,
                 Color::Indexed(index) => colors[index as usize].unwrap_or(Rgb {
@@ -345,11 +336,69 @@ impl AlacrittyRoutine {
                 }),
             };
 
-            let color = ((rgb.r as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.b as u32) | 0xff;
+            0xff000000 | ((rgb.b as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.r as u32)
+        };
+
+        let grid_to_pos = |x: i32, y: i32| -> glam::Vec2 {
+            let col = x as f32 / 50.0 - 0.9;
+            let row = y as f32 / -25.0 + 0.9;
+            glam::Vec2::new(col, row)
+        };
+
+        let mut bg_vertices = Vec::new();
+        let mut bg_indices = Vec::new();
+
+        let content = term.renderable_content();
+        for cell in content.display_iter.into_iter() {
+            if cell.flags.contains(CellFlags::HIDDEN) {
+                continue;
+            }
+
+            let col = cell.point.column.0 as i32;
+            let row = cell.point.line.0;
+            let pos = grid_to_pos(col, row);
+            let mut fg = color_to_rgb(cell.fg);
+            let mut bg = color_to_rgb(cell.bg);
+
+            if cell.flags.contains(CellFlags::INVERSE) {
+                let temp = fg;
+                fg = bg;
+                bg = temp;
+            }
 
             if let Some(glyph) = self.atlas_face.as_face_ref().glyph_index(cell.c) {
-                cells.push((pos, glyph.0 as usize, color));
+                cells.push((pos, glyph.0 as usize, fg));
             }
+
+            let index = bg_vertices.len() as u32;
+
+            bg_vertices.extend_from_slice(&[
+                SolidVertex {
+                    position: grid_to_pos(col, row - 1),
+                    color: bg,
+                },
+                SolidVertex {
+                    position: grid_to_pos(col + 1, row - 1),
+                    color: bg,
+                },
+                SolidVertex {
+                    position: grid_to_pos(col, row),
+                    color: bg,
+                },
+                SolidVertex {
+                    position: grid_to_pos(col + 1, row),
+                    color: bg,
+                },
+            ]);
+
+            bg_indices.extend_from_slice(&[
+                index,
+                index + 1,
+                index + 2,
+                index + 2,
+                index + 1,
+                index + 3,
+            ]);
         }
 
         let mut vertices = Vec::new();
@@ -378,6 +427,7 @@ impl AlacrittyRoutine {
             ]);
         }
 
+        self.bg_mesh.update(&self.device, &bg_vertices, &bg_indices);
         self.glyph_mesh.update(&self.device, &vertices, &indices);
     }
 
