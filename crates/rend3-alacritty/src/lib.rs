@@ -339,9 +339,10 @@ impl AlacrittyRoutine {
             0xff000000 | ((rgb.b as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.r as u32)
         };
 
+        let scale = 0.6;
         let grid_to_pos = |x: i32, y: i32| -> glam::Vec2 {
-            let col = x as f32 / 50.0 - 0.9;
-            let row = y as f32 / -25.0 + 0.9;
+            let col = x as f32 / 80.0 - 1.0;
+            let row = (y as f32 + 1.0) / -40.0 + 1.0;
             glam::Vec2::new(col, row)
         };
 
@@ -417,7 +418,7 @@ impl AlacrittyRoutine {
             };
 
             vertices.extend(bitmap.vertices.iter().map(|v| GlyphVertex {
-                position: v.position + offset,
+                position: v.position * scale + offset,
                 tex_coords: v.tex_coords,
                 color,
             }));

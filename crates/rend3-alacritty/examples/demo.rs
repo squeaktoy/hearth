@@ -55,7 +55,7 @@ impl DemoInner {
         let alacritty_routine = AlacrittyRoutine::new(face, &renderer, surface_format);
 
         let term_size =
-            alacritty_terminal::term::SizeInfo::new(80.0, 40.0, 1.0, 1.0, 0.0, 0.0, false);
+            alacritty_terminal::term::SizeInfo::new(180.0, 80.0, 1.0, 1.0, 0.0, 0.0, false);
 
         let (sender, term_events) = channel();
 
