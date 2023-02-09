@@ -1,5 +1,5 @@
 use crate::error::{FontError, FontResult, GlyphShapeError};
-use crate::glyph_bitmap::GlyphBitmap;
+use crate::glyph_bitmap::{GlyphBitmap, GlyphMtsdf};
 use glam::Vec2;
 use msdfgen::Range;
 use rect_packer::Packer;
@@ -35,13 +35,8 @@ impl GlyphAtlas {
         let mut glyph_shape_errors = vec![];
         let scale = Self::PX_PER_EM / face.units_per_em() as f64;
         for c in 0..face.number_of_glyphs() {
-            let glyph = GlyphBitmap::generate_mtsdf(
-                scale,
-                Self::RANGE,
-                Self::ANGLE_THRESHOLD,
-                face,
-                GlyphId(c),
-            );
+            let glyph =
+                GlyphMtsdf::generate(scale, Self::RANGE, Self::ANGLE_THRESHOLD, face, GlyphId(c));
 
             match glyph {
                 Ok(glyph) => {
@@ -124,7 +119,7 @@ impl GlyphAtlas {
         ))
     }
 
-    fn generate_packer(glyphs: &Vec<Option<GlyphBitmap>>) -> Packer {
+    fn generate_packer(glyphs: &Vec<Option<GlyphMtsdf>>) -> Packer {
         let mut config = rect_packer::Config {
             width: 256,
             height: 256,
