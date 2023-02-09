@@ -17,6 +17,12 @@ use wgpu::*;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct CameraUniform {
+    pub mvp: glam::Mat4,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct SolidVertex {
     pub position: glam::Vec2,
     pub color: u32,
@@ -174,6 +180,7 @@ pub struct AlacrittyRoutine {
     device: Arc<Device>,
     atlas_face: OwnedFace,
     glyph_atlas: GlyphAtlas,
+    camera_buffer: Buffer,
     bind_group: BindGroup,
     solid_pipeline: RenderPipeline,
     glyph_pipeline: RenderPipeline,
@@ -213,6 +220,16 @@ impl AlacrittyRoutine {
                         binding: 1,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: ShaderStages::VERTEX,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
                         count: None,
                     },
                 ],
@@ -290,6 +307,16 @@ impl AlacrittyRoutine {
             ..Default::default()
         });
 
+        let camera_buffer = renderer
+            .device
+            .create_buffer_init(&util::BufferInitDescriptor {
+                label: Some("AlacrittyRoutine camera uniform"),
+                contents: bytemuck::cast_slice(&[CameraUniform {
+                    mvp: Default::default(),
+                }]),
+                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            });
+
         let bind_group = renderer.device.create_bind_group(&BindGroupDescriptor {
             label: None,
             layout: &bgl,
@@ -302,6 +329,10 @@ impl AlacrittyRoutine {
                     binding: 1,
                     resource: BindingResource::Sampler(&atlas_sampler),
                 },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: camera_buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -309,6 +340,7 @@ impl AlacrittyRoutine {
             device: renderer.device.to_owned(),
             atlas_face,
             glyph_atlas,
+            camera_buffer,
             bind_group,
             solid_pipeline,
             glyph_pipeline,
@@ -504,9 +536,19 @@ impl AlacrittyRoutine {
         let pt_handle = builder.passthrough_ref(self);
 
         builder.build(
-            move |pt, renderer, encoder_or_pass, temps, ready, graph_data| {
+            move |pt, renderer, encoder_or_pass, _temps, _ready, graph_data| {
                 let this = pt.get(pt_handle);
                 let rpass = encoder_or_pass.get_rpass(rpass_handle);
+                let view_proj = graph_data.camera_manager.view_proj();
+                let model = glam::Mat4::IDENTITY;
+
+                renderer.queue.write_buffer(
+                    &this.camera_buffer,
+                    0,
+                    bytemuck::cast_slice(&[CameraUniform {
+                        mvp: view_proj * model,
+                    }]),
+                );
 
                 rpass.set_bind_group(0, &this.bind_group, &[]);
                 rpass.set_pipeline(&this.solid_pipeline);

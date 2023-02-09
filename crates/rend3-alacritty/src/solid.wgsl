@@ -8,10 +8,16 @@ struct VertexOutput {
     [[location(0)]] color: vec4<f32>;
 };
 
+struct CameraUniform {
+    mvp: mat4x4<f32>;
+};
+
+[[group(0), binding(2)]] var<uniform> camera: CameraUniform;
+
 [[stage(vertex)]]
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = vec4<f32>(in.position, 0.0, 1.0);
+    out.clip_position = camera.mvp * vec4<f32>(in.position, 0.0, 1.0);
     out.color = in.color;
     return out;
 }
