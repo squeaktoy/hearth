@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use alacritty_terminal::ansi::{Color, NamedColor};
+use alacritty_terminal::ansi::{Color, CursorShape, NamedColor};
 use alacritty_terminal::term::cell::Flags as CellFlags;
 use alacritty_terminal::term::color::{Colors, Rgb};
 use alacritty_terminal::Term;
@@ -348,6 +348,8 @@ impl AlacrittyRoutine {
 
         let mut bg_vertices = Vec::new();
         let mut bg_indices = Vec::new();
+        let mut overlay_vertices = Vec::new();
+        let mut overlay_indices = Vec::new();
 
         let content = term.renderable_content();
         for cell in content.display_iter.into_iter() {
@@ -407,6 +409,44 @@ impl AlacrittyRoutine {
             ]);
         }
 
+        let cursor_color = Color::Named(NamedColor::Foreground);
+        let cursor_color = color_to_rgb(cursor_color);
+        match content.cursor.shape {
+            CursorShape::Hidden => {}
+            _ => {
+                let index = overlay_vertices.len() as u32;
+                let col = content.cursor.point.column.0 as i32;
+                let row = content.cursor.point.line.0;
+                overlay_vertices.extend_from_slice(&[
+                    SolidVertex {
+                        position: grid_to_pos(col, row - 1),
+                        color: cursor_color,
+                    },
+                    SolidVertex {
+                        position: grid_to_pos(col + 1, row - 1),
+                        color: cursor_color,
+                    },
+                    SolidVertex {
+                        position: grid_to_pos(col, row),
+                        color: cursor_color,
+                    },
+                    SolidVertex {
+                        position: grid_to_pos(col + 1, row),
+                        color: cursor_color,
+                    },
+                ]);
+
+                overlay_indices.extend_from_slice(&[
+                    index,
+                    index + 1,
+                    index + 2,
+                    index + 2,
+                    index + 1,
+                    index + 3,
+                ]);
+            }
+        }
+
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
@@ -435,6 +475,8 @@ impl AlacrittyRoutine {
 
         self.bg_mesh.update(&self.device, &bg_vertices, &bg_indices);
         self.glyph_mesh.update(&self.device, &vertices, &indices);
+        self.overlay_mesh
+            .update(&self.device, &overlay_vertices, &overlay_indices);
     }
 
     pub fn add_to_graph<'node>(
