@@ -59,7 +59,7 @@ impl DemoInner {
 
         let (sender, term_events) = channel();
 
-        let shell = alacritty_terminal::config::Program::Just("/usr/bin/notcurses-demo".into());
+        let shell = alacritty_terminal::config::Program::Just("/usr/bin/fish".into());
 
         let term_config = alacritty_terminal::config::Config {
             pty_config: PtyConfig {
@@ -160,6 +160,49 @@ impl DemoInner {
         }
     }
 
+    pub fn virtual_keycode_to_string(
+        keycode: winit::event::VirtualKeyCode,
+    ) -> Option<&'static str> {
+        use winit::event::VirtualKeyCode::*;
+        match keycode {
+            Back => Some("\x7f"),
+            Up => Some("\x1b[A"),
+            Down => Some("\x1b[B"),
+            Right => Some("\x1b[C"),
+            Left => Some("\x1b[D"),
+            Home => Some("\x1b[1~"),
+            Insert => Some("\x1b[2~"),
+            Delete => Some("\x1b[3~"),
+            End => Some("\x1b[4~"),
+            PageUp => Some("\x1b[5~"),
+            PageDown => Some("\x1b[6~"),
+            _ => None,
+        }
+    }
+
+    pub fn on_keyboard_input(&mut self, input: &winit::event::KeyboardInput) {
+        if input.state == winit::event::ElementState::Pressed {
+            if let Some(keycode) = input.virtual_keycode {
+                if let Some(input) = Self::virtual_keycode_to_string(keycode) {
+                    self.send_input(input);
+                }
+            }
+        }
+    }
+
+    pub fn on_received_character(&mut self, c: char) {
+        match c {
+            '\u{7f}' | '\u{8}' => {
+                // We use a special escape code for the delete and backspace keys.
+                return;
+            }
+            _ => {}
+        }
+
+        let string = c.to_string();
+        self.send_input(string.as_str());
+    }
+
     pub fn send_input(&mut self, input: &str) {
         let bytes = input.as_bytes();
         let cow = std::borrow::Cow::Owned(bytes.to_owned().into());
@@ -200,15 +243,22 @@ impl rend3_framework::App for Demo {
         event: rend3_framework::Event<'_, ()>,
         control_flow: impl FnOnce(winit::event_loop::ControlFlow),
     ) {
+        let inner = self.inner.as_mut().unwrap();
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                control_flow(ControlFlow::Exit);
-            }
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => {
+                    control_flow(ControlFlow::Exit);
+                }
+
+                WindowEvent::KeyboardInput { input, .. } => {
+                    inner.on_keyboard_input(&input);
+                }
+                WindowEvent::ReceivedCharacter(c) => {
+                    inner.on_received_character(c);
+                }
+                _ => {}
+            },
             Event::MainEventsCleared => {
-                let inner = self.inner.as_mut().unwrap();
                 while let Ok(event) = inner.term_events.try_recv() {
                     match event {
                         TermEvent::ColorRequest(index, format) => {
@@ -263,7 +313,6 @@ impl rend3_framework::App for Demo {
                 let depth = state.depth;
                 let output = graph.add_surface_texture();
 
-                let inner = self.inner.as_mut().unwrap();
                 let term = inner.term.lock();
                 inner.alacritty_routine.update(&term, &inner.colors);
                 inner
