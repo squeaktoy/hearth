@@ -8,13 +8,13 @@ use alacritty_terminal::term::color::{Colors, Rgb};
 use alacritty_terminal::tty::Pty;
 use alacritty_terminal::Term;
 use mio_extras::channel::Sender as MioSender;
-use rend3_alacritty::AlacrittyRoutine;
+use rend3_alacritty::{FaceAtlas, Terminal, TerminalConfig, TerminalStore};
 use rend3_routine::base::BaseRenderGraphIntermediateState;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
 
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 
 const SAMPLE_COUNT: rend3::types::SampleCount = rend3::types::SampleCount::One;
@@ -36,11 +36,12 @@ impl EventListener for TermListener {
 }
 
 pub struct DemoInner {
-    alacritty_routine: AlacrittyRoutine,
+    store: TerminalStore,
     term_loop: JoinHandle<(TermEventLoop<Pty, TermListener>, TermState)>,
     term_channel: MioSender<TermMsg>,
     term_events: Receiver<TermEvent>,
     term: Arc<FairMutex<Term<TermListener>>>,
+    term_render: Arc<RwLock<Terminal>>,
     colors: Colors,
 }
 
@@ -52,7 +53,13 @@ impl DemoInner {
         let ttf_src = include_bytes!("../../../resources/mononoki/mononoki-Regular.ttf");
         let ttf_src = ttf_src.to_vec();
         let face = owned_ttf_parser::OwnedFace::from_vec(ttf_src, 0).unwrap();
-        let alacritty_routine = AlacrittyRoutine::new(face, &renderer, surface_format);
+        let face_atlas = FaceAtlas::new(face, &renderer.device, &renderer.queue);
+
+        let config = Arc::new(TerminalConfig {
+            normal_font: Arc::new(face_atlas),
+        });
+
+        let mut store = TerminalStore::new(config, &renderer, surface_format);
 
         let term_size =
             alacritty_terminal::term::SizeInfo::new(80.0, 60.0, 1.0, 1.0, 0.0, 0.0, false);
@@ -86,7 +93,8 @@ impl DemoInner {
         Self::load_colors(&mut colors);
 
         Self {
-            alacritty_routine,
+            term_render: store.create_terminal(),
+            store,
             term,
             term_loop: term_loop.spawn(),
             term_channel,
@@ -97,7 +105,6 @@ impl DemoInner {
 
     pub fn load_colors(color: &mut Colors) {
         use alacritty_terminal::ansi::NamedColor::*;
-        use alacritty_terminal::term::color::Rgb;
 
         let maps = [
             (Black, Rgb { r: 0, g: 0, b: 0 }),
@@ -300,6 +307,15 @@ impl rend3_framework::App for Demo {
 
                 let (cmd_bufs, ready) = renderer.ready();
 
+                let term = inner.term.lock();
+                inner
+                    .term_render
+                    .write()
+                    .unwrap()
+                    .update(&term, &inner.colors);
+
+                let routine = inner.store.create_routine();
+
                 let pbr_routine = rend3_framework::lock(&routines.pbr);
                 let tonemapping_routine = rend3_framework::lock(&routines.tonemapping);
                 let mut graph = rend3::graph::RenderGraph::new();
@@ -324,12 +340,7 @@ impl rend3_framework::App for Demo {
 
                 let depth = state.depth;
                 let output = graph.add_surface_texture();
-
-                let term = inner.term.lock();
-                inner.alacritty_routine.update(&term, &inner.colors);
-                inner
-                    .alacritty_routine
-                    .add_to_graph(&mut graph, output, depth);
+                routine.add_to_graph(&mut graph, output, depth);
 
                 graph.execute(renderer, frame, cmd_bufs, &ready);
             }
