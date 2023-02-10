@@ -75,12 +75,12 @@ impl GlyphAtlas {
                         glyph.copy_to(&mut bitmap, rect.x as u32, rect.y as u32);
 
                         let scale = (1.0 / glyph.px_per_em) as f32;
-                        let offset = glyph.anchor;
+                        let offset = glyph.anchor - 0.5 * scale;
 
-                        let position = Vec2::new(rect.x as f32, rect.y as f32);
+                        let position = Vec2::new(rect.x as f32, rect.y as f32) + 0.5;
                         let position = position / texture_size;
 
-                        let size = Vec2::new(glyph.width as f32, glyph.height as f32);
+                        let size = Vec2::new(glyph.width as f32, glyph.height as f32) - 1.0;
                         let v1 = Vec2::ZERO;
                         let v2 = Vec2::new(size.x, 0.0);
                         let v3 = Vec2::new(0.0, size.y);
