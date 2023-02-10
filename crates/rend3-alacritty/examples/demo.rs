@@ -8,7 +8,7 @@ use alacritty_terminal::term::color::{Colors, Rgb};
 use alacritty_terminal::tty::Pty;
 use alacritty_terminal::Term;
 use mio_extras::channel::Sender as MioSender;
-use rend3_alacritty::{FaceAtlas, Terminal, TerminalConfig, TerminalStore};
+use rend3_alacritty::{FaceAtlas, FontSet, Terminal, TerminalConfig, TerminalStore};
 use rend3_routine::base::BaseRenderGraphIntermediateState;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
@@ -50,14 +50,21 @@ impl DemoInner {
         renderer: &Arc<rend3::Renderer>,
         surface_format: rend3::types::TextureFormat,
     ) -> Self {
-        let ttf_src = include_bytes!("../../../resources/mononoki/mononoki-Regular.ttf");
-        let ttf_src = ttf_src.to_vec();
-        let face = owned_ttf_parser::OwnedFace::from_vec(ttf_src, 0).unwrap();
-        let face_atlas = FaceAtlas::new(face, &renderer.device, &renderer.queue);
+        let ttf_srcs = FontSet {
+            regular: include_bytes!("../../../resources/mononoki/mononoki-Regular.ttf").to_vec(),
+            italic: include_bytes!("../../../resources/mononoki/mononoki-Italic.ttf").to_vec(),
+            bold: include_bytes!("../../../resources/mononoki/mononoki-Bold.ttf").to_vec(),
+            bold_italic: include_bytes!("../../../resources/mononoki/mononoki-BoldItalic.ttf")
+                .to_vec(),
+        };
 
-        let config = Arc::new(TerminalConfig {
-            normal_font: Arc::new(face_atlas),
+        let fonts = ttf_srcs.map(|src| {
+            let face = owned_ttf_parser::OwnedFace::from_vec(src, 0).unwrap();
+            let face_atlas = FaceAtlas::new(face, &renderer.device, &renderer.queue);
+            Arc::new(face_atlas)
         });
+
+        let config = Arc::new(TerminalConfig { fonts });
 
         let mut store = TerminalStore::new(config, &renderer, surface_format);
 

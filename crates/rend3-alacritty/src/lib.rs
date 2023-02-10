@@ -185,9 +185,104 @@ impl FaceAtlas {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FontStyle {
+    Regular,
+    Italic,
+    Bold,
+    BoldItalic,
+}
+
+impl FontStyle {
+    pub fn from_cell_flags(flags: CellFlags) -> Self {
+        if flags.contains(CellFlags::BOLD_ITALIC) {
+            Self::BoldItalic
+        } else if flags.contains(CellFlags::ITALIC) {
+            Self::Italic
+        } else if flags.contains(CellFlags::BOLD) {
+            Self::Bold
+        } else {
+            Self::Regular
+        }
+    }
+}
+
+/// Generic container for all font faces used in a terminal. Eases
+/// the writing of code manipulating all faces at once.
+#[derive(Clone, Debug, Default)]
+pub struct FontSet<T> {
+    pub regular: T,
+    pub italic: T,
+    pub bold: T,
+    pub bold_italic: T,
+}
+
+impl<T> FontSet<T> {
+    pub fn map<O>(self, f: impl Fn(T) -> O) -> FontSet<O> {
+        FontSet {
+            regular: f(self.regular),
+            italic: f(self.italic),
+            bold: f(self.bold),
+            bold_italic: f(self.bold_italic),
+        }
+    }
+
+    pub fn for_each(self, mut f: impl FnMut(T)) {
+        f(self.regular);
+        f(self.italic);
+        f(self.bold);
+        f(self.bold_italic);
+    }
+
+    pub fn get(&self, style: FontStyle) -> &T {
+        match style {
+            FontStyle::Regular => &self.regular,
+            FontStyle::Italic => &self.italic,
+            FontStyle::Bold => &self.bold,
+            FontStyle::BoldItalic => &self.bold_italic,
+        }
+    }
+
+    pub fn get_mut(&mut self, style: FontStyle) -> &mut T {
+        match style {
+            FontStyle::Regular => &mut self.regular,
+            FontStyle::Italic => &mut self.italic,
+            FontStyle::Bold => &mut self.bold,
+            FontStyle::BoldItalic => &mut self.bold_italic,
+        }
+    }
+
+    pub fn zip<O>(self, other: FontSet<O>) -> FontSet<(T, O)> {
+        FontSet {
+            regular: (self.regular, other.regular),
+            italic: (self.italic, other.italic),
+            bold: (self.bold, other.bold),
+            bold_italic: (self.bold_italic, other.bold_italic),
+        }
+    }
+
+    pub fn as_ref(&self) -> FontSet<&T> {
+        FontSet {
+            regular: &self.regular,
+            italic: &self.italic,
+            bold: &self.bold,
+            bold_italic: &self.bold_italic,
+        }
+    }
+
+    pub fn as_mut(&mut self) -> FontSet<&mut T> {
+        FontSet {
+            regular: &mut self.regular,
+            italic: &mut self.italic,
+            bold: &mut self.bold,
+            bold_italic: &mut self.bold_italic,
+        }
+    }
+}
+
 /// CPU-side terminal rendering options.
 pub struct TerminalConfig {
-    pub normal_font: Arc<FaceAtlas>,
+    pub fonts: FontSet<Arc<FaceAtlas>>,
 }
 
 /// A single render-able terminal. Paired with an [AlacrittyRoutine].
@@ -197,7 +292,7 @@ pub struct Terminal {
     camera_buffer: Buffer,
     camera_bind_group: BindGroup,
     bg_mesh: DynamicMesh<SolidVertex>,
-    glyph_mesh: DynamicMesh<GlyphVertex>,
+    glyph_meshes: FontSet<DynamicMesh<GlyphVertex>>,
     overlay_mesh: DynamicMesh<SolidVertex>,
 }
 
@@ -228,7 +323,12 @@ impl Terminal {
             camera_buffer,
             camera_bind_group,
             bg_mesh: DynamicMesh::new(&device),
-            glyph_mesh: DynamicMesh::new(&device),
+            glyph_meshes: FontSet {
+                regular: DynamicMesh::new(&device),
+                italic: DynamicMesh::new(&device),
+                bold: DynamicMesh::new(&device),
+                bold_italic: DynamicMesh::new(&device),
+            },
             overlay_mesh: DynamicMesh::new(&device),
             device,
         }
@@ -239,7 +339,7 @@ impl Terminal {
         term: &Term<T>,
         colors: &Colors,
     ) {
-        let mut cells: Vec<(glam::Vec2, usize, u32)> = Vec::new();
+        let mut cells: Vec<(glam::Vec2, FontStyle, usize, u32)> = Vec::new();
 
         let color_to_rgb = |color| -> u32 {
             let rgb = match color {
@@ -285,9 +385,10 @@ impl Terminal {
                 bg = temp;
             }
 
-            let face = self.config.normal_font.face.as_face_ref();
+            let style = FontStyle::from_cell_flags(cell.flags);
+            let face = self.config.fonts.get(style).face.as_face_ref();
             if let Some(glyph) = face.glyph_index(cell.c) {
-                cells.push((pos, glyph.0 as usize, color_to_rgb(fg)));
+                cells.push((pos, style, glyph.0 as usize, color_to_rgb(fg)));
             }
 
             if bg == Color::Named(NamedColor::Background) {
@@ -364,12 +465,13 @@ impl Terminal {
             }
         }
 
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
+        let mut glyph_meshes = FontSet::<(Vec<GlyphVertex>, Vec<u32>)>::default();
 
-        for (offset, glyph, color) in cells {
+        for (offset, style, glyph, color) in cells {
+            let (vertices, indices) = &mut glyph_meshes.get_mut(style);
+
             let index = vertices.len() as u32;
-            let atlas = &self.config.normal_font.atlas;
+            let atlas = &self.config.fonts.get(style).atlas;
             let bitmap = match atlas.glyphs[glyph].as_ref() {
                 Some(b) => b,
                 None => continue,
@@ -391,8 +493,12 @@ impl Terminal {
             ]);
         }
 
+        self.glyph_meshes
+            .as_mut()
+            .zip(glyph_meshes)
+            .for_each(|(mesh, (vertices, indices))| mesh.update(&self.device, &vertices, &indices));
+
         self.bg_mesh.update(&self.device, &bg_vertices, &bg_indices);
-        self.glyph_mesh.update(&self.device, &vertices, &indices);
         self.overlay_mesh
             .update(&self.device, &overlay_vertices, &overlay_indices);
     }
@@ -451,7 +557,7 @@ pub struct TerminalStore {
     queue: Arc<Queue>,
     config: Arc<TerminalConfig>,
     camera_bgl: BindGroupLayout,
-    glyph_bind_group: BindGroup,
+    glyph_bind_groups: FontSet<BindGroup>,
     solid_pipeline: RenderPipeline,
     glyph_pipeline: RenderPipeline,
     terminals: Vec<Weak<RwLock<Terminal>>>,
@@ -536,7 +642,6 @@ impl TerminalStore {
             format,
         );
 
-        let atlas_view = config.normal_font.texture.create_view(&Default::default());
         let atlas_sampler = renderer.device.create_sampler(&SamplerDescriptor {
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
@@ -547,19 +652,25 @@ impl TerminalStore {
             ..Default::default()
         });
 
-        let glyph_bind_group = renderer.device.create_bind_group(&BindGroupDescriptor {
-            label: None,
-            layout: &glyph_bgl,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: BindingResource::TextureView(&atlas_view),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: BindingResource::Sampler(&atlas_sampler),
-                },
-            ],
+        let glyph_bind_groups = config.fonts.as_ref().map(|font| {
+            let atlas_view = font.texture.create_view(&Default::default());
+
+            let glyph_bind_group = renderer.device.create_bind_group(&BindGroupDescriptor {
+                label: None,
+                layout: &glyph_bgl,
+                entries: &[
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: BindingResource::TextureView(&atlas_view),
+                    },
+                    BindGroupEntry {
+                        binding: 1,
+                        resource: BindingResource::Sampler(&atlas_sampler),
+                    },
+                ],
+            });
+
+            glyph_bind_group
         });
 
         Self {
@@ -567,7 +678,7 @@ impl TerminalStore {
             queue: renderer.queue.to_owned(),
             config,
             camera_bgl,
-            glyph_bind_group,
+            glyph_bind_groups,
             solid_pipeline,
             glyph_pipeline,
             terminals: vec![],
@@ -634,14 +745,17 @@ impl TerminalStore {
         );
 
         rpass.set_bind_group(0, &terminal.camera_bind_group, &[]);
-        rpass.set_bind_group(1, &self.glyph_bind_group, &[]);
-
+        rpass.set_bind_group(1, &self.glyph_bind_groups.regular, &[]);
         rpass.set_pipeline(&self.solid_pipeline);
         terminal.bg_mesh.draw(rpass);
-
         rpass.set_pipeline(&self.glyph_pipeline);
-        terminal.glyph_mesh.draw(rpass);
-
+        terminal.glyph_meshes.regular.draw(rpass);
+        rpass.set_bind_group(1, &self.glyph_bind_groups.italic, &[]);
+        terminal.glyph_meshes.italic.draw(rpass);
+        rpass.set_bind_group(1, &self.glyph_bind_groups.bold, &[]);
+        terminal.glyph_meshes.bold.draw(rpass);
+        rpass.set_bind_group(1, &self.glyph_bind_groups.bold_italic, &[]);
+        terminal.glyph_meshes.bold_italic.draw(rpass);
         rpass.set_pipeline(&self.solid_pipeline);
         terminal.overlay_mesh.draw(rpass);
     }
