@@ -14,9 +14,10 @@ struct CameraUniform {
     mvp: mat4x4<f32>;
 };
 
-[[group(0), binding(0)]] var t_msdf: texture_2d<f32>;
-[[group(0), binding(1)]] var s_msdf: sampler;
-[[group(0), binding(2)]] var<uniform> camera: CameraUniform;
+[[group(0), binding(0)]] var<uniform> camera: CameraUniform;
+
+[[group(1), binding(0)]] var t_msdf: texture_2d<f32>;
+[[group(1), binding(1)]] var s_msdf: sampler;
 
 [[stage(vertex)]]
 fn vs_main(in: VertexInput, [[builtin(vertex_index)]] in_vertex_index: u32) -> VertexOutput {

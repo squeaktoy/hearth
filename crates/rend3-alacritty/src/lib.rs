@@ -194,12 +194,46 @@ pub struct TerminalConfig {
 pub struct Terminal {
     device: Arc<Device>,
     config: Arc<TerminalConfig>,
+    camera_buffer: Buffer,
+    camera_bind_group: BindGroup,
     bg_mesh: DynamicMesh<SolidVertex>,
     glyph_mesh: DynamicMesh<GlyphVertex>,
     overlay_mesh: DynamicMesh<SolidVertex>,
 }
 
 impl Terminal {
+    pub fn new(
+        device: Arc<Device>,
+        config: Arc<TerminalConfig>,
+        camera_bgl: &BindGroupLayout,
+    ) -> Self {
+        let camera_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some("Alacritty terminal camera buffer"),
+            size: std::mem::size_of::<CameraUniform>() as BufferAddress,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("Alacritty terminal camera bind group"),
+            layout: camera_bgl,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+        });
+
+        Self {
+            config,
+            camera_buffer,
+            camera_bind_group,
+            bg_mesh: DynamicMesh::new(&device),
+            glyph_mesh: DynamicMesh::new(&device),
+            overlay_mesh: DynamicMesh::new(&device),
+            device,
+        }
+    }
+
     pub fn update<T: alacritty_terminal::event::EventListener>(
         &mut self,
         term: &Term<T>,
@@ -414,9 +448,10 @@ fn make_pipeline(
 /// Persistent terminal rendering configuration and handles to active terminals.
 pub struct TerminalStore {
     device: Arc<Device>,
+    queue: Arc<Queue>,
     config: Arc<TerminalConfig>,
-    camera_buffer: Buffer,
-    bind_group: BindGroup,
+    camera_bgl: BindGroupLayout,
+    glyph_bind_group: BindGroup,
     solid_pipeline: RenderPipeline,
     glyph_pipeline: RenderPipeline,
     terminals: Vec<Weak<RwLock<Terminal>>>,
@@ -435,10 +470,26 @@ impl TerminalStore {
             .device
             .create_shader_module(&include_wgsl!("glyph.wgsl"));
 
-        let bgl = renderer
+        let camera_bgl = renderer
             .device
             .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("AlacrittyRoutine bind group layout"),
+                label: Some("Alacritty camera bind group layout"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let glyph_bgl = renderer
+            .device
+            .create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Alacritty glyph bind group layout"),
                 entries: &[
                     BindGroupLayoutEntry {
                         binding: 0,
@@ -456,16 +507,6 @@ impl TerminalStore {
                         ty: BindingType::Sampler(SamplerBindingType::Filtering),
                         count: None,
                     },
-                    BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: ShaderStages::VERTEX,
-                        ty: BindingType::Buffer {
-                            ty: BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
                 ],
             });
 
@@ -473,7 +514,7 @@ impl TerminalStore {
             .device
             .create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("AlacrittyRoutine pipeline layout"),
-                bind_group_layouts: &[&bgl],
+                bind_group_layouts: &[&camera_bgl, &glyph_bgl],
                 push_constant_ranges: &[],
             });
 
@@ -506,19 +547,9 @@ impl TerminalStore {
             ..Default::default()
         });
 
-        let camera_buffer = renderer
-            .device
-            .create_buffer_init(&util::BufferInitDescriptor {
-                label: Some("AlacrittyRoutine camera uniform"),
-                contents: bytemuck::cast_slice(&[CameraUniform {
-                    mvp: Default::default(),
-                }]),
-                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            });
-
-        let bind_group = renderer.device.create_bind_group(&BindGroupDescriptor {
+        let glyph_bind_group = renderer.device.create_bind_group(&BindGroupDescriptor {
             label: None,
-            layout: &bgl,
+            layout: &glyph_bgl,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
@@ -528,18 +559,15 @@ impl TerminalStore {
                     binding: 1,
                     resource: BindingResource::Sampler(&atlas_sampler),
                 },
-                BindGroupEntry {
-                    binding: 2,
-                    resource: camera_buffer.as_entire_binding(),
-                },
             ],
         });
 
         Self {
             device: renderer.device.to_owned(),
+            queue: renderer.queue.to_owned(),
             config,
-            camera_buffer,
-            bind_group,
+            camera_bgl,
+            glyph_bind_group,
             solid_pipeline,
             glyph_pipeline,
             terminals: vec![],
@@ -551,16 +579,13 @@ impl TerminalStore {
     ///
     /// When the last `Arc` is dropped, this terminal will stop being rendered.
     pub fn create_terminal(&mut self) -> Arc<RwLock<Terminal>> {
-        let terminal = Arc::new(RwLock::new(Terminal {
-            device: self.device.clone(),
-            config: self.config.clone(),
-            bg_mesh: DynamicMesh::new(&self.device),
-            glyph_mesh: DynamicMesh::new(&self.device),
-            overlay_mesh: DynamicMesh::new(&self.device),
-        }));
+        let terminal = Arc::new(RwLock::new(Terminal::new(
+            self.device.to_owned(),
+            self.config.to_owned(),
+            &self.camera_bgl,
+        )));
 
         self.terminals.push(Arc::downgrade(&terminal));
-
         terminal
     }
 
@@ -594,8 +619,23 @@ impl TerminalStore {
     }
 
     /// Draws a single terminal to a render pass.
-    pub fn draw_terminal<'a>(&'a self, rpass: &mut RenderPass<'a>, terminal: &'a Terminal) {
-        rpass.set_bind_group(0, &self.bind_group, &[]);
+    pub fn draw_terminal<'a>(
+        &'a self,
+        rpass: &mut RenderPass<'a>,
+        terminal: &'a Terminal,
+        vp: glam::Mat4,
+    ) {
+        let model = glam::Mat4::IDENTITY;
+
+        self.queue.write_buffer(
+            &terminal.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[CameraUniform { mvp: vp * model }]),
+        );
+
+        rpass.set_bind_group(0, &terminal.camera_bind_group, &[]);
+        rpass.set_bind_group(1, &self.glyph_bind_group, &[]);
+
         rpass.set_pipeline(&self.solid_pipeline);
         terminal.bg_mesh.draw(rpass);
 
@@ -644,22 +684,13 @@ impl<'a> TerminalRenderRoutine<'a> {
             .collect();
 
         builder.build(
-            move |pt, renderer, encoder_or_pass, _temps, _ready, graph_data| {
+            move |pt, _renderer, encoder_or_pass, _temps, _ready, graph_data| {
                 let store = pt.get(store);
                 let rpass = encoder_or_pass.get_rpass(rpass_handle);
-                let view_proj = graph_data.camera_manager.view_proj();
-                let model = glam::Mat4::IDENTITY;
-
-                renderer.queue.write_buffer(
-                    &store.camera_buffer,
-                    0,
-                    bytemuck::cast_slice(&[CameraUniform {
-                        mvp: view_proj * model,
-                    }]),
-                );
+                let vp = graph_data.camera_manager.view_proj();
 
                 for terminal in terminals {
-                    store.draw_terminal(rpass, pt.get(terminal));
+                    store.draw_terminal(rpass, pt.get(terminal), vp);
                 }
             },
         );
