@@ -355,10 +355,10 @@ impl Terminal {
             0xff000000 | ((rgb.b as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.r as u32)
         };
 
-        let scale = 1.0 / 30.0;
+        let scale = 1.0 / 37.5;
         let grid_to_pos = |x: i32, y: i32| -> glam::Vec2 {
-            let col = x as f32 / 40.0 - 1.0;
-            let row = (y as f32 + 1.0) / -30.0 + 1.0;
+            let col = x as f32 / 50.0 - 1.0;
+            let row = (y as f32 + 1.0) / -37.5 + 1.0;
             glam::Vec2::new(col, row)
         };
 
@@ -509,6 +509,8 @@ fn make_pipeline(
     device: &Device,
     label: Option<&str>,
     shader_module: &ShaderModule,
+    vertex_shader: &str,
+    fragment_shader: &str,
     vertex_layout: VertexBufferLayout,
     layout: &PipelineLayout,
     output_format: TextureFormat,
@@ -518,7 +520,7 @@ fn make_pipeline(
         layout: Some(layout),
         vertex: VertexState {
             module: shader_module,
-            entry_point: "vs_main",
+            entry_point: vertex_shader,
             buffers: &[vertex_layout],
         },
         depth_stencil: Some(DepthStencilState {
@@ -540,7 +542,7 @@ fn make_pipeline(
         multisample: MultisampleState::default(),
         fragment: Some(FragmentState {
             module: shader_module,
-            entry_point: "fs_main",
+            entry_point: fragment_shader,
             targets: &[ColorTargetState {
                 format: output_format,
                 blend: Some(BlendState::ALPHA_BLENDING),
@@ -568,13 +570,9 @@ impl TerminalStore {
     /// This routine runs after tonemapping, so `format` is the format of the
     /// final swapchain image format.
     pub fn new(config: Arc<TerminalConfig>, renderer: &Renderer, format: TextureFormat) -> Self {
-        let solid_shader = renderer
+        let shader = renderer
             .device
-            .create_shader_module(&include_wgsl!("solid.wgsl"));
-
-        let glyph_shader = renderer
-            .device
-            .create_shader_module(&include_wgsl!("glyph.wgsl"));
+            .create_shader_module(&include_wgsl!("shaders.wgsl"));
 
         let camera_bgl = renderer
             .device
@@ -627,7 +625,9 @@ impl TerminalStore {
         let solid_pipeline = make_pipeline(
             &renderer.device,
             Some("AlacrittyRoutine solid pipeline"),
-            &solid_shader,
+            &shader,
+            "solid_vs",
+            "solid_fs",
             SolidVertex::LAYOUT,
             &layout,
             format,
@@ -636,7 +636,9 @@ impl TerminalStore {
         let glyph_pipeline = make_pipeline(
             &renderer.device,
             Some("AlacrittyRoutine glyph pipeline"),
-            &glyph_shader,
+            &shader,
+            "glyph_vs",
+            "glyph_fs",
             GlyphVertex::LAYOUT,
             &layout,
             format,
