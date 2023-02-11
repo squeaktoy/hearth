@@ -355,10 +355,10 @@ impl Terminal {
             0xff000000 | ((rgb.b as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.r as u32)
         };
 
-        let scale = 1.0 / 30.0;
+        let scale = 1.0 / 37.5;
         let grid_to_pos = |x: i32, y: i32| -> glam::Vec2 {
-            let col = x as f32 / 40.0 - 1.0;
-            let row = (y as f32 + 1.0) / -30.0 + 1.0;
+            let col = x as f32 / 50.0 - 1.0;
+            let row = (y as f32 + 1.0) / -37.5 + 1.0;
             glam::Vec2::new(col, row)
         };
 
