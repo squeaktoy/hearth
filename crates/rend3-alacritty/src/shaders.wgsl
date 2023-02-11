@@ -1,10 +1,20 @@
-struct VertexInput {
+struct SolidVertexIn {
+    [[location(0)]] position: vec2<f32>;
+    [[location(1)]] color: vec4<f32>;
+};
+
+struct SolidVertexOut {
+    [[builtin(position)]] clip_position: vec4<f32>;
+    [[location(0)]] color: vec4<f32>;
+};
+
+struct GlyphVertexIn {
     [[location(0)]] position: vec2<f32>;
     [[location(1)]] tex_coords: vec2<f32>;
     [[location(2)]] color: vec4<f32>;
 };
 
-struct VertexOutput {
+struct GlyphVertexOut {
     [[builtin(position)]] clip_position: vec4<f32>;
     [[location(0)]] tex_coords: vec2<f32>;
     [[location(1)]] color: vec4<f32>;
@@ -20,8 +30,21 @@ struct CameraUniform {
 [[group(1), binding(1)]] var s_msdf: sampler;
 
 [[stage(vertex)]]
-fn vs_main(in: VertexInput, [[builtin(vertex_index)]] in_vertex_index: u32) -> VertexOutput {
-    var out: VertexOutput;
+fn solid_vs(in: SolidVertexIn) -> SolidVertexOut {
+    var out: SolidVertexOut;
+    out.clip_position = camera.mvp * vec4<f32>(in.position, 0.0, 1.0);
+    out.color = in.color;
+    return out;
+}
+
+[[stage(fragment)]]
+fn solid_fs(frag: SolidVertexOut) -> [[location(0)]] vec4<f32> {
+    return frag.color;
+}
+
+[[stage(vertex)]]
+fn glyph_vs(in: GlyphVertexIn, [[builtin(vertex_index)]] in_vertex_index: u32) -> GlyphVertexOut {
+    var out: GlyphVertexOut;
     out.clip_position = camera.mvp * vec4<f32>(in.position, 0.0, 1.0);
     out.tex_coords = in.tex_coords;
     out.color = in.color;
@@ -40,7 +63,7 @@ fn median(r: f32, g: f32, b: f32) -> f32 {
 }
 
 [[stage(fragment)]]
-fn fs_main(frag: VertexOutput) -> [[location(0)]] vec4<f32> {
+fn glyph_fs(frag: GlyphVertexOut) -> [[location(0)]] vec4<f32> {
     let msd = textureSample(t_msdf, s_msdf, frag.tex_coords);
     let sd = median(msd.r, msd.g, msd.b);
     let dist = screen_px_range(frag.tex_coords) * (sd - 0.5);
