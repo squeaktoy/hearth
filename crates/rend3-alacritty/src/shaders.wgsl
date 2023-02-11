@@ -29,11 +29,18 @@ struct CameraUniform {
 [[group(1), binding(0)]] var t_msdf: texture_2d<f32>;
 [[group(1), binding(1)]] var s_msdf: sampler;
 
+fn srgb_to_linear(l: vec3<f32>) -> vec3<f32> {
+    let cutoff = l > vec3<f32>(0.0405);
+    let lower = l / vec3<f32>(12.92);
+    let higher = pow((l + vec3<f32>(0.055)) / vec3<f32>(1.055), vec3<f32>(2.4));
+    return select(lower, higher, cutoff);
+}
+
 [[stage(vertex)]]
 fn solid_vs(in: SolidVertexIn) -> SolidVertexOut {
     var out: SolidVertexOut;
     out.clip_position = camera.mvp * vec4<f32>(in.position, 0.0, 1.0);
-    out.color = in.color;
+    out.color = vec4<f32>(srgb_to_linear(in.color.rgb), in.color.a);
     return out;
 }
 
@@ -47,7 +54,7 @@ fn glyph_vs(in: GlyphVertexIn, [[builtin(vertex_index)]] in_vertex_index: u32) -
     var out: GlyphVertexOut;
     out.clip_position = camera.mvp * vec4<f32>(in.position, 0.0, 1.0);
     out.tex_coords = in.tex_coords;
-    out.color = in.color;
+    out.color = vec4<f32>(srgb_to_linear(in.color.rgb), in.color.a);
     return out;
 }
 
