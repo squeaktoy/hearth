@@ -3,6 +3,9 @@ use tracing::{debug, error, info};
 /// Implementations of the `hearth-rpc` crate's RPC interfaces.
 pub mod api;
 
+/// Asset loading and storage.
+pub mod asset;
+
 /// Helper function to set up console logging with reasonable defaults.
 pub fn init_logging() {
     let format = tracing_subscriber::fmt::format().compact();
