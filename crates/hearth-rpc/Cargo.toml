@@ -7,3 +7,7 @@ edition = "2021"
 hearth-types = { workspace = true }
 remoc = { workspace = true, features = ["robj", "robs", "rtc"] }
 serde = { workspace = true }
+tokio = { version = "1.24", features = ["sync"] }
+
+[features]
+mocks = []
