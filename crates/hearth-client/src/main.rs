@@ -3,7 +3,6 @@ use std::net::SocketAddr;
 use clap::Parser;
 use hearth_network::auth::login;
 use hearth_rpc::*;
-use remoc::rtc::ServerShared;
 use tokio::net::TcpStream;
 use tracing::{debug, error, info};
 
@@ -70,21 +69,11 @@ async fn main() {
 
     info!("Assigned peer ID {:?}", offer.new_id);
 
-    let peer_api = hearth_core::PeerApiImpl {
-        info: PeerInfo { nickname: None },
-    };
-
-    let peer_api = std::sync::Arc::new(peer_api);
-    let (peer_api_server, peer_api_client) =
-        PeerApiServerShared::<_, remoc::codec::Default>::new(peer_api, 1024);
-
-    debug!("Spawning peer API server thread");
-    tokio::spawn(async move {
-        peer_api_server.serve(true).await;
-    });
+    let peer_info = PeerInfo { nickname: None };
+    let peer_api = hearth_core::api::spawn_peer_api(peer_info);
 
     tx.send(ClientOffer {
-        peer_api: peer_api_client,
+        peer_api: peer_api.to_owned(),
     })
     .await
     .unwrap();

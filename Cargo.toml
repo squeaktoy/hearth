@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
   "crates/font-mud",
   "crates/hearth-client",
@@ -12,6 +13,7 @@ members = [
   "crates/hearth-server",
   "crates/hearth-types",
   "crates/hearth-wasm",
+  "crates/rend3-alacritty",
 ]
 
 [workspace.dependencies]
