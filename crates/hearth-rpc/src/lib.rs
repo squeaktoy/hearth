@@ -107,11 +107,8 @@ pub trait ProcessStore {
     /// Placeholder function call for testing.
     async fn print_hello_world(&self) -> CallResult<()>;
 
-    /// Spawns a new process.
-    async fn spawn(&self, module: LumpId) -> ResourceResult<LocalProcessId>;
-
-    /// Kills a process.
-    async fn kill(&self, pid: LocalProcessId) -> ResourceResult<()>;
+    /// Retrieves the [ProcessApi] for a process.
+    async fn find_process(&self, pid: LocalProcessId) -> ResourceResult<ProcessApiClient>;
 
     /// Registers a process as a named service.
     ///
@@ -120,12 +117,6 @@ pub trait ProcessStore {
 
     /// Deregisters a service.
     async fn deregister_service(&self, name: String) -> ResourceResult<()>;
-
-    /// Subscribes to a process's log.
-    async fn follow_process_log(
-        &self,
-        pid: LocalProcessId,
-    ) -> ResourceResult<ListSubscription<ProcessLogEvent>>;
 
     /// Subscribes to this store's process list.
     ///
@@ -140,6 +131,22 @@ pub trait ProcessStore {
     async fn follow_service_list(&self) -> CallResult<HashMapSubscription<String, LocalProcessId>>;
 
     // TODO Lunatic Supervisor-like child API?
+}
+
+/// Interface to a single process.
+#[remote]
+pub trait ProcessApi {
+    /// Returns true if this process is still alive.
+    async fn is_alive(&self) -> CallResult<bool>;
+
+    /// Kills this process.
+    async fn kill(&self) -> ResourceResult<()>;
+
+    /// Sends a message to this process.
+    async fn send_message(&self, msg: Vec<u8>) -> ResourceResult<()>;
+
+    /// Subscribes to this process's log.
+    async fn follow_log(&self) -> ResourceResult<ListSubscription<ProcessLogEvent>>;
 }
 
 /// Interface to a peer's local lumps.
