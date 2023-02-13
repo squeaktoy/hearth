@@ -6,6 +6,9 @@ pub mod api;
 /// Asset loading and storage.
 pub mod asset;
 
+/// Peer runtime building and execution.
+pub mod runtime;
+
 /// Helper function to set up console logging with reasonable defaults.
 pub fn init_logging() {
     let format = tracing_subscriber::fmt::format().compact();
