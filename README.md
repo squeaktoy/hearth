@@ -129,6 +129,22 @@ multitasking by timeslicing Wasm execution, then yielding to other green
 threads. Lunatic's operation is another large influence on Hearth's design, and
 Hearth may reference--or even directly use--Lunatic's code in its own codebase.
 
+## Services
+
+Processes may be registered in the runtime as a service. A service is simply a
+process that can be located using a string identifier. This way, other
+processes depending on the functionality provided by another process may
+consistently acquire access to that process, even if the process ID for the
+required process changes between instantiations, runtime executions, or peers.
+
+## Native Processes
+
+Some processes are not WebAssembly scripts but are instead processes running in
+the runtime application. These native processes provide non-native processes
+with features that sandboxed WebAssembly scripts would not otherwise have
+access to. These include global space configuration, mouse and keyboard input
+on desktops, and more.
+
 ## IPC
 
 To administrate the network, every peer in a Hearth network exposes an IPC
