@@ -136,14 +136,17 @@ pub trait ProcessStore {
 /// Interface to a single process.
 #[remote]
 pub trait ProcessApi {
+    /// Returns true if this process is still alive.
+    async fn is_alive(&self) -> CallResult<bool>;
+
     /// Kills this process.
-    async fn kill(&self) -> CallResult<()>;
+    async fn kill(&self) -> ResourceResult<()>;
 
     /// Sends a message to this process.
-    async fn send_message(&self, msg: Vec<u8>) -> CallResult<()>;
+    async fn send_message(&self, msg: Vec<u8>) -> ResourceResult<()>;
 
     /// Subscribes to this process's log.
-    async fn follow_log(&self) -> CallResult<ListSubscription<ProcessLogEvent>>;
+    async fn follow_log(&self) -> ResourceResult<ListSubscription<ProcessLogEvent>>;
 }
 
 /// Interface to a peer's local lumps.
