@@ -102,8 +102,6 @@ for password hashing and is highly popular. After exchanging session keys,
 [ChaCha20](https://en.wikipedia.org/wiki/Salsa20) is directly applied to TCP
 communication. ChaCha20 is another well-established cryptography protocol.
 
-TODO: write about future cryptography plans.
-
 ## Scripting
 
 Scripting in Hearth is done with WebAssembly. Blah blah blah, lightweight spec,
