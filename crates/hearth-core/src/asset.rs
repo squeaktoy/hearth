@@ -14,7 +14,7 @@ pub trait AssetLoader: Send + Sync + 'static {
 
 /// Object-safe wrapper trait for generic [AssetLoader]s.
 #[async_trait]
-pub trait AssetPool {
+pub trait AssetPool: Send + Sync + 'static {
     async fn load_asset(&self, data: &[u8]) -> usize;
 
     fn unload_asset(&self, id: usize);
