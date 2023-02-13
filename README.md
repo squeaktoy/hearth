@@ -328,17 +328,18 @@ on which libraries and resources to use in its development, and finds a handful
 of core developers who understand Hearth's goals and who are capable of
 meaningfully contributing in the long run.
 
-- [ ] Write a design document
-- [x] Create a Discord server
-- [x] Create a GitHub repository
-- [ ] Onboard 3-4 core developers who can contribute to Hearth long-term
-- [ ] Design a project logo
-- [ ] Set up continuous integration to check pull requests
-- [ ] Write a CONTRIBUTORS.md describing contribution workflow
-- [ ] Design a workspace structure
-- [ ] Finalize the rest of the phases of the roadmap
-- [ ] Create mocks for all of the codebase components
-- [ ] Money?
+- [ ] write a design document
+- [x] create a Discord server
+- [x] create a GitHub repository
+- [ ] onboard 3-4 core developers who can contribute to Hearth long-term
+- [ ] design a project logo
+- [ ] set up continuous integration to check pull requests
+- [ ] write a CONTRIBUTORS.md describing contribution workflow
+- [ ] design a workspace structure
+- [ ] set up licensing headers and copyright information
+- [ ] finalize the rest of the phases of the roadmap
+- [ ] create mocks for all of the codebase components
+- [ ] money?
 
 ## Phase 1: Pre-Alpha
 
@@ -363,6 +364,15 @@ to alpha as quickly as possible. Mock interfaces and placeholder data where
 functioning inter-component code would otherwise go are used to develop each
 component separately.
 
+- [x] implement password authentication and stream encryption
+- [x] create a standalone, usable, rend3-based 3D terminal emulator
+- [ ] design initial RPC network interfaces
+- [ ] write mock RPC endpoints for testing subsystems in isolation
+- [ ] implement IPC using Unix domain sockets (Unix only)
+- [ ] design an inter-subsystem plugin interface
+- [ ] create a lump store data structure
+- [ ] define guest-to-host WebAssembly APIs for logging, lump loading, asset loading, and message transmission
+
 ## Phase 2: Alpha
 
 In phase 2, Hearth begins to come together as a whole. Each subsystem is hooked
@@ -371,6 +381,14 @@ a single functioning application. Although at this point in development network
 servers are started up for testing, the protocols between subsystems are
 highly unstable, so long-lived, self-sustaining virtual spaces are still
 unfeasible.
+
+- [ ] asynchronous MSDF glyph loading
+- [ ] support IPC on Windows using an appropriate alternative to Unix domain sockets
+- [ ] complete the WebAssembly host call APIs
+- [ ] create native services for pancake mode input handling
+- [ ] add asset loaders for rend3 resources like meshes, textures, and materials
+- [ ] create native services for rend3 configuration like skyboxes, ambient and directional lighting, and camera setup
+- [ ] create native services for virtual terminal management
 
 ## Phase 3: Beta
 
@@ -388,4 +406,31 @@ makes phase 3 the most difficult phase to complete, as Hearth's goal during
 this step is to explore uncharted design territory in a unique execution
 environment.
 
+Here are some ideas for subjects of exploration that Hearth may explore in
+beta:
+- data backup
+- process-to-host integration with database APIs
+- persistent world storage
+- avatar movement and input handling systems
+- guest-side physics engines (using [Rapier](https://rapier.rs))
+- OBJ loading
+- FBX loading
+- glTF loading
+- avatar skeletal animation
+- inverse kinematics
+- audio compression
+- spatial audio
+- voice chat
+- collaborative world editing
+- live mesh editing
+- WASI-based text editors for non-native script authoring
+- Wasm compilers in Hearth for non-native script development
+
+These topics may be further explored post-beta. They mainly serve the purpose
+of guiding Hearth's developers towards supporting an aligned set of expected
+usecases and to fuel curiosity into Hearth's potential.
+
 ## Phase 4: Release
+
+- [ ] publish Hearth on the AUR
+- [ ] publish Hearth's crates to the AUR
