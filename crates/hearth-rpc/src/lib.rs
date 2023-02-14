@@ -142,9 +142,6 @@ pub trait ProcessApi {
     /// Kills this process.
     async fn kill(&self) -> ResourceResult<()>;
 
-    /// Sends a message to this process.
-    async fn send_message(&self, msg: Vec<u8>) -> ResourceResult<()>;
-
     /// Subscribes to this process's log.
     async fn follow_log(&self) -> ResourceResult<ListSubscription<ProcessLogEvent>>;
 }
