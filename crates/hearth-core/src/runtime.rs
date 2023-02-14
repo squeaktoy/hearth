@@ -71,17 +71,18 @@ impl RuntimeBuilder {
     pub fn run(self, config: RuntimeConfig) -> Arc<Runtime> {
         debug!("Spawning lump store server");
         let lump_store = Arc::new(LumpStoreImpl::new());
-        let (lump_store_server, lump_store_client) = LumpStoreServerShared::new(lump_store, 1024);
+        let (lump_store_server, lump_store_client) =
+            LumpStoreServerShared::new(lump_store.clone(), 1024);
         tokio::spawn(async move {
-            lump_store_server.serve(true);
+            lump_store_server.serve(true).await;
         });
 
         debug!("Spawning process store server");
         let process_store = Arc::new(ProcessStoreImpl::new());
         let (process_store_server, process_store_client) =
-            ProcessStoreServerShared::new(process_store, 1024);
+            ProcessStoreServerShared::new(process_store.clone(), 1024);
         tokio::spawn(async move {
-            process_store_server.serve(true);
+            process_store_server.serve(true).await;
         });
 
         let runtime = Arc::new(Runtime {
