@@ -153,3 +153,15 @@ impl PeerApi for Runtime {
         Ok(self.lump_store_client.clone())
     }
 }
+
+impl Runtime {
+    pub fn serve_peer_api(self: Arc<Self>) -> PeerApiClient {
+        debug!("Serving runtime PeerApi");
+        let (server, client) = PeerApiServerShared::new(self, 1024);
+        tokio::spawn(async move {
+            server.serve(true).await;
+        });
+
+        client
+    }
+}
