@@ -7,7 +7,7 @@ use hearth_rpc::remoc::rtc::ServerShared;
 use hearth_rpc::*;
 use hearth_types::PeerId;
 use remoc::rtc::async_trait;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
@@ -32,20 +32,22 @@ impl RuntimeBuilder {
         }
     }
 
-    pub fn add_plugin<T: Plugin>(&mut self, mut plugin: T) {
+    pub fn add_plugin<T: Plugin>(&mut self, mut plugin: T) -> &mut Self {
         let id = plugin.type_id();
         debug!("Adding {:?} plugin", id);
 
         if self.plugins.contains_key(&id) {
-            error!("Attempted to add plugin twice: {:?}", id);
-            return;
+            warn!("Attempted to add plugin twice: {:?}", id);
+            return self;
         }
 
         plugin.build(self);
         self.plugins.insert(id, Box::new(plugin));
+
+        self
     }
 
-    pub fn add_runner<F, R>(&mut self, cb: F)
+    pub fn add_runner<F, R>(&mut self, cb: F) -> &mut Self
     where
         F: FnOnce(Arc<Runtime>) -> R + Send + Sync + 'static,
         R: Future<Output = ()> + Send,
@@ -55,10 +57,13 @@ impl RuntimeBuilder {
                 cb(runner).await;
             });
         }));
+
+        self
     }
 
-    pub fn add_asset_loader(&mut self, class: String, loader: impl AssetLoader) {
+    pub fn add_asset_loader(&mut self, class: String, loader: impl AssetLoader) -> &mut Self {
         self.asset_store.add_loader(class, loader);
+        self
     }
 
     pub fn get_plugin<T: Plugin>(&self) -> Option<&T> {
