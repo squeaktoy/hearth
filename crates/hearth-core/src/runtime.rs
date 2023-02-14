@@ -13,12 +13,20 @@ use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
 use crate::process::ProcessStoreImpl;
 
+#[async_trait]
 pub trait Plugin: 'static {
     fn build(&mut self, builder: &mut RuntimeBuilder);
+
+    async fn run(&mut self, runtime: Arc<Runtime>);
+}
+
+struct PluginWrapper {
+    plugin: Box<dyn Any>,
+    runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>)>,
 }
 
 pub struct RuntimeBuilder {
-    plugins: HashMap<TypeId, Box<dyn Any>>,
+    plugins: HashMap<TypeId, PluginWrapper>,
     runners: Vec<Box<dyn FnOnce(Arc<Runtime>)>>,
     asset_store: AssetStore,
 }
@@ -42,7 +50,19 @@ impl RuntimeBuilder {
         }
 
         plugin.build(self);
-        self.plugins.insert(id, Box::new(plugin));
+
+        self.plugins.insert(
+            id,
+            PluginWrapper {
+                plugin: Box::new(plugin),
+                runner: Box::new(|mut plugin, runtime| {
+                    tokio::spawn(async move {
+                        let mut plugin = plugin.downcast_ref_mut();
+                        plugin.run(runtime);
+                    });
+                }),
+            },
+        );
 
         self
     }
@@ -73,6 +93,13 @@ impl RuntimeBuilder {
             .flatten()
     }
 
+    pub fn get_plugin_mut<T: Plugin>(&mut self) -> Option<&mut T> {
+        self.plugins
+            .get_mut(&TypeId::of::<T>())
+            .map(|p| p.downcast_ref_mut())
+            .flatten()
+    }
+
     pub fn run(self, config: RuntimeConfig) -> Arc<Runtime> {
         debug!("Spawning lump store server");
         let lump_store = Arc::new(LumpStoreImpl::new());
@@ -98,6 +125,11 @@ impl RuntimeBuilder {
             process_store_client,
             config,
         });
+
+        for (_id, wrapper) in self.plugins {
+            let PluginWrapper { plugin, runner } = wrapper;
+            runner(plugin, runtime.clone());
+        }
 
         for runner in self.runners {
             runner(runtime.clone());
