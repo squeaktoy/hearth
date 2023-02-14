@@ -1,10 +1,10 @@
 use tracing::{debug, error, info};
 
-/// Implementations of the `hearth-rpc` crate's RPC interfaces.
-pub mod api;
-
 /// Asset loading and storage.
 pub mod asset;
+
+/// Lump loading and storage.
+pub mod lump;
 
 /// Process interfaces and message routing.
 pub mod process;

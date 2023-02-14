@@ -9,8 +9,8 @@ use hearth_types::PeerId;
 use remoc::rtc::async_trait;
 use tracing::{debug, error};
 
-use crate::api::lump_store::LumpStoreImpl;
 use crate::asset::{AssetLoader, AssetStore};
+use crate::lump::LumpStoreImpl;
 use crate::process::ProcessStoreImpl;
 
 pub trait Plugin: 'static {
