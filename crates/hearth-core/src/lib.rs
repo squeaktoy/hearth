@@ -6,6 +6,9 @@ pub mod api;
 /// Asset loading and storage.
 pub mod asset;
 
+/// Process interfaces and message routing.
+pub mod process;
+
 /// Peer runtime building and execution.
 pub mod runtime;
 
