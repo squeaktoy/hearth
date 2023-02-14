@@ -86,11 +86,21 @@ Hearth operates over TCP socket connections. Although other real-time
 networking options like GameNetworkingSockets or QUIC have significantly
 better performance, TCP is being used because it doesn't require NAT traversal
 and it performs packet ordering and error checking without help from userspace.
-When a connection to a Hearth server is made, the client and server will
-perform a handshake to exchange encryption keys, and all further communication
-will be  encrypted. Hearth assumes that peers are friendly, but not that
-man-in-the-middle attacks are impossible. The specific encryption protocol is
-TBD.
+
+Hearth spaces are password-protected. Hearth assumes that peers are friendly,
+but not that all network nodes with access to the server can become peers, or
+that man-in-the-middle attacks are impossible. When a connection to a Hearth
+server is made, the client and server execute a password-authenticated
+key-exchange (PAKE) protocol, then use the resulting session key to encrypt
+all future communication between them.
+
+The specific PAKE method used is
+[Facebook's OPAQUE protocol](https://github.com/facebook/opaque-ke) with
+[Argon2](https://en.wikipedia.org/wiki/Argon2) as the password hash derivation
+function. OPAQUE has been audited by NCC Group and Argon2 is well-established
+for password hashing and is highly popular. After exchanging session keys,
+[ChaCha20](https://en.wikipedia.org/wiki/Salsa20) is directly applied to TCP
+communication. ChaCha20 is another well-established cryptography protocol.
 
 ## Scripting
 
@@ -117,6 +127,22 @@ multitasking by timeslicing Wasm execution, then yielding to other green
 threads. Lunatic's operation is another large influence on Hearth's design, and
 Hearth may reference--or even directly use--Lunatic's code in its own codebase.
 
+## Services
+
+Processes may be registered in the runtime as a service. A service is simply a
+process that can be located using a string identifier. This way, other
+processes depending on the functionality provided by another process may
+consistently acquire access to that process, even if the process ID for the
+required process changes between instantiations, runtime executions, or peers.
+
+## Native Processes
+
+Some processes are not WebAssembly scripts but are instead processes running in
+the runtime application. These native processes provide non-native processes
+with features that sandboxed WebAssembly scripts would not otherwise have
+access to. These include global space configuration, mouse and keyboard input
+on desktops, and more.
+
 ## IPC
 
 To administrate the network, every peer in a Hearth network exposes an IPC
@@ -131,42 +157,55 @@ load and execute the compiled module into Hearth using IPC.
 
 ## ECS
 
-## Assets
+## Lumps
 
-Assets are multipurpose, hash-identified binary blobs that are exchanged
-on-demand over the Hearth network. To distribute modules to other peers, Hearth
-first hashes each asset and uses that hash as an identifier to other peers. If
-a peer does not own a copy of an asset, it will not recognize the hash of that
-asset in its cache, and it will request the asset's data from another peer.
-Client peers request asset data from the server, and the server requests asset
+Lumps are multipurpose, hash-identified binary blobs that are exchanged
+on-demand over the Hearth network. To distribute lumps to other peers, Hearth
+first hashes each lump and uses that hash as an identifier to other peers. If
+a peer does not own a copy of a lump, it will not recognize the hash of that
+lump in its cache, and it will request the lump's data from another peer.
+Client peers request lump data from the server, and the server requests lump
 data from the client that has referenced the unrecognized ID.
 
-Before assets can be specialized for different kinds of content, they must be
-loaded. Different asset classes, like meshes, textures, and WebAssembly modules
-have different named identifiers. The names for those asset classes may be
-`Mesh`, `Texture`, or `WebAssembly`, for example. Once an asset is loaded, it
-may be passed into the engine in the places that expect a loaded asset, such as
-in a mesh renderer component. Wasm processes are also spawned using a loaded
-WebAssembly module asset as the executable source.
-
-Processes may create their own assets in memory and read a foreign asset's data
-back into process memory. In this way, processes may procedurally generate
+Processes may both create their own lump in memory and read a foreign lump's
+data back into process memory. In this way, processes may procedurally generate
 runtime Hearth content into the space, load content data formats that the
-core Hearth runtime does not recognize, or pipeline assets through multiple
+core Hearth runtime does not recognize, or pipeline lumps through multiple
 processes that each perform some transformation on them.
 
-Note that because Wasm modules are loaded from assets and because assets can be
-dynamically created by processes, Hearth processes may generate and load Wasm
-modules at runtime. This may be used, for example, in a WebAssembly compiler
-running inside of Hearth itself.
+Processes may send and receive the hashed IDs of lumps to other processes via
+messages. When an ID is sent to a process on a remote peer, however, the
+remote runtime may not recognize that a lump's ID has been referenced. The
+result is that the remote process obtains an ID for a lump but no way to access
+its data. To remedy this, processes have a host call that explicitly transfers
+a lump's data to a remote peer. This way, processes can ensure that remote
+processes have access to lumps that are being transferred.
 
-Processes have the ability to send and receive the IDs of assets to other
-processes. However, the runtime may not be aware that those IDs are being
-exchanged, so a process running on a remote peer may receive an ID in a message
-but the runtime will have no way of tracing it back to a peer that has that
-ID's data. To remedy this, processes have a host call that explicitly warms a
-target peer's asset cache with a given asset, and must use that host call when
-referencing asset IDs to a remote process that does not have the asset.
+## Assets
+
+Before lumps can be specialized for different kinds of content, they must be
+loaded into assets. Different asset classes, like meshes, textures, and
+WebAssembly modules have different named identifiers. The names for those asset
+classes may be `Mesh`, `Texture`, or `WebAssembly`, for example. An asset is
+loaded with the name of the asset class and the lump containing that asset's
+data. Once an asset is loaded, it may be passed into the engine in the places
+that expect a loaded asset, such as in a mesh renderer component. Wasm
+processes are also spawned using a loaded WebAssembly module asset as the
+executable source.
+
+Assets are peer-local and there is no way to transfer them between peers. This
+is because they have been specialized from a non-specialized binary blob into
+a specialized data format that may or may not be peer-specific. Processes have
+the responsibility and the privilege of converting opaque lumps into usable
+assets on their host peer.
+
+Note that lumps (and therefore assets) can be created by processes and that
+Wasm modules are a kind of asset. As a consequence of this, Hearth processes
+may generate and load Wasm modules at runtime. This allows a WebAssembly
+compiler that can create new Hearth processes to be in of itself a Wasm Hearth
+process. A major field of research in Hearth's [beta phase](#phase-3-beta) is
+to study the possibilities of a self-hosting Hearth environment using this
+technique.
 
 ## Terminal Emulator
 
@@ -255,9 +294,53 @@ node in the rend3 frame graph with a custom shader.
 
 ## WebAssembly
 
-## TUIs
+### Loading Lumps
 
-## CLIs
+### Logging From Wasm
+
+## CLI
+
+Hearth provides a command-line interface (CLI) utility program to perform
+simple interactions with the daemon. This may be invoked with an interactive
+shell or by shell scripts. Scripts may chain together multiple invocations of
+the CLI to create more complex workflows. This allows Hearth users to
+repeatedly perform complex actions without needing to compile and spawn a
+new Hearth process or to compile and run a new native process.
+
+The CLI program is named `hearth-ctl` and has multiple subcommands that each
+perform a different operation on the runtime. Hearth may add more subcommands
+as needed, but at the current time of writing it is known that they include:
+
+- `load-lump`: load a lump
+- `list-processes`: list processes
+- `kill`: kill a process
+- `spawn`: spawn a process
+- `tail`: tail a process's log
+- `send`: send a process a message
+
+`hearth-ctl` follows POSIX-like conventions for user interaction. It returns
+reasonable exit codes according to the POSIX standard, and displays output to
+`stdout` in lightly- or un-formatted strings that can be easily processed by a
+shell script.
+
+Exit codes are provided by the
+[yacexits](https://crates.io/crates/yacexits) crate.
+
+## TUI
+
+A more advanced alternative to `hearth-ctl` is `hearth-console`, a terminal
+user interface (TUI) utility program. `hearth-console` provides a long-running
+live view into the status of the connected Hearth daemon, and user-friendly
+controls (at least for users acclimated to GUIs) to administrate the Hearth
+runtime.
+
+Features include, but are not limited to:
+- a live, `htop`-like process view displaying all processes and services (TODO: and their children?)
+- tabbed process logs to follow multiple process logs simultaneously
+- TODO: resource consumption?
+
+`hearth-console` uses the [tui](https://crates.io/crates/tui) crate as the
+base TUI framework.
 
 # Roadmap
 
@@ -268,17 +351,18 @@ on which libraries and resources to use in its development, and finds a handful
 of core developers who understand Hearth's goals and who are capable of
 meaningfully contributing in the long run.
 
-- [ ] Write a design document
-- [x] Create a Discord server
-- [x] Create a GitHub repository
-- [ ] Onboard 3-4 core developers who can contribute to Hearth long-term
-- [ ] Design a project logo
-- [ ] Set up continuous integration to check pull requests
-- [ ] Write a CONTRIBUTORS.md describing contribution workflow
-- [ ] Design a workspace structure
-- [ ] Finalize the rest of the phases of the roadmap
-- [ ] Create mocks for all of the codebase components
-- [ ] Money?
+- [ ] write a design document
+- [x] create a Discord server
+- [x] create a GitHub repository
+- [ ] onboard 3-4 core developers who can contribute to Hearth long-term
+- [ ] design a project logo
+- [ ] set up continuous integration to check pull requests
+- [ ] write a CONTRIBUTORS.md describing contribution workflow
+- [ ] design a workspace structure
+- [ ] set up licensing headers and copyright information
+- [ ] finalize the rest of the phases of the roadmap
+- [ ] create mocks for all of the codebase components
+- [ ] money?
 
 ## Phase 1: Pre-Alpha
 
@@ -303,6 +387,15 @@ to alpha as quickly as possible. Mock interfaces and placeholder data where
 functioning inter-component code would otherwise go are used to develop each
 component separately.
 
+- [x] implement password authentication and stream encryption
+- [x] create a standalone, usable, rend3-based 3D terminal emulator
+- [ ] design initial RPC network interfaces
+- [ ] write mock RPC endpoints for testing subsystems in isolation
+- [ ] implement IPC using Unix domain sockets (Unix only)
+- [ ] design an inter-subsystem plugin interface
+- [ ] create a lump store data structure
+- [ ] define guest-to-host WebAssembly APIs for logging, lump loading, asset loading, and message transmission
+
 ## Phase 2: Alpha
 
 In phase 2, Hearth begins to come together as a whole. Each subsystem is hooked
@@ -311,6 +404,14 @@ a single functioning application. Although at this point in development network
 servers are started up for testing, the protocols between subsystems are
 highly unstable, so long-lived, self-sustaining virtual spaces are still
 unfeasible.
+
+- [ ] asynchronous MSDF glyph loading
+- [ ] support IPC on Windows using an appropriate alternative to Unix domain sockets
+- [ ] complete the WebAssembly host call APIs
+- [ ] create native services for pancake mode input handling
+- [ ] add asset loaders for rend3 resources like meshes, textures, and materials
+- [ ] create native services for rend3 configuration like skyboxes, ambient and directional lighting, and camera setup
+- [ ] create native services for virtual terminal management
 
 ## Phase 3: Beta
 
@@ -328,4 +429,31 @@ makes phase 3 the most difficult phase to complete, as Hearth's goal during
 this step is to explore uncharted design territory in a unique execution
 environment.
 
+Here are some ideas for subjects of exploration that Hearth may explore in
+beta:
+- data backup
+- process-to-host integration with database APIs
+- persistent world storage
+- avatar movement and input handling systems
+- guest-side physics engines (using [Rapier](https://rapier.rs))
+- OBJ loading
+- FBX loading
+- glTF loading
+- avatar skeletal animation
+- inverse kinematics
+- audio compression
+- spatial audio
+- voice chat
+- collaborative world editing
+- live mesh editing
+- WASI-based text editors for non-native script authoring
+- Wasm compilers in Hearth for non-native script development
+
+These topics may be further explored post-beta. They mainly serve the purpose
+of guiding Hearth's developers towards supporting an aligned set of expected
+usecases and to fuel curiosity into Hearth's potential.
+
 ## Phase 4: Release
+
+- [ ] publish Hearth on the AUR
+- [ ] publish Hearth's crates to the AUR

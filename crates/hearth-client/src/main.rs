@@ -1,4 +1,7 @@
-use std::net::SocketAddr;
+use std::{
+    net::{SocketAddr, ToSocketAddrs},
+    str::FromStr,
+};
 
 use clap::Parser;
 use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
@@ -13,7 +16,7 @@ pub struct Args {
     /// IP address and port of the server to connect to.
     // TODO support DNS resolution too
     #[arg(short, long)]
-    pub server: SocketAddr,
+    pub server: String,
 
     /// Password to use to authenticate to the server. Defaults to empty.
     #[arg(short, long, default_value = "")]
@@ -24,9 +27,28 @@ pub struct Args {
 async fn main() {
     let args = Args::parse();
     hearth_core::init_logging();
+    let server = match SocketAddr::from_str(&args.server) {
+        Err(_) => {
+            info!(
+                "Failed to parse \'{}\' to SocketAddr, attempting DNS resolution",
+                args.server
+            );
+            match args.server.to_socket_addrs() {
+                Err(err) => {
+                    error!("Failed to resolve IP: {:?}", err);
+                    return;
+                }
+                Ok(addrs) => match addrs.last() {
+                    None => return,
+                    Some(addr) => addr,
+                },
+            }
+        }
+        Ok(addr) => addr,
+    };
 
-    info!("Connecting to server at {:?}", args.server);
-    let mut socket = match TcpStream::connect(args.server).await {
+    info!("Connecting to server at {:?}", server);
+    let mut socket = match TcpStream::connect(server).await {
         Ok(s) => s,
         Err(err) => {
             error!("Failed to connect to server: {:?}", err);
