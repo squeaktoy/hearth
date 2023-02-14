@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 
+use hearth_rpc::{hearth_types::*, PeerProviderClient};
 use tracing::{debug, error};
 
 use crate::asset::{AssetLoader, AssetStore};
@@ -62,8 +63,10 @@ impl RuntimeBuilder {
             .flatten()
     }
 
-    pub fn run(self) -> Arc<Runtime> {
+    pub fn run(self, config: RuntimeConfig) -> Arc<Runtime> {
         let runtime = Arc::new(Runtime {
+            peer_provider: config.peer_provider,
+            this_peer: config.this_peer,
             asset_store: self.asset_store,
         });
 
@@ -75,6 +78,22 @@ impl RuntimeBuilder {
     }
 }
 
+/// Configuration info for a runtime.
+pub struct RuntimeConfig {
+    /// The provider to other peers on the network.
+    pub peer_provider: PeerProviderClient,
+
+    /// The ID of this peer.
+    pub this_peer: PeerId,
+}
+
 pub struct Runtime {
+    //// The assets in this runtime.
     pub asset_store: AssetStore,
+
+    /// The provider to other peers on the network.
+    pub peer_provider: PeerProviderClient,
+
+    /// The [PeerId] that this runtime represents.
+    pub this_peer: PeerId,
 }
