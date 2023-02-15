@@ -13,10 +13,17 @@ use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
 use crate::process::ProcessStoreImpl;
 
+/// Interface trait for plugins to the Hearth runtime.
+///
+/// Each plugin first builds onto a runtime using its `build` function and an
+/// in-progress [RuntimeBuilder]. After all plugins are added, the runtime
+/// starts, and the `run` method is called with a handle to the new runtime.
 #[async_trait]
 pub trait Plugin: 'static {
+    /// Builds a runtime using this plugin. See [RuntimeBuilder] for more info.
     fn build(&mut self, builder: &mut RuntimeBuilder);
 
+    /// Runs this plugin using an instantiated [Runtime].
     async fn run(&mut self, runtime: Arc<Runtime>);
 }
 
@@ -25,6 +32,7 @@ struct PluginWrapper {
     runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>)>,
 }
 
+/// Builder struct for a single Hearth [Runtime].
 pub struct RuntimeBuilder {
     plugins: HashMap<TypeId, PluginWrapper>,
     runners: Vec<Box<dyn FnOnce(Arc<Runtime>)>>,
@@ -32,6 +40,7 @@ pub struct RuntimeBuilder {
 }
 
 impl RuntimeBuilder {
+    /// Creates a new [RuntimeBuilder] with nothing loaded.
     pub fn new() -> Self {
         Self {
             plugins: Default::default(),
@@ -40,6 +49,10 @@ impl RuntimeBuilder {
         }
     }
 
+    /// Adds a plugin to the runtime.
+    ///
+    /// Plugins may use their [Plugin::build] method to add other plugins,
+    /// asset loaders, runners, or anything else.
     pub fn add_plugin<T: Plugin>(&mut self, mut plugin: T) -> &mut Self {
         let id = plugin.type_id();
         debug!("Adding {:?} plugin", id);
@@ -67,6 +80,12 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Adds a runner to the runtime.
+    ///
+    /// Runners are simple async functions that are spawned when the runtime is
+    /// started and are passed a handle to the new runtime. This may be used
+    /// for long-running event processing code or other functionality that
+    /// lasts the runtime's lifetime.
     pub fn add_runner<F, R>(&mut self, cb: F) -> &mut Self
     where
         F: FnOnce(Arc<Runtime>) -> R + Send + Sync + 'static,
@@ -81,11 +100,21 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Adds a new asset loader for a given asset class.
+    ///
+    /// Logs an error event if the asset class already has a loader.
     pub fn add_asset_loader(&mut self, class: String, loader: impl AssetLoader) -> &mut Self {
         self.asset_store.add_loader(class, loader);
         self
     }
 
+    /// Retrieves a reference to a plugin that has already been added.
+    ///
+    /// This function is intended to be used for dependencies of plugins, where
+    /// a plugin may need to look up or modify the contents of a previously-
+    /// added plugin. Using this function saves the code building the runtime
+    /// the trouble of manually passing runtimes to other runtimes as
+    /// dependencies.
     pub fn get_plugin<T: Plugin>(&self) -> Option<&T> {
         self.plugins
             .get(&TypeId::of::<T>())
@@ -93,6 +122,9 @@ impl RuntimeBuilder {
             .flatten()
     }
 
+    /// Retrieves a mutable reference to a plugin that has already been added.
+    ///
+    /// Mutable version of [Self::get_plugin].
     pub fn get_plugin_mut<T: Plugin>(&mut self) -> Option<&mut T> {
         self.plugins
             .get_mut(&TypeId::of::<T>())
@@ -100,6 +132,7 @@ impl RuntimeBuilder {
             .flatten()
     }
 
+    /// Consumes this builder and starts up the full [Runtime].
     pub fn run(self, config: RuntimeConfig) -> Arc<Runtime> {
         debug!("Spawning lump store server");
         let lump_store = Arc::new(LumpStoreImpl::new());
@@ -151,6 +184,15 @@ pub struct RuntimeConfig {
     pub info: PeerInfo,
 }
 
+/// An instance of a single Hearth runtime.
+///
+/// This contains all of the resources that are used by plugins, processes,
+/// and network peers. A runtime can be built and started using
+/// [RuntimeBuilder].
+///
+/// Note that Hearth uses Tokio for all of its asynchronous
+/// task execution and IO, so it's assumed that a Tokio runtime has already
+/// been created.
 pub struct Runtime {
     /// The configuration of this runtime.
     pub config: RuntimeConfig,
@@ -187,6 +229,7 @@ impl PeerApi for Runtime {
 }
 
 impl Runtime {
+    /// Spawns a new [PeerApiServer] for this runtime and returns a client to it.
     pub fn serve_peer_api(self: Arc<Self>) -> PeerApiClient {
         debug!("Serving runtime PeerApi");
         let (server, client) = PeerApiServerShared::new(self, 1024);
