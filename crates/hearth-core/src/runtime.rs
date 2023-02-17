@@ -7,7 +7,7 @@ use hearth_rpc::remoc::rtc::ServerShared;
 use hearth_rpc::*;
 use hearth_types::PeerId;
 use remoc::rtc::async_trait;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
@@ -19,7 +19,7 @@ use crate::process::ProcessStoreImpl;
 /// in-progress [RuntimeBuilder]. After all plugins are added, the runtime
 /// starts, and the `run` method is called with a handle to the new runtime.
 #[async_trait]
-pub trait Plugin: 'static {
+pub trait Plugin: Send + Sync + 'static {
     /// Builds a runtime using this plugin. See [RuntimeBuilder] for more info.
     fn build(&mut self, builder: &mut RuntimeBuilder);
 
@@ -69,8 +69,8 @@ impl RuntimeBuilder {
             PluginWrapper {
                 plugin: Box::new(plugin),
                 runner: Box::new(|mut plugin, runtime| {
+                    let mut plugin = plugin.downcast::<T>().unwrap();
                     tokio::spawn(async move {
-                        let mut plugin = plugin.downcast_ref_mut();
                         plugin.run(runtime);
                     });
                 }),
@@ -118,7 +118,7 @@ impl RuntimeBuilder {
     pub fn get_plugin<T: Plugin>(&self) -> Option<&T> {
         self.plugins
             .get(&TypeId::of::<T>())
-            .map(|p| p.downcast_ref())
+            .map(|p| p.plugin.downcast_ref())
             .flatten()
     }
 
@@ -128,7 +128,7 @@ impl RuntimeBuilder {
     pub fn get_plugin_mut<T: Plugin>(&mut self) -> Option<&mut T> {
         self.plugins
             .get_mut(&TypeId::of::<T>())
-            .map(|p| p.downcast_ref_mut())
+            .map(|p| p.plugin.downcast_mut())
             .flatten()
     }
 
@@ -143,7 +143,7 @@ impl RuntimeBuilder {
         });
 
         debug!("Spawning process store server");
-        let process_store = Arc::new(ProcessStoreImpl::new());
+        let process_store = ProcessStoreImpl::new();
         let (process_store_server, process_store_client) =
             ProcessStoreServerShared::new(process_store.clone(), 1024);
         tokio::spawn(async move {
