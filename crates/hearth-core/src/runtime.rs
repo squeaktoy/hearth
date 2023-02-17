@@ -68,10 +68,10 @@ impl RuntimeBuilder {
             id,
             PluginWrapper {
                 plugin: Box::new(plugin),
-                runner: Box::new(|mut plugin, runtime| {
+                runner: Box::new(|plugin, runtime| {
                     let mut plugin = plugin.downcast::<T>().unwrap();
                     tokio::spawn(async move {
-                        plugin.run(runtime);
+                        plugin.run(runtime).await;
                     });
                 }),
             },
