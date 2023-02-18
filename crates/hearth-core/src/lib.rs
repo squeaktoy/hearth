@@ -1,7 +1,16 @@
 use tracing::{debug, error, info};
 
-/// Implementations of the `hearth-rpc` crate's RPC interfaces.
-pub mod api;
+/// Asset loading and storage.
+pub mod asset;
+
+/// Lump loading and storage.
+pub mod lump;
+
+/// Process interfaces and message routing.
+pub mod process;
+
+/// Peer runtime building and execution.
+pub mod runtime;
 
 /// Helper function to set up console logging with reasonable defaults.
 pub fn init_logging() {

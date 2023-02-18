@@ -134,19 +134,20 @@ pub trait ProcessStore {
 }
 
 /// Interface to a single process.
+///
+/// All of these methods still function when the process is dead.
 #[remote]
 pub trait ProcessApi {
     /// Returns true if this process is still alive.
     async fn is_alive(&self) -> CallResult<bool>;
 
     /// Kills this process.
-    async fn kill(&self) -> ResourceResult<()>;
-
-    /// Sends a message to this process.
-    async fn send_message(&self, msg: Vec<u8>) -> ResourceResult<()>;
+    async fn kill(&self) -> CallResult<()>;
 
     /// Subscribes to this process's log.
-    async fn follow_log(&self) -> ResourceResult<ListSubscription<ProcessLogEvent>>;
+    ///
+    /// Even if the process is dead, this will still return a full log history.
+    async fn follow_log(&self) -> CallResult<ListSubscription<ProcessLogEvent>>;
 }
 
 /// Interface to a peer's local lumps.

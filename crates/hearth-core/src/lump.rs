@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
 use bytes::Buf;
-use hearth_rpc::remoc::{self, rtc::CallError};
+use hearth_rpc::*;
+use hearth_types::*;
 use remoc::robj::lazy_blob::{LazyBlob, Provider as BlobProvider};
+use remoc::rtc::async_trait;
 use tokio::sync::RwLock;
-
-use super::*;
+use tracing::error;
 
 struct Lump {
     provider: BlobProvider,
@@ -79,6 +80,10 @@ impl LumpStoreImpl {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use hearth_rpc::remoc::rtc::ServerShared;
+
     use super::*;
 
     fn make_id(bytes: &[u8]) -> LumpId {

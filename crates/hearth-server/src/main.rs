@@ -3,11 +3,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use clap::Parser;
+use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
 use hearth_network::auth::ServerAuthenticator;
 use hearth_rpc::*;
 use hearth_types::*;
 use remoc::robs::hash_map::{HashMapSubscription, ObservableHashMap};
-use remoc::rtc::{async_trait, LocalRwLock, ServerShared, ServerSharedMut};
+use remoc::rtc::{async_trait, LocalRwLock, ServerSharedMut};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
 
@@ -43,13 +44,10 @@ async fn main() {
         }
     };
 
-    debug!("Creating peer API");
     let peer_info = PeerInfo { nickname: None };
-    let peer_api = hearth_core::api::spawn_peer_api(peer_info.clone());
 
     debug!("Creating peer provider");
-    let mut peer_provider = PeerProviderImpl::new();
-    peer_provider.add_peer(SELF_PEER_ID, peer_api, peer_info);
+    let peer_provider = PeerProviderImpl::new();
     let peer_provider = Arc::new(LocalRwLock::new(peer_provider));
 
     let (peer_provider_server, peer_provider_client) =
@@ -60,6 +58,20 @@ async fn main() {
         debug!("Running peer provider server");
         peer_provider_server.serve(true).await;
     });
+
+    debug!("Initializing runtime");
+    let config = RuntimeConfig {
+        peer_provider: peer_provider_client.clone(),
+        this_peer: SELF_PEER_ID,
+        info: peer_info.clone(),
+    };
+
+    let runtime = RuntimeBuilder::new().run(config);
+    let peer_api = runtime.clone().serve_peer_api();
+    peer_provider
+        .write()
+        .await
+        .add_peer(SELF_PEER_ID, peer_api, peer_info);
 
     debug!("Initializing IPC");
     let daemon_listener = match hearth_ipc::Listener::new().await {

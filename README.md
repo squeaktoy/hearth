@@ -257,6 +257,15 @@ definition, and the assumption is being made that no programs other than Hearth
 or its forks will be using the protocol. The development time saved is more
 than worth the loss of interoperability.
 
+## Plugins
+
+Although Hearth's goal is to implement as much as possible inside of its
+processes, some system- or hardware-level interfacing is unavoidable. In
+order to make this interfacing modular and optional Hearth defines a plugin
+system for all non-essential components that all of its major subsystems are
+built on top of. This includes IPC, rendering, input handling, terminal
+management, and WebAssembly process execution itself.
+
 ## Rendering
 
 Scenes are rendered with [rend3](https://github.com/BVE-Reborn/rend3), a

@@ -4,6 +4,7 @@ use std::{
 };
 
 use clap::Parser;
+use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
 use hearth_network::auth::login;
 use hearth_rpc::*;
 use tokio::net::TcpStream;
@@ -92,7 +93,14 @@ async fn main() {
     info!("Assigned peer ID {:?}", offer.new_id);
 
     let peer_info = PeerInfo { nickname: None };
-    let peer_api = hearth_core::api::spawn_peer_api(peer_info);
+    let config = RuntimeConfig {
+        peer_provider: offer.peer_provider.clone(),
+        this_peer: offer.new_id,
+        info: peer_info,
+    };
+
+    let runtime = RuntimeBuilder::new().run(config);
+    let peer_api = runtime.clone().serve_peer_api();
 
     tx.send(ClientOffer {
         peer_api: peer_api.to_owned(),
@@ -112,7 +120,7 @@ async fn main() {
     };
 
     let daemon_offer = DaemonOffer {
-        peer_provider: offer.peer_provider.clone(),
+        peer_provider: offer.peer_provider,
         peer_id: offer.new_id,
     };
 
