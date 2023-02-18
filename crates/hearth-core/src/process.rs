@@ -230,6 +230,18 @@ impl ProcessStoreImpl {
                         // there is a chance of double-removal race conditions; that's a bug
                         error!("Attempted to kill dead PID {}", pid.0);
                     }
+
+                    // TODO reverse lookup?
+                    let service = inner
+                        .services
+                        .iter()
+                        .find(|(_name, service_pid)| **service_pid == pid)
+                        .map(|(name, _pid)| name.to_owned());
+
+                    if let Some(service) = service {
+                        debug!("Removing {} service", service);
+                        inner.services.remove(&service);
+                    }
                 } else {
                     debug!("All process store references dropped; exiting");
                     break;
