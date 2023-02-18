@@ -1,18 +1,31 @@
 [workspace]
+resolver = "2"
 members = [
   "crates/font-mud",
+  "crates/hearth-client",
+  "crates/hearth-ctl",
   "crates/hearth-cognito",
   "crates/hearth-core",
   "crates/hearth-guest",
+  "crates/hearth-ipc",
   "crates/hearth-macros",
+  "crates/hearth-network",
   "crates/hearth-rpc",
+  "crates/hearth-server",
+  "crates/hearth-types",
   "crates/hearth-wasm",
+  "crates/rend3-alacritty",
 ]
 
 [workspace.dependencies]
+hearth-core = { path = "crates/hearth-core" }
+hearth-ipc = { path = "crates/hearth-ipc" }
 hearth-macros = { path = "crates/hearth-macros" }
+hearth-network = { path = "crates/hearth-network" }
 hearth-rpc = { path = "crates/hearth-rpc" }
+hearth-types = { path = "crates/hearth-types" }
 hearth-wasm = { path = "crates/hearth-wasm" }
+tracing = "0.1.37"
 
 [workspace.dependencies.remoc]
 version = "0.10"

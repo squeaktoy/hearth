@@ -1,12 +1,12 @@
+use msdfgen::Range;
 use std::fmt;
 use std::fmt::Formatter;
-use msdfgen::Range;
 use ttf_parser::GlyphId;
 
 #[derive(Debug, Clone)]
 pub enum FontError {
     GlyphShape(GlyphShapeError),
-    AutoFraming{
+    AutoFraming {
         glyph: GlyphId,
         width: usize,
         height: usize,
@@ -20,7 +20,7 @@ pub struct GlyphShapeError(pub GlyphId);
 
 impl fmt::Display for GlyphShapeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "glyph shape formation error for glyph id: {}", self.0.0)
+        write!(f, "glyph shape formation error for glyph id: {}", self.0 .0)
     }
 }
 
@@ -30,7 +30,12 @@ impl fmt::Display for FontError {
             FontError::GlyphShape(glyph_shape_error) => {
                 write!(f, "{}", glyph_shape_error)
             }
-            FontError::AutoFraming { glyph, width, height, range } => {
+            FontError::AutoFraming {
+                glyph,
+                width,
+                height,
+                range,
+            } => {
                 write!(f, "failed to autoframe glyph: {}, with dimensions:: width: {}, height: {}, px_range: {:?}", glyph.0, width, height, range)
             }
             FontError::PackingError(glyph) => {
@@ -39,6 +44,5 @@ impl fmt::Display for FontError {
         }
     }
 }
-
 
 pub type FontResult<T> = Result<T, FontError>;

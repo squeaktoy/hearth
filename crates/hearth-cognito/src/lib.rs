@@ -1,12 +1,11 @@
 use hearth_macros::impl_wasm_linker;
 use hearth_rpc::ProcessApi;
 use hearth_wasm::{GuestMemory, WasmLinker};
+use tracing::info;
 use wasmtime::{Caller, Linker};
 
 /// This contains all script-accessible process-related stuff.
-pub struct Cognito {
-    pub api: Box<dyn ProcessApi + Send + Sync>,
-}
+pub struct Cognito {}
 
 // Should automatically generate link_print_hello_world:
 // #[impl_wasm_linker]
@@ -14,11 +13,14 @@ pub struct Cognito {
 #[impl_wasm_linker]
 impl Cognito {
     pub async fn print_hello_world(&self) {
-        self.api.print_hello_world().await.unwrap();
+        info!("Hello, world!");
     }
+
     pub async fn do_number(&self, number: u32) -> u32 {
-        self.api.do_number(number).await.unwrap()
+        info!("do_number({}) called", number);
+        number + 1
     }
+
     // impl_wasm_linker should also work with non-async functions
     //
     // if a function is passed GuestMemory or GuestMemory<'_>, the macro should
@@ -37,40 +39,22 @@ impl Cognito {
 mod tests {
     use super::*;
 
-    use hearth_rpc::{remoc, CallResult};
-    use remoc::rtc::async_trait;
-    use wasmtime::{Config, Engine, Instance, Store};
+    use wasmtime::{Config, Engine, Store};
 
-    struct MockProcessApi;
-
-    #[async_trait]
-    impl ProcessApi for MockProcessApi {
-        async fn print_hello_world(&self) -> CallResult<()> {
-            println!("Hello, world!");
-            Ok(())
-        }
-
-        async fn do_number(&self, number: u32) -> CallResult<u32> {
-            Ok(number)
-        }
-    }
-
-    #[test]
-    fn host_works() {
-        let api = Box::new(MockProcessApi);
-        let cognito = Cognito { api };
-        cognito.print_hello_world();
+    #[tokio::test]
+    async fn host_works() {
+        let cognito = Cognito {};
+        cognito.print_hello_world().await;
     }
 
     struct MockStructure {
         pub cognito: Cognito,
     }
+
     impl Default for MockStructure {
         fn default() -> Self {
             Self {
-                cognito: Cognito {
-                    api: Box::new(MockProcessApi),
-                },
+                cognito: Cognito {},
             }
         }
     }
@@ -85,7 +69,6 @@ mod tests {
         config.async_support(true);
         let engine = Engine::new(&config).unwrap();
         let mut linker: wasmtime::Linker<MockStructure> = Linker::new(&engine);
-        let api = Box::new(MockProcessApi);
         let mut store = Store::new(&engine, MockStructure::default());
         Cognito::add_to_linker(&mut linker);
         (linker, store)

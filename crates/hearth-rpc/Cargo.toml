@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-remoc = { workspace = true, features = ["rtc"] }
+hearth-types = { workspace = true }
+remoc = { workspace = true, features = ["robj", "robs", "rtc"] }
 serde = { workspace = true }

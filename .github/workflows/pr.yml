@@ -1,0 +1,42 @@
+name: Pull Request Checks
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2.2.0
+    - name: Build
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --all-features
+    - name: Test
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --all-features
+  clippy_check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: Swatinem/rust-cache@v2.2.0
+    - run: rustup component add clippy
+    - uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
+  rustfmt:
+    if: ${{ false }}  # disable for now
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: LoliGothick/rustfmt-check@master
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,9 @@
+[package]
+name = "hearth-ipc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hearth-rpc = { workspace = true }
+tokio = { version = "1.24", features = ["net"] }
+tracing = { workspace = true }
