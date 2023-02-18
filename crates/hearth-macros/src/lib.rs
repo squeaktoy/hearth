@@ -27,7 +27,7 @@ pub fn impl_wasm_linker(
         );
     }
 
-    let return_token_stream: proc_macro::TokenStream = quote! {
+    quote! {
         impl #impl_type {
             #(#items_within_impl)*
             #(#link_wrapped_fns)*
@@ -38,8 +38,7 @@ pub fn impl_wasm_linker(
             }
         }
     }
-    .into();
-    return_token_stream
+    .into()
 }
 fn handle_fn_item(
     link_wrapped_fns: &mut Vec<TokenStream>,
@@ -73,26 +72,22 @@ fn generate_linker_function(
 }
 fn generate_internal_function(fn_method: &ImplItemMethod, impl_type: &Ident) -> TokenStream {
     let impl_type = impl_type.clone();
-    let is_async = is_async(fn_method);
     let fn_name = get_fn_name(fn_method);
     let internal_args = get_internal_args(fn_method);
     let internal_parameters = get_internal_parameters(fn_method);
     let return_type = fn_method.sig.output.clone();
-    match is_async {
-        true => {
-            quote! {
-                async fn #fn_name <T: AsRef<#impl_type> + Send>(#internal_args) #return_type {
-                    let this = caller.data().as_ref();
-                    this.#fn_name(#internal_parameters).await
-                }
+    if is_async(fn_method) {
+        quote! {
+            async fn #fn_name <T: AsRef<#impl_type> + Send>(#internal_args) #return_type {
+                let this = caller.data().as_ref();
+                this.#fn_name(#internal_parameters).await
             }
         }
-        false => {
-            quote! {
-                fn #fn_name <T: AsRef<#impl_type> + Send>(#internal_args) #return_type {
-                    let this = caller.data().as_ref();
-                    this.#fn_name(#internal_parameters)
-                }
+    } else {
+        quote! {
+            fn #fn_name <T: AsRef<#impl_type> + Send>(#internal_args) #return_type {
+                let this = caller.data().as_ref();
+                this.#fn_name(#internal_parameters)
             }
         }
     }
@@ -107,43 +102,33 @@ fn generate_func_wrap(fn_method: &ImplItemMethod, impl_type: &Ident) -> TokenStr
     let func_wrap_ident = generate_func_wrap_ident(fn_method);
     let module_literal = get_module_literal(impl_type);
     let fn_literal = get_func_wrap_literal(fn_method);
-    let closure_call_params = generate_closure_call_params(fn_method);
+    let closure_call_params = get_internal_parameters(fn_method);
     let closure_args = generate_closure_args(fn_method);
-
     let internal_fn_name = get_fn_name(fn_method);
-    let fn_call_thing = match is_async(fn_method) {
-        true => {
-            quote! {
-                Box::new(#internal_fn_name(caller, #closure_call_params))
-            }
+    let fn_call_thing = if is_async(fn_method) {
+        quote! {
+            Box::new(#internal_fn_name(caller, #closure_call_params))
         }
-        false => {
-            quote! {
-                #internal_fn_name(caller, #closure_call_params)
-            }
+    } else {
+        quote! {
+            #internal_fn_name(caller, #closure_call_params)
         }
     };
-    match has_guest_memory(&get_fn_args(fn_method)) {
-        true => {
-            quote! {
-                linker.#func_wrap_ident(#module_literal, #fn_literal, |#closure_args| {
-                    let memory = GuestMemory::from_caller(&mut caller);
+    if has_guest_memory(&get_fn_args(fn_method)) {
+        quote! {
+            linker.#func_wrap_ident(#module_literal, #fn_literal, |#closure_args| {
+                let memory = GuestMemory::from_caller(&mut caller);
 
-                    #fn_call_thing
-                }).unwrap();
-            }
+                #fn_call_thing
+            }).unwrap();
         }
-        false => {
-            quote! {
-                linker.#func_wrap_ident(#module_literal, #fn_literal, |#closure_args| {
-                    #fn_call_thing
-                }).unwrap();
-            }
+    } else {
+        quote! {
+            linker.#func_wrap_ident(#module_literal, #fn_literal, |#closure_args| {
+                #fn_call_thing
+            }).unwrap();
         }
     }
-}
-fn generate_closure_call_params(fn_method: &ImplItemMethod) -> TokenStream {
-    get_internal_parameters(fn_method)
 }
 fn generate_closure_args(fn_method: &ImplItemMethod) -> TokenStream {
     let caller_arg = quote! {
@@ -155,16 +140,14 @@ fn generate_closure_args(fn_method: &ImplItemMethod) -> TokenStream {
     }
 }
 fn generate_func_wrap_ident(fn_method: &ImplItemMethod) -> Ident {
-    let is_async = is_async(fn_method);
     let mut num_args = get_fn_args(fn_method).len();
     if has_guest_memory(&get_fn_args(fn_method)) {
         num_args -= 1;
     }
-    let str = match is_async {
-        true => {
-            format!("func_wrap{num_args}_async")
-        }
-        false => String::from("func_wrap"),
+    let str = if is_async(fn_method) {
+        format!("func_wrap{num_args}_async")
+    } else {
+        String::from("func_wrap")
     };
     Ident::new(str.as_str(), Span::call_site())
 }
