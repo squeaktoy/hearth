@@ -1,5 +1,5 @@
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::Arc;
 
@@ -7,11 +7,11 @@ use hearth_rpc::remoc::rtc::ServerShared;
 use hearth_rpc::*;
 use hearth_types::PeerId;
 use remoc::rtc::async_trait;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
-use crate::process::ProcessStoreImpl;
+use crate::process::{Process, ProcessStoreImpl};
 
 /// Interface trait for plugins to the Hearth runtime.
 ///
@@ -36,6 +36,7 @@ struct PluginWrapper {
 pub struct RuntimeBuilder {
     plugins: HashMap<TypeId, PluginWrapper>,
     runners: Vec<Box<dyn FnOnce(Arc<Runtime>)>>,
+    native_services: HashSet<String>,
     asset_store: AssetStore,
 }
 
@@ -45,6 +46,7 @@ impl RuntimeBuilder {
         Self {
             plugins: Default::default(),
             runners: Default::default(),
+            native_services: Default::default(),
             asset_store: Default::default(),
         }
     }
@@ -98,6 +100,29 @@ impl RuntimeBuilder {
         }));
 
         self
+    }
+
+    /// Adds a service.
+    ///
+    /// Logs an error and skips adding the service if the service name is
+    /// taken.
+    ///
+    /// Behind the scenes this creates a runner that spawns the process and
+    /// registers it as a service.
+    pub fn add_native_service(&mut self, name: String, process: impl Process) {
+        if self.native_services.contains(&name) {
+            error!("Service name {} is taken", name);
+            return;
+        }
+
+        self.native_services.insert(name);
+
+        self.runners.push(Box::new(|runtime| {
+            tokio::spawn(async move {
+                let pid = runtime.process_store.spawn(runtime, process).await;
+                runtime.process_store.register_service(pid, name).await;
+            });
+        }));
     }
 
     /// Adds a new asset loader for a given asset class.
