@@ -18,6 +18,7 @@ members = [
 ]
 
 [workspace.dependencies]
+bytemuck = "1.13"
 hearth-core = { path = "crates/hearth-core" }
 hearth-ipc = { path = "crates/hearth-ipc" }
 hearth-macros = { path = "crates/hearth-macros" }
