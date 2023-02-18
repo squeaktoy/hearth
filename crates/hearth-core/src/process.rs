@@ -1,3 +1,13 @@
+//! Process interface, store, messages, and related resources.
+//!
+//! To create a process store from scratch, call [ProcessStoreImpl::new]. This
+//! is called automatically as part of runtime startup. Then, implement the
+//! [Process] trait for process types, and spawn instances of those types in
+//! a store with [ProcessStoreImpl::spawn].
+//!
+//! [ProcessStoreImpl] implements the [ProcessStore] RPC trait, which provides
+//! access to the store to other network peers or IPC daemons.
+
 use std::sync::{Arc, Weak};
 
 use hearth_rpc::remoc::robs::hash_map::HashMapSubscription;
@@ -13,12 +23,23 @@ use tracing::{debug, error, info, trace};
 
 use crate::runtime::Runtime;
 
+/// An interface trait for processes.
+///
+/// To create a new type of process, this trait may be implemented. Then, an
+/// instance of that type may passed to [ProcessStoreImpl::spawn] to spawn the
+/// process and gain access to a process's functionality.
 #[async_trait]
 pub trait Process: Send + Sync + 'static {
+    /// Returns the [ProcessInfo] for this process.
+    ///
+    /// Called once during spawning.
     fn get_info(&self) -> ProcessInfo;
+
+    /// Runs this process using a [ProcessContext] allocated from the store.
     async fn run(&mut self, ctx: ProcessContext);
 }
 
+/// A single message sent from one process to another.
 #[derive(Clone, Debug)]
 pub struct Message {
     /// The ID of the process that sent this message.
@@ -48,7 +69,7 @@ pub struct ProcessContext {
     /// True when this process is not dead.
     is_alive: watch::Receiver<bool>,
 
-    /// Sender to set [is_alive] itself.
+    /// Sender to set [is_alive] manually.
     is_alive_tx: Arc<watch::Sender<bool>>,
 
     /// Channel to send IDs of killed processes to.
@@ -265,7 +286,11 @@ impl ProcessStoreImpl {
         }
     }
 
-    /// Creates a process and its new [ProcessContext].
+    /// Allocates a process and its [ProcessContext].
+    ///
+    /// To actually spawn a [Process] implementation, use [Self::spawn]
+    /// instead. This function only allocates the context for a process
+    /// without running it.
     pub async fn spawn_context(&self, runtime: Arc<Runtime>, info: ProcessInfo) -> ProcessContext {
         let (mailbox_tx, mailbox) = mpsc::channel(1024);
         let (is_alive_tx, is_alive) = watch::channel(true);

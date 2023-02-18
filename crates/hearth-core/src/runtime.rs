@@ -1,3 +1,9 @@
+//! Hearth runtime construction and the plugin interface.
+//!
+//! To get started, call [RuntimeBuilder::new] to start building a runtime,
+//! then add plugins, runners, or asset loaders to the builder. When finished,
+//! call [RuntimeBuilder::run] to start up the configured runtime.
+
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -109,10 +115,10 @@ impl RuntimeBuilder {
     ///
     /// Behind the scenes this creates a runner that spawns the process and
     /// registers it as a service.
-    pub fn add_service(&mut self, name: String, process: impl Process) {
+    pub fn add_service(&mut self, name: String, process: impl Process) -> &mut Self {
         if self.services.contains(&name) {
             error!("Service name {} is taken", name);
-            return;
+            return self;
         }
 
         self.services.insert(name.clone());
@@ -128,6 +134,8 @@ impl RuntimeBuilder {
                 }
             });
         }));
+
+        self
     }
 
     /// Adds a new asset loader for a given asset class.
