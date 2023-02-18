@@ -36,7 +36,7 @@ struct PluginWrapper {
 pub struct RuntimeBuilder {
     plugins: HashMap<TypeId, PluginWrapper>,
     runners: Vec<Box<dyn FnOnce(Arc<Runtime>)>>,
-    native_services: HashSet<String>,
+    services: HashSet<String>,
     asset_store: AssetStore,
 }
 
@@ -46,7 +46,7 @@ impl RuntimeBuilder {
         Self {
             plugins: Default::default(),
             runners: Default::default(),
-            native_services: Default::default(),
+            services: Default::default(),
             asset_store: Default::default(),
         }
     }
@@ -109,18 +109,23 @@ impl RuntimeBuilder {
     ///
     /// Behind the scenes this creates a runner that spawns the process and
     /// registers it as a service.
-    pub fn add_native_service(&mut self, name: String, process: impl Process) {
-        if self.native_services.contains(&name) {
+    pub fn add_service(&mut self, name: String, process: impl Process) {
+        if self.services.contains(&name) {
             error!("Service name {} is taken", name);
             return;
         }
 
-        self.native_services.insert(name);
-
-        self.runners.push(Box::new(|runtime| {
+        self.services.insert(name.clone());
+        self.runners.push(Box::new(move |runtime| {
             tokio::spawn(async move {
-                let pid = runtime.process_store.spawn(runtime, process).await;
-                runtime.process_store.register_service(pid, name).await;
+                let pid = runtime.process_store.spawn(runtime.clone(), process).await;
+                let result = runtime.process_store.register_service(pid, name).await;
+                match result {
+                    Ok(_) => {}
+                    Err(err) => {
+                        error!("Service registration error: {:?}", err);
+                    }
+                }
             });
         }));
     }
