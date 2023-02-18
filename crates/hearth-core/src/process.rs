@@ -93,6 +93,25 @@ impl ProcessContext {
         }
     }
 
+    /// Sends a message to another process.
+    pub async fn send_message(&self, dst: ProcessId, data: Vec<u8>) {
+        let (peer, local_dst) = dst.split();
+
+        let msg = Message {
+            sender: self.pid,
+            data,
+        };
+
+        if peer == self.runtime.config.this_peer {
+            self.runtime
+                .process_store
+                .send_message(local_dst, msg)
+                .await;
+        } else {
+            error!("Remote process message sending is unimplemented");
+        }
+    }
+
     /// Receives a single message to this process.
     ///
     /// Returns `None` if this process is dead.
@@ -217,6 +236,21 @@ impl ProcessStoreImpl {
                 }
             }
         });
+    }
+
+    async fn send_message(&self, dst: LocalProcessId, msg: Message) {
+        let store = self.inner.read().await;
+        if let Some(wrapper) = store.processes.get(&dst) {
+            // TODO i'm too high to tell if this error catching is necessary
+            match wrapper.mailbox.send(msg).await {
+                Ok(()) => {}
+                Err(err) => {
+                    error!("Message mailbox sending error: {:?}", err);
+                }
+            }
+        } else {
+            // TODO error handling for when process ID is invalid
+        }
     }
 }
 
