@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 
 use hearth_rpc::remoc::robs::hash_map::HashMapSubscription;
@@ -8,6 +7,7 @@ use hearth_types::*;
 use remoc::robs::hash_map::ObservableHashMap;
 use remoc::robs::list::{ListSubscription, ObservableList, ObservableListDistributor};
 use remoc::rtc::async_trait;
+use sharded_slab::Slab;
 use tokio::sync::{mpsc, watch, RwLock};
 use tracing::{debug, error, info, trace};
 
@@ -15,7 +15,8 @@ use crate::runtime::Runtime;
 
 #[async_trait]
 pub trait Process: Send + Sync + 'static {
-    async fn run(&mut self, ctx: ProcessContext);
+    fn get_info(&self) -> ProcessInfo;
+    async fn run(&mut self, ctx: &mut ProcessContext);
 }
 
 #[derive(Clone, Debug)]
@@ -51,7 +52,7 @@ pub struct ProcessContext {
     is_alive_tx: Arc<watch::Sender<bool>>,
 
     /// Channel to send IDs of killed processes to.
-    on_kill: mpsc::UnboundedSender<LocalProcessId>,
+    on_kill_tx: mpsc::UnboundedSender<LocalProcessId>,
 
     /// Observable log for this process's log events.
     log: ObservableList<ProcessLogEvent>,
@@ -125,7 +126,7 @@ impl ProcessContext {
     pub fn kill(&mut self) {
         if self.is_alive_tx.send_replace(false) {
             let (_peer, local_pid) = self.pid.split();
-            let _ = self.on_kill.send(local_pid); // ignore result; not responsible for killing if the receiver's store is unavailable
+            let _ = self.on_kill_tx.send(local_pid); // ignore result; not responsible for killing if the receiver's store is unavailable
         }
     }
 
@@ -137,7 +138,7 @@ impl ProcessContext {
 
 #[derive(Clone)]
 struct ProcessWrapper {
-    mailbox: mpsc::Sender<Message>,
+    mailbox_tx: mpsc::Sender<Message>,
     log_distributor: ObservableListDistributor<ProcessLogEvent>,
     is_alive_tx: Arc<watch::Sender<bool>>,
 }
@@ -170,7 +171,6 @@ impl ProcessApi for ProcessApiImpl {
 
 struct ProcessStoreInner {
     services: ObservableHashMap<String, LocalProcessId>,
-    processes: HashMap<LocalProcessId, ProcessWrapper>,
     process_infos: ObservableHashMap<LocalProcessId, ProcessInfo>,
 }
 
@@ -178,7 +178,6 @@ impl ProcessStoreInner {
     fn new() -> Self {
         Self {
             services: Default::default(),
-            processes: Default::default(),
             process_infos: Default::default(),
         }
     }
@@ -186,6 +185,7 @@ impl ProcessStoreInner {
 
 pub struct ProcessStoreImpl {
     inner: RwLock<ProcessStoreInner>,
+    processes: Slab<ProcessWrapper>,
     on_kill_tx: mpsc::UnboundedSender<LocalProcessId>,
 }
 
@@ -195,6 +195,7 @@ impl ProcessStoreImpl {
 
         let store = Arc::new(Self {
             inner: RwLock::new(ProcessStoreInner::new()),
+            processes: Default::default(),
             on_kill_tx,
         });
 
@@ -224,10 +225,10 @@ impl ProcessStoreImpl {
                     inner.process_infos.remove(&pid);
 
                     // if there is actually a process with this ID, notify its context that it's dead
-                    if let Some(wrapper) = inner.processes.remove(&pid) {
+                    if let Some(wrapper) = store.processes.take(pid.0 as usize) {
                         wrapper.is_alive_tx.send(false).unwrap();
                     } else {
-                        // there is a chance of double-removal race conditions; that's a bug
+                        // double-removal race conditions are bugs
                         error!("Attempted to kill dead PID {}", pid.0);
                     }
 
@@ -251,10 +252,9 @@ impl ProcessStoreImpl {
     }
 
     async fn send_message(&self, dst: LocalProcessId, msg: Message) {
-        let store = self.inner.read().await;
-        if let Some(wrapper) = store.processes.get(&dst) {
+        if let Some(wrapper) = self.processes.get(dst.0 as usize) {
             // TODO i'm too high to tell if this error catching is necessary
-            match wrapper.mailbox.send(msg).await {
+            match wrapper.mailbox_tx.send(msg).await {
                 Ok(()) => {}
                 Err(err) => {
                     error!("Message mailbox sending error: {:?}", err);
@@ -263,6 +263,51 @@ impl ProcessStoreImpl {
         } else {
             // TODO error handling for when process ID is invalid
         }
+    }
+
+    /// Creates a process and its new [ProcessContext].
+    pub async fn spawn_context(&self, runtime: Arc<Runtime>, info: ProcessInfo) -> ProcessContext {
+        let (mailbox_tx, mailbox) = mpsc::channel(1024);
+        let (is_alive_tx, is_alive) = watch::channel(true);
+        let is_alive_tx = Arc::new(is_alive_tx);
+        let log = ObservableList::new();
+        let entry = self
+            .processes
+            .vacant_entry()
+            .expect("Ran out of process IDs. This shouldn't happen.");
+        let pid = LocalProcessId(entry.key() as u32);
+
+        entry.insert(ProcessWrapper {
+            mailbox_tx,
+            log_distributor: log.distributor(),
+            is_alive_tx: is_alive_tx.clone(),
+        });
+
+        self.inner.write().await.process_infos.insert(pid, info);
+
+        ProcessContext {
+            pid: ProcessId::from_peer_process(runtime.config.this_peer, pid),
+            mailbox,
+            is_alive,
+            is_alive_tx,
+            on_kill_tx: self.on_kill_tx.clone(),
+            log,
+            runtime,
+        }
+    }
+
+    /// Spawns a process.
+    pub async fn spawn(&self, runtime: Arc<Runtime>, mut process: impl Process) -> LocalProcessId {
+        let info = process.get_info();
+        let mut ctx = self.spawn_context(runtime, info).await;
+        let (_peer, pid) = ctx.pid.split();
+
+        tokio::spawn(async move {
+            process.run(&mut ctx).await;
+            ctx.kill(); // ensure the process dies when complete
+        });
+
+        pid
     }
 }
 
@@ -274,14 +319,13 @@ impl ProcessStore for ProcessStoreImpl {
     }
 
     async fn find_process(&self, pid: LocalProcessId) -> ResourceResult<ProcessApiClient> {
-        let store = self.inner.read().await;
-        match store.processes.get(&pid).cloned() {
+        match self.processes.get(pid.0 as usize) {
             None => Err(ResourceError::Unavailable),
             Some(wrapper) => {
                 let api = Arc::new(ProcessApiImpl {
                     pid,
-                    log_distributor: wrapper.log_distributor,
-                    is_alive_tx: wrapper.is_alive_tx,
+                    log_distributor: wrapper.log_distributor.clone(),
+                    is_alive_tx: wrapper.is_alive_tx.clone(),
                     on_kill_tx: self.on_kill_tx.clone(),
                 });
 
@@ -300,11 +344,13 @@ impl ProcessStore for ProcessStoreImpl {
     async fn register_service(&self, pid: LocalProcessId, name: String) -> ResourceResult<()> {
         debug!("Registering service '{}' to {:?}", name, pid);
 
-        let mut store = self.inner.write().await;
-        if !store.processes.contains_key(&pid) {
+        if !self.processes.contains(pid.0 as usize) {
             debug!("Invalid local process ID");
-            Err(ResourceError::Unavailable)
-        } else if store.services.contains_key(&name) {
+            return Err(ResourceError::Unavailable);
+        }
+
+        let mut store = self.inner.write().await;
+        if store.services.contains_key(&name) {
             debug!("Service name is taken");
             Err(ResourceError::BadParams)
         } else {
