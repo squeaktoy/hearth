@@ -271,17 +271,26 @@ impl ProcessStoreImpl {
         let (is_alive_tx, is_alive) = watch::channel(true);
         let is_alive_tx = Arc::new(is_alive_tx);
         let log = ObservableList::new();
-        let entry = self
-            .processes
-            .vacant_entry()
-            .expect("Ran out of process IDs. This shouldn't happen.");
-        let pid = LocalProcessId(entry.key() as u32);
 
-        entry.insert(ProcessWrapper {
-            mailbox_tx,
-            log_distributor: log.distributor(),
-            is_alive_tx: is_alive_tx.clone(),
-        });
+        // this needs to be inside a block because entry doesn't implement the
+        // Send trait and even though entry.insert() takes ownership of entry
+        // the compiler still complains about entry maybe being used across
+        // the await making this function's future non-Send
+        let pid = {
+            let entry = self
+                .processes
+                .vacant_entry()
+                .expect("Ran out of process IDs. This shouldn't happen.");
+            let pid = LocalProcessId(entry.key() as u32);
+
+            entry.insert(ProcessWrapper {
+                mailbox_tx,
+                log_distributor: log.distributor(),
+                is_alive_tx: is_alive_tx.clone(),
+            });
+
+            pid
+        };
 
         self.inner.write().await.process_infos.insert(pid, info);
 
@@ -299,7 +308,7 @@ impl ProcessStoreImpl {
     /// Spawns a process.
     pub async fn spawn(&self, runtime: Arc<Runtime>, mut process: impl Process) -> LocalProcessId {
         let info = process.get_info();
-        let mut ctx = self.spawn_context(runtime, info).await;
+        let ctx = self.spawn_context(runtime, info).await;
         let (_peer, pid) = ctx.pid.split();
 
         tokio::spawn(async move {
