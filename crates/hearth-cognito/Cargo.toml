@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+hearth-macros = { workspace = true }
+hearth-rpc = { workspace = true }
 hearth-wasm = { workspace = true }
+tracing = { workspace = true }
 wasmtime = "5.0.0"
 
 [dev-dependencies]
