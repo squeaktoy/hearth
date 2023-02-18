@@ -1,0 +1,15 @@
+[package]
+name = "hearth-macros"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+path = "src/lib.rs"
+name = "hearth_macros"
+
+[dependencies]
+proc-macro2 = "1.0.50"
+procout = "0.1.13"
+quote = "1.0.23"
+syn = { version = "1.0.107", features = ["full"]}
