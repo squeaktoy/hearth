@@ -16,7 +16,7 @@ use crate::runtime::Runtime;
 #[async_trait]
 pub trait Process: Send + Sync + 'static {
     fn get_info(&self) -> ProcessInfo;
-    async fn run(&mut self, ctx: &mut ProcessContext);
+    async fn run(&mut self, ctx: ProcessContext);
 }
 
 #[derive(Clone, Debug)]
@@ -303,8 +303,7 @@ impl ProcessStoreImpl {
         let (_peer, pid) = ctx.pid.split();
 
         tokio::spawn(async move {
-            process.run(&mut ctx).await;
-            ctx.kill(); // ensure the process dies when complete
+            process.run(ctx).await;
         });
 
         pid
