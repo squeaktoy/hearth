@@ -18,26 +18,66 @@ pub struct Cognito {
 // should work for any struct, not just Cognito
 #[impl_wasm_linker]
 impl Cognito {
-    pub async fn print_hello_world(&self) {
-        info!("Hello, world!");
+    pub fn this_pid(&self) -> u64 {
+        self.ctx.get_pid().0
     }
 
-    pub async fn do_number(&self, number: u32) -> u32 {
-        info!("do_number({}) called", number);
-        number + 1
+    pub fn service_lookup(
+        &self,
+        mut memory: GuestMemory<'_>,
+        peer: u32,
+        name_ptr: u32,
+        name_len: u32,
+    ) -> u64 {
+        unimplemented!()
     }
 
-    // impl_wasm_linker should also work with non-async functions
-    //
-    // if a function is passed GuestMemory or GuestMemory<'_>, the macro should
-    // automatically create a GuestMemory instance using the Caller's exported
-    // memory extern
-    //
-    // it should also turn arguments in the core wasm types (u32, u64, i32, u64)
-    // into arguments for the linker's closure, as well as the return type,
-    // which in this example is just ().
-    pub fn log_message(&self, mut memory: GuestMemory<'_>, msg_ptr: u32, msg_len: u32) {
-        eprintln!("message from wasm: {}", memory.get_str(msg_ptr, msg_len));
+    pub fn service_register(
+        &self,
+        mut memory: GuestMemory<'_>,
+        pid: u64,
+        name_ptr: u32,
+        name_len: u32,
+    ) {
+        unimplemented!()
+    }
+
+    pub fn service_deregister(
+        &self,
+        mut memory: GuestMemory<'_>,
+        peer: u32,
+        name_ptr: u32,
+        name_len: u32,
+    ) {
+        unimplemented!()
+    }
+
+    pub async fn kill(&self, pid: u64) {
+        unimplemented!()
+    }
+
+    pub async fn send(&self, mut memory: GuestMemory<'_>, pid: u64, ptr: u32, len: u32) {
+        unimplemented!()
+    }
+
+    pub async fn recv(&self) {
+        unimplemented!()
+    }
+
+    pub async fn recv_timeout(&self, timeout_us: u64) {
+        unimplemented!()
+    }
+
+    pub fn message_get_sender(&self, msg: u32) -> u64 {
+        unimplemented!()
+    }
+
+    pub fn message_get_len(&self, msg: u32) -> u32 {
+        unimplemented!()
+    }
+
+    pub fn message_get_data(&self, mut memory: GuestMemory<'_>, msg: u32, ptr: u32) {
+        unimplemented!()
     }
 }
 
