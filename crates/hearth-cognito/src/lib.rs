@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use hearth_core::process::{Process, ProcessContext};
+use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_macros::impl_wasm_linker;
 use hearth_rpc::{remoc, ProcessInfo};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use remoc::rtc::async_trait;
-use tracing::{error, info};
+use tracing::{debug, error};
 use wasmtime::*;
 
 /// This contains all script-accessible process-related stuff.
@@ -131,5 +132,60 @@ impl Process for WasmProcess {
                 error!("Couldn't find run function: {:?}", err);
             }
         }
+    }
+}
+
+pub struct WasmProcessSpawner {
+    engine: Arc<Engine>,
+    linker: Arc<Linker<ProcessData>>,
+}
+
+#[async_trait]
+impl Process for WasmProcessSpawner {
+    fn get_info(&self) -> ProcessInfo {
+        ProcessInfo {}
+    }
+
+    async fn run(&mut self, mut ctx: ProcessContext) {
+        while let Some(message) = ctx.recv().await {
+            debug!("WasmProcessSpawner: got message from {:?}", message.sender);
+        }
+    }
+}
+
+impl WasmProcessSpawner {
+    pub fn new() -> Self {
+        let mut config = Config::new();
+        config.async_support(true);
+
+        let engine = Engine::new(&config).unwrap();
+        let mut linker = Linker::new(&engine);
+        Cognito::add_to_linker(&mut linker);
+
+        Self {
+            engine: Arc::new(engine),
+            linker: Arc::new(linker),
+        }
+    }
+}
+
+pub struct WasmPlugin {}
+
+#[async_trait]
+impl Plugin for WasmPlugin {
+    fn build(&mut self, builder: &mut RuntimeBuilder) {
+        let name = "hearth.cognito.WasmProcessSpawner".to_string();
+        let spawner = WasmProcessSpawner::new();
+        builder.add_service(name, spawner);
+    }
+
+    async fn run(&mut self, _runtime: Arc<Runtime>) {
+        // WasmProcessSpawner takes care of everything
+    }
+}
+
+impl WasmPlugin {
+    pub fn new() -> Self {
+        Self {}
     }
 }
