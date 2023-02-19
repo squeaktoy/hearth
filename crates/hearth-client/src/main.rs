@@ -99,7 +99,10 @@ async fn main() {
         info: peer_info,
     };
 
-    let runtime = RuntimeBuilder::new().run(config);
+    let mut builder = RuntimeBuilder::new();
+    builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    
+    let runtime = builder.run(config);
     let peer_api = runtime.clone().serve_peer_api();
 
     tx.send(ClientOffer {
