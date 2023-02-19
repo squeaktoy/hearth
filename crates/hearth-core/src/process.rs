@@ -306,6 +306,8 @@ impl ProcessStoreImpl {
                 is_alive_tx: is_alive_tx.clone(),
             });
 
+            trace!("Allocated {:?}", pid);
+
             pid
         };
 
@@ -368,14 +370,11 @@ impl ProcessStore for ProcessStoreImpl {
 
     async fn register_service(&self, pid: LocalProcessId, name: String) -> ResourceResult<()> {
         debug!("Registering service '{}' to {:?}", name, pid);
-
+        let mut store = self.inner.write().await; // lock store early to avoid registering processes that have just been killed
         if !self.processes.contains(pid.0 as usize) {
             debug!("Invalid local process ID");
             return Err(ResourceError::Unavailable);
-        }
-
-        let mut store = self.inner.write().await;
-        if store.services.contains_key(&name) {
+        } else if store.services.contains_key(&name) {
             debug!("Service name is taken");
             Err(ResourceError::BadParams)
         } else {
@@ -401,5 +400,32 @@ impl ProcessStore for ProcessStoreImpl {
 
     async fn follow_service_list(&self) -> CallResult<HashMapSubscription<String, LocalProcessId>> {
         Ok(self.inner.read().await.services.subscribe(1024))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A useless process with no significant info that does nothing.
+    struct DummyProcess;
+
+    #[async_trait]
+    impl Process for DummyProcess {
+        fn get_info(&self) -> ProcessInfo {
+            ProcessInfo {}
+        }
+
+        async fn run(&mut self, _ctx: ProcessContext) {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn register_service() {
+        crate::init_logging();
+        let store = ProcessStoreImpl::new(PeerId(42));
+        let pid = store.spawn(DummyProcess).await;
+        assert!(store.register_service(pid, "test".into()).await.is_ok());
     }
 }

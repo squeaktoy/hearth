@@ -62,9 +62,9 @@ impl RuntimeBuilder {
     /// Plugins may use their [Plugin::build] method to add other plugins,
     /// asset loaders, runners, or anything else.
     pub fn add_plugin<T: Plugin>(&mut self, mut plugin: T) -> &mut Self {
-        let id = plugin.type_id();
-        debug!("Adding {:?} plugin", id);
+        debug!("Adding plugin: {}", std::any::type_name::<T>());
 
+        let id = plugin.type_id();
         if self.plugins.contains_key(&id) {
             warn!("Attempted to add plugin twice: {:?}", id);
             return self;
@@ -124,6 +124,7 @@ impl RuntimeBuilder {
         self.services.insert(name.clone());
         self.runners.push(Box::new(move |runtime| {
             tokio::spawn(async move {
+                debug!("Spawning '{}' service", name);
                 let pid = runtime.process_store.spawn(process).await;
                 let result = runtime.process_store.register_service(pid, name).await;
                 match result {
