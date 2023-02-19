@@ -124,7 +124,7 @@ impl RuntimeBuilder {
         self.services.insert(name.clone());
         self.runners.push(Box::new(move |runtime| {
             tokio::spawn(async move {
-                let pid = runtime.process_store.spawn(runtime.clone(), process).await;
+                let pid = runtime.process_store.spawn(process).await;
                 let result = runtime.process_store.register_service(pid, name).await;
                 match result {
                     Ok(_) => {}
@@ -181,7 +181,7 @@ impl RuntimeBuilder {
         });
 
         debug!("Spawning process store server");
-        let process_store = ProcessStoreImpl::new();
+        let process_store = ProcessStoreImpl::new(config.this_peer);
         let (process_store_server, process_store_client) =
             ProcessStoreServerShared::new(process_store.clone(), 1024);
         tokio::spawn(async move {
