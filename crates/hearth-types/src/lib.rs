@@ -40,3 +40,18 @@ impl Display for LumpId {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pid_conversion() {
+        let tests = &[(0, 0), (420, 69), (100000, 100000)];
+        for (peer, pid) in tests.iter() {
+            let peer = PeerId(*peer);
+            let pid = LocalProcessId(*pid);
+            assert_eq!((peer, pid), ProcessId::from_peer_process(peer, pid).split());
+        }
+    }
+}
