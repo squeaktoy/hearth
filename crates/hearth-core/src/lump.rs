@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 use hearth_rpc::*;
 use hearth_types::*;
-use remoc::robj::lazy_blob::{LazyBlob, Provider as BlobProvider};
+use remoc::robj::lazy_blob::LazyBlob;
 use remoc::rtc::async_trait;
 use tokio::sync::RwLock;
 use tracing::error;
 
 struct Lump {
-    provider: BlobProvider,
+    data: Bytes,
     blob: LazyBlob,
 }
 
@@ -53,8 +53,9 @@ impl LumpStore for LumpStoreImpl {
             }
         }
 
-        let (blob, provider) = LazyBlob::provided(data.into());
-        let lump = Lump { provider, blob };
+        let data = Bytes::from(data);
+        let blob = LazyBlob::new(data.clone());
+        let lump = Lump { data, blob };
         let mut store = self.store.write().await;
         store.insert(checked_id, lump);
         Ok(checked_id)
