@@ -265,16 +265,19 @@ impl ProcessStoreImpl {
     }
 
     async fn send_message(&self, dst: LocalProcessId, msg: Message) {
-        if let Some(wrapper) = self.processes.get(dst.0 as usize) {
-            // TODO i'm too high to tell if this error catching is necessary
-            match wrapper.mailbox_tx.send(msg).await {
-                Ok(()) => {}
-                Err(err) => {
-                    error!("Message mailbox sending error: {:?}", err);
-                }
-            }
+        let sender = if let Some(wrapper) = self.processes.get(dst.0 as usize) {
+            wrapper.mailbox_tx.clone()
         } else {
             // TODO error handling for when process ID is invalid
+            return;
+        };
+
+        // TODO i'm too high to tell if this error catching is necessary
+        match sender.send(msg).await {
+            Ok(()) => {}
+            Err(err) => {
+                error!("Message mailbox sending error: {:?}", err);
+            }
         }
     }
 
