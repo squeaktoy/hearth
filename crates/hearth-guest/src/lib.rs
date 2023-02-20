@@ -73,6 +73,7 @@ impl Message {
 
     /// Reads out the message data into an owning byte vector.
     pub fn get_data(&self) -> Vec<u8> {
+        #[allow(clippy::uninit_vec)]
         unsafe {
             let len = abi::message_get_len(self.0) as usize;
             let mut data = Vec::with_capacity(len);
