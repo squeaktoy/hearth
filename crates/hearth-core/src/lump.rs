@@ -77,6 +77,14 @@ impl LumpStoreImpl {
             store: Default::default(),
         }
     }
+
+    pub async fn get_lump(&self, id: &LumpId) -> Option<Bytes> {
+        self.store
+            .read()
+            .await
+            .get(id)
+            .map(|lump| lump.data.clone())
+    }
 }
 
 #[cfg(test)]
