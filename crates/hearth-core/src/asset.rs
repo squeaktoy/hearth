@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use hearth_rpc::remoc::rtc::async_trait;
+use crate::lump::LumpStoreImpl;
+use hearth_rpc::{hearth_types, remoc};
+use hearth_types::LumpId;
+use remoc::rtc::async_trait;
 use sharded_slab::Slab;
 use tracing::{debug, error};
 
@@ -50,15 +53,19 @@ impl<T: AssetLoader> AssetPoolImpl<T> {
     }
 }
 
-#[derive(Default)]
 pub struct AssetStore {
     class_to_pool: HashMap<String, usize>,
     pools: Vec<Box<dyn AssetPool>>,
+    lump_store: Arc<LumpStoreImpl>,
 }
 
 impl AssetStore {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(lump_store: Arc<LumpStoreImpl>) -> Self {
+        Self {
+            class_to_pool: HashMap::new(),
+            pools: Vec::new(),
+            lump_store,
+        }
     }
 
     pub fn add_loader(&mut self, class: String, loader: impl AssetLoader) {
@@ -79,11 +86,12 @@ impl AssetStore {
         self.class_to_pool.contains_key(class)
     }
 
-    pub async fn load_asset(&self, class: &str, data: &[u8]) -> Handle {
+    pub async fn load_asset(&self, class: &str, lump: &LumpId) -> Handle {
         // TODO error reporting with eyre
         let pool_id = *self.class_to_pool.get(class).unwrap();
         let pool = self.pools.get(pool_id).unwrap();
-        let asset_id = pool.load_asset(data).await;
+        let data = self.lump_store.get_lump(lump).await.unwrap();
+        let asset_id = pool.load_asset(&data).await;
 
         Handle {
             count: Arc::new(()),
