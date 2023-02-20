@@ -498,6 +498,38 @@ impl ProcessStore for ProcessStoreImpl {
     }
 }
 
+pub struct ProcessFactoryImpl {
+    process_store: Arc<ProcessStoreImpl>,
+}
+
+#[async_trait]
+impl ProcessFactory for ProcessFactoryImpl {
+    async fn spawn(&self, process: ProcessBase) -> CallResult<ProcessOffer> {
+        let (outgoing_tx, outgoing) = remoc_mpsc::channel(1024);
+
+        let process = RemoteProcess {
+            info: process.info,
+            outgoing,
+            mailbox: process.mailbox,
+            is_alive: process.is_alive,
+            log: process.log,
+        };
+
+        let pid = self.process_store.spawn(process).await;
+
+        Ok(ProcessOffer {
+            outgoing: outgoing_tx,
+            pid,
+        })
+    }
+}
+
+impl ProcessFactoryImpl {
+    pub fn new(process_store: Arc<ProcessStoreImpl>) -> Self {
+        Self { process_store }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
