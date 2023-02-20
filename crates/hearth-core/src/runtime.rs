@@ -43,17 +43,22 @@ pub struct RuntimeBuilder {
     plugins: HashMap<TypeId, PluginWrapper>,
     runners: Vec<Box<dyn FnOnce(Arc<Runtime>)>>,
     services: HashSet<String>,
+    lump_store: Arc<LumpStoreImpl>,
     asset_store: AssetStore,
 }
 
 impl RuntimeBuilder {
     /// Creates a new [RuntimeBuilder] with nothing loaded.
     pub fn new() -> Self {
+        let lump_store = Arc::new(LumpStoreImpl::new());
+        let asset_store = AssetStore::new(lump_store.clone());
+
         Self {
             plugins: Default::default(),
             runners: Default::default(),
             services: Default::default(),
-            asset_store: Default::default(),
+            lump_store,
+            asset_store,
         }
     }
 
@@ -174,7 +179,7 @@ impl RuntimeBuilder {
     /// Consumes this builder and starts up the full [Runtime].
     pub fn run(self, config: RuntimeConfig) -> Arc<Runtime> {
         debug!("Spawning lump store server");
-        let lump_store = Arc::new(LumpStoreImpl::new());
+        let lump_store = self.lump_store;
         let (lump_store_server, lump_store_client) =
             LumpStoreServerShared::new(lump_store.clone(), 1024);
         tokio::spawn(async move {

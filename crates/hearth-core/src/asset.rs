@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::lump::LumpStoreImpl;
 use hearth_rpc::remoc::rtc::async_trait;
 use sharded_slab::Slab;
 use tracing::{debug, error};
@@ -50,15 +51,19 @@ impl<T: AssetLoader> AssetPoolImpl<T> {
     }
 }
 
-#[derive(Default)]
 pub struct AssetStore {
     class_to_pool: HashMap<String, usize>,
     pools: Vec<Box<dyn AssetPool>>,
+    lump_store: Arc<LumpStoreImpl>,
 }
 
 impl AssetStore {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(lump_store: Arc<LumpStoreImpl>) -> Self {
+        Self {
+            class_to_pool: HashMap::new(),
+            pools: Vec::new(),
+            lump_store,
+        }
     }
 
     pub fn add_loader(&mut self, class: String, loader: impl AssetLoader) {
