@@ -156,7 +156,7 @@ pub struct ProcessOffer {
     pub outgoing: mpsc::Sender<Message>,
 
     /// The new PID for this process.
-    pub pid: ProcessId,
+    pub pid: LocalProcessId,
 }
 
 /// Interface to a single process.
