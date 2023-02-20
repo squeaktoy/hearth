@@ -88,6 +88,7 @@ async fn main() {
     let daemon_offer = DaemonOffer {
         peer_provider: peer_provider_client.to_owned(),
         peer_id: SELF_PEER_ID,
+        process_factory: runtime.process_factory_client.clone(),
     };
 
     listen(listener, peer_provider, peer_provider_client, authenticator);

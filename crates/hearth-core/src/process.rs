@@ -12,8 +12,9 @@ use std::sync::{Arc, Weak};
 
 use hearth_rpc::remoc::robs::hash_map::HashMapSubscription;
 use hearth_rpc::remoc::rtc::ServerShared;
-use hearth_rpc::*;
+use hearth_rpc::{Message as RpcMessage, *};
 use hearth_types::*;
+use remoc::rch::{mpsc as remoc_mpsc, watch as remoc_watch};
 use remoc::robs::hash_map::ObservableHashMap;
 use remoc::robs::list::{ListSubscription, ObservableList, ObservableListDistributor};
 use remoc::rtc::async_trait;
@@ -147,6 +148,97 @@ impl ProcessContext {
     }
 }
 
+struct RemoteProcess {
+    info: ProcessInfo,
+    mailbox: remoc_mpsc::Sender<RpcMessage>,
+    outgoing: remoc_mpsc::Receiver<RpcMessage>,
+    is_alive: remoc_watch::Sender<bool>,
+    log: remoc_mpsc::Receiver<ProcessLogEvent>,
+}
+
+#[async_trait]
+impl Process for RemoteProcess {
+    fn get_info(&self) -> ProcessInfo {
+        self.info.clone()
+    }
+
+    async fn run(&mut self, mut ctx: ProcessContext) {
+        loop {
+            tokio::select! {
+                msg = ctx.mailbox.recv() => self.on_recv(msg).await,
+                _ = ctx.is_alive.changed() => self.on_is_alive(&mut ctx).await,
+                msg = self.outgoing.recv() => self.on_outgoing(&mut ctx, msg).await,
+                log = self.log.recv() => self.on_log(&mut ctx, log).await,
+            }
+        }
+    }
+}
+
+impl RemoteProcess {
+    async fn on_recv(&mut self, msg: Option<Message>) {
+        let msg = match msg {
+            Some(msg) => msg,
+            None => return,
+        };
+
+        let msg = RpcMessage {
+            pid: msg.sender,
+            data: msg.data,
+        };
+
+        let _ = self.mailbox.send(msg).await; // TODO autokill on hang up?
+    }
+
+    async fn on_is_alive(&mut self, ctx: &mut ProcessContext) {
+        if !ctx.is_alive() {
+            let _ = self.is_alive.send(false); // ignore result; no biggie if the remote hangs up
+        }
+    }
+
+    async fn on_outgoing(
+        &mut self,
+        ctx: &mut ProcessContext,
+        msg: Result<Option<RpcMessage>, remoc_mpsc::RecvError>,
+    ) {
+        if let Some(msg) = self.handle_recv_result(msg) {
+            ctx.send_message(msg.pid, msg.data).await;
+        }
+    }
+
+    async fn on_log(
+        &mut self,
+        ctx: &mut ProcessContext,
+        log: Result<Option<ProcessLogEvent>, remoc_mpsc::RecvError>,
+    ) {
+        if let Some(log) = self.handle_recv_result(log) {
+            ctx.log(log);
+        }
+    }
+
+    fn handle_recv_result<T>(
+        &mut self,
+        result: Result<Option<T>, remoc_mpsc::RecvError>,
+    ) -> Option<T> {
+        match result {
+            Ok(Some(val)) => Some(val),
+            Ok(None) => {
+                debug!("RemoteProcess channel hung up (end of channel)");
+                // remote hung up
+                None
+            }
+            Err(err) if err.is_final() => {
+                debug!("RemoteProcess channel hung up (RecvError::is_final() == true)");
+                // remote hung up
+                None
+            }
+            Err(err) => {
+                error!("RemoteProcess recv() error: {:?}", err);
+                None
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ProcessWrapper {
     mailbox_tx: mpsc::Sender<Message>,
@@ -265,16 +357,19 @@ impl ProcessStoreImpl {
     }
 
     async fn send_message(&self, dst: LocalProcessId, msg: Message) {
-        if let Some(wrapper) = self.processes.get(dst.0 as usize) {
-            // TODO i'm too high to tell if this error catching is necessary
-            match wrapper.mailbox_tx.send(msg).await {
-                Ok(()) => {}
-                Err(err) => {
-                    error!("Message mailbox sending error: {:?}", err);
-                }
-            }
+        let sender = if let Some(wrapper) = self.processes.get(dst.0 as usize) {
+            wrapper.mailbox_tx.clone()
         } else {
             // TODO error handling for when process ID is invalid
+            return;
+        };
+
+        // TODO i'm too high to tell if this error catching is necessary
+        match sender.send(msg).await {
+            Ok(()) => {}
+            Err(err) => {
+                error!("Message mailbox sending error: {:?}", err);
+            }
         }
     }
 
@@ -400,6 +495,38 @@ impl ProcessStore for ProcessStoreImpl {
 
     async fn follow_service_list(&self) -> CallResult<HashMapSubscription<String, LocalProcessId>> {
         Ok(self.inner.read().await.services.subscribe(1024))
+    }
+}
+
+pub struct ProcessFactoryImpl {
+    process_store: Arc<ProcessStoreImpl>,
+}
+
+#[async_trait]
+impl ProcessFactory for ProcessFactoryImpl {
+    async fn spawn(&self, process: ProcessBase) -> CallResult<ProcessOffer> {
+        let (outgoing_tx, outgoing) = remoc_mpsc::channel(1024);
+
+        let process = RemoteProcess {
+            info: process.info,
+            outgoing,
+            mailbox: process.mailbox,
+            is_alive: process.is_alive,
+            log: process.log,
+        };
+
+        let pid = self.process_store.spawn(process).await;
+
+        Ok(ProcessOffer {
+            outgoing: outgoing_tx,
+            pid,
+        })
+    }
+}
+
+impl ProcessFactoryImpl {
+    pub fn new(process_store: Arc<ProcessStoreImpl>) -> Self {
+        Self { process_store }
     }
 }
 

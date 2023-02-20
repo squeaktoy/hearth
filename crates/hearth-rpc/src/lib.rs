@@ -1,5 +1,6 @@
 use hearth_types::*;
 
+use remoc::rch::{mpsc, watch};
 use remoc::robj::lazy_blob::LazyBlob;
 use remoc::robs::hash_map::HashMapSubscription;
 use remoc::robs::list::ListSubscription;
@@ -68,6 +69,10 @@ pub struct DaemonOffer {
 
     /// The ID of this daemon's peer.
     pub peer_id: PeerId,
+
+    /// The [ProcessFactory] on this daemon. Can be used to spawn
+    /// out-of-runtime processes.
+    pub process_factory: ProcessFactoryClient,
 }
 
 /// Top-level interface for a peer. Provides access to its metadata as well as
@@ -133,6 +138,27 @@ pub trait ProcessStore {
     // TODO Lunatic Supervisor-like child API?
 }
 
+/// Spawning interface to a peer's process store for out-of-runtime processes.
+#[remote]
+pub trait ProcessFactory {
+    /// Spawns a remote process.
+    async fn spawn(&self, process: ProcessBase) -> CallResult<ProcessOffer>;
+}
+
+/// The result of [ProcessFactory::ProcessOffer]. Sent from the runtime to an
+/// IPC client as part of the spawning of an out-of-runtime process.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProcessOffer {
+    /// A sender for outgoing process messages.
+    ///
+    /// The destination process ID for each message is passed through the
+    /// [Message::pid] field.
+    pub outgoing: mpsc::Sender<Message>,
+
+    /// The new PID for this process.
+    pub pid: LocalProcessId,
+}
+
 /// Interface to a single process.
 ///
 /// All of these methods still function when the process is dead.
@@ -148,6 +174,42 @@ pub trait ProcessApi {
     ///
     /// Even if the process is dead, this will still return a full log history.
     async fn follow_log(&self) -> CallResult<ListSubscription<ProcessLogEvent>>;
+}
+
+/// Channels connected to the base functionality of a single process.
+///
+/// While [ProcessApi] defines an interface to interact with a running process,
+/// this is instead an interface for implementing a process itself. This is
+/// intended to be initialized by an IPC client for creating native IPC
+/// processes that execute outside of the main Hearth runtime. Because only
+/// processes can send messages to other processes, this is a necessary
+/// prerequisite for IPC to interact with Hearth processes via messages.
+#[derive(Deserialize, Serialize)]
+pub struct ProcessBase {
+    /// The info for this process.
+    pub info: ProcessInfo,
+
+    /// A sender to this process's mailbox.
+    ///
+    /// The `pid` field of each message represents the sender of the message.
+    pub mailbox: mpsc::Sender<Message>,
+
+    /// A watchable sender to this process's alive status.
+    pub is_alive: watch::Sender<bool>,
+
+    /// A receiver to this process's log.
+    pub log: mpsc::Receiver<ProcessLogEvent>,
+}
+
+/// A single message between processes.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Message {
+    /// The ID of the involved process. May be either the sender or receiver,
+    /// depending on the context this struct is used in.
+    pub pid: ProcessId,
+
+    /// The data in this message.
+    pub data: Vec<u8>,
 }
 
 /// Interface to a peer's local lumps.

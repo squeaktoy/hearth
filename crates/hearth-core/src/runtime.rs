@@ -17,7 +17,7 @@ use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
-use crate::process::{Process, ProcessStoreImpl};
+use crate::process::{Process, ProcessFactoryImpl, ProcessStoreImpl};
 
 /// Interface trait for plugins to the Hearth runtime.
 ///
@@ -194,12 +194,21 @@ impl RuntimeBuilder {
             process_store_server.serve(true).await;
         });
 
+        debug!("Spawning process factory server");
+        let process_factory = ProcessFactoryImpl::new(process_store.clone());
+        let (process_factory_server, process_factory_client) =
+            ProcessFactoryServerShared::new(Arc::new(process_factory), 1024);
+        tokio::spawn(async move {
+            process_factory_server.serve(true).await;
+        });
+
         let runtime = Arc::new(Runtime {
             asset_store: self.asset_store,
             lump_store,
             lump_store_client,
             process_store,
             process_store_client,
+            process_factory_client,
             config,
         });
 
@@ -255,6 +264,9 @@ pub struct Runtime {
 
     /// A clone-able client to this runtime's process store.
     pub process_store_client: ProcessStoreClient,
+
+    /// A clone-able client to the process store's factory.
+    pub process_factory_client: ProcessFactoryClient,
 }
 
 #[async_trait]
