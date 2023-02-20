@@ -7,13 +7,13 @@ pub struct ProcessId(pub u64);
 
 impl ProcessId {
     pub fn split(self) -> (PeerId, LocalProcessId) {
-        let peer = self.0 as u32 >> 4;
-        let pid = (self.0 & 0xffff) as u32;
+        let peer = (self.0 >> 32) as u32;
+        let pid = self.0 as u32;
         (PeerId(peer), LocalProcessId(pid))
     }
 
     pub fn from_peer_process(peer: PeerId, pid: LocalProcessId) -> Self {
-        Self(((peer.0 as u64) << 4) | (pid.0 as u64))
+        Self(((peer.0 as u64) << 32) | (pid.0 as u64))
     }
 }
 
@@ -38,5 +38,20 @@ impl Display for LumpId {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pid_conversion() {
+        let tests = &[(0, 0), (420, 69), (100000, 100000)];
+        for (peer, pid) in tests.iter() {
+            let peer = PeerId(*peer);
+            let pid = LocalProcessId(*pid);
+            assert_eq!((peer, pid), ProcessId::from_peer_process(peer, pid).split());
+        }
     }
 }

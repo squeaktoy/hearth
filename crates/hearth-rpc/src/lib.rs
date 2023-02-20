@@ -189,7 +189,4 @@ pub enum ProcessLogLevel {
 
 /// A process's metadata.
 #[derive(Clone, Debug, Hash, Deserialize, Serialize)]
-pub struct ProcessInfo {
-    /// The [LumpId] of this process's source.
-    pub source_lump: LumpId,
-}
+pub struct ProcessInfo {}

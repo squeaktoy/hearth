@@ -21,8 +21,6 @@ use sharded_slab::Slab;
 use tokio::sync::{mpsc, watch, RwLock};
 use tracing::{debug, error, info, trace};
 
-use crate::runtime::Runtime;
-
 /// An interface trait for processes.
 ///
 /// To create a new type of process, this trait may be implemented. Then, an
@@ -60,8 +58,8 @@ pub struct ProcessContext {
     /// The ID of this process.
     pid: ProcessId,
 
-    /// The runtime that this process is a part of.
-    runtime: Arc<Runtime>,
+    /// The store that contains this process.
+    process_store: Arc<ProcessStoreImpl>,
 
     /// A queue of all messages sent to this process.
     mailbox: mpsc::Receiver<Message>,
@@ -94,11 +92,6 @@ impl ProcessContext {
         self.pid
     }
 
-    /// Returns a reference to the runtime this process is a part of.
-    pub fn get_runtime(&self) -> &Arc<Runtime> {
-        &self.runtime
-    }
-
     /// Returns true when this process is still alive.
     pub fn is_alive(&self) -> bool {
         *self.is_alive.borrow()
@@ -124,11 +117,8 @@ impl ProcessContext {
             data,
         };
 
-        if peer == self.runtime.config.this_peer {
-            self.runtime
-                .process_store
-                .send_message(local_dst, msg)
-                .await;
+        if peer == self.pid.split().0 {
+            self.process_store.send_message(local_dst, msg).await;
         } else {
             error!("Remote process message sending is unimplemented");
         }
@@ -206,17 +196,19 @@ impl ProcessStoreInner {
 
 pub struct ProcessStoreImpl {
     inner: RwLock<ProcessStoreInner>,
+    this_peer: PeerId,
     processes: Slab<ProcessWrapper>,
     on_kill_tx: mpsc::UnboundedSender<LocalProcessId>,
 }
 
 impl ProcessStoreImpl {
-    pub fn new() -> Arc<Self> {
+    pub fn new(this_peer: PeerId) -> Arc<Self> {
         let (on_kill_tx, on_kill_rx) = mpsc::unbounded_channel();
 
         let store = Arc::new(Self {
             inner: RwLock::new(ProcessStoreInner::new()),
             processes: Default::default(),
+            this_peer,
             on_kill_tx,
         });
 
@@ -291,7 +283,7 @@ impl ProcessStoreImpl {
     /// To actually spawn a [Process] implementation, use [Self::spawn]
     /// instead. This function only allocates the context for a process
     /// without running it.
-    pub async fn spawn_context(&self, runtime: Arc<Runtime>, info: ProcessInfo) -> ProcessContext {
+    pub async fn spawn_context(self: &Arc<Self>, info: ProcessInfo) -> ProcessContext {
         let (mailbox_tx, mailbox) = mpsc::channel(1024);
         let (is_alive_tx, is_alive) = watch::channel(true);
         let is_alive_tx = Arc::new(is_alive_tx);
@@ -314,26 +306,28 @@ impl ProcessStoreImpl {
                 is_alive_tx: is_alive_tx.clone(),
             });
 
+            trace!("Allocated {:?}", pid);
+
             pid
         };
 
         self.inner.write().await.process_infos.insert(pid, info);
 
         ProcessContext {
-            pid: ProcessId::from_peer_process(runtime.config.this_peer, pid),
+            pid: ProcessId::from_peer_process(self.this_peer, pid),
+            on_kill_tx: self.on_kill_tx.clone(),
+            process_store: self.to_owned(),
             mailbox,
             is_alive,
             is_alive_tx,
-            on_kill_tx: self.on_kill_tx.clone(),
             log,
-            runtime,
         }
     }
 
     /// Spawns a process.
-    pub async fn spawn(&self, runtime: Arc<Runtime>, mut process: impl Process) -> LocalProcessId {
+    pub async fn spawn(self: &Arc<Self>, mut process: impl Process) -> LocalProcessId {
         let info = process.get_info();
-        let ctx = self.spawn_context(runtime, info).await;
+        let ctx = self.spawn_context(info).await;
         let (_peer, pid) = ctx.pid.split();
 
         tokio::spawn(async move {
@@ -376,14 +370,11 @@ impl ProcessStore for ProcessStoreImpl {
 
     async fn register_service(&self, pid: LocalProcessId, name: String) -> ResourceResult<()> {
         debug!("Registering service '{}' to {:?}", name, pid);
-
+        let mut store = self.inner.write().await; // lock store early to avoid registering processes that have just been killed
         if !self.processes.contains(pid.0 as usize) {
             debug!("Invalid local process ID");
             return Err(ResourceError::Unavailable);
-        }
-
-        let mut store = self.inner.write().await;
-        if store.services.contains_key(&name) {
+        } else if store.services.contains_key(&name) {
             debug!("Service name is taken");
             Err(ResourceError::BadParams)
         } else {
@@ -409,5 +400,32 @@ impl ProcessStore for ProcessStoreImpl {
 
     async fn follow_service_list(&self) -> CallResult<HashMapSubscription<String, LocalProcessId>> {
         Ok(self.inner.read().await.services.subscribe(1024))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A useless process with no significant info that does nothing.
+    struct DummyProcess;
+
+    #[async_trait]
+    impl Process for DummyProcess {
+        fn get_info(&self) -> ProcessInfo {
+            ProcessInfo {}
+        }
+
+        async fn run(&mut self, _ctx: ProcessContext) {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn register_service() {
+        crate::init_logging();
+        let store = ProcessStoreImpl::new(PeerId(42));
+        let pid = store.spawn(DummyProcess).await;
+        assert!(store.register_service(pid, "test".into()).await.is_ok());
     }
 }

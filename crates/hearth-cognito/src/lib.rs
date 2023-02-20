@@ -1,99 +1,191 @@
+use std::sync::Arc;
+
+use hearth_core::process::{Process, ProcessContext};
+use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_macros::impl_wasm_linker;
-use hearth_rpc::ProcessApi;
+use hearth_rpc::{remoc, ProcessInfo};
 use hearth_wasm::{GuestMemory, WasmLinker};
-use tracing::info;
-use wasmtime::{Caller, Linker};
+use remoc::rtc::async_trait;
+use tracing::{debug, error};
+use wasmtime::*;
 
 /// This contains all script-accessible process-related stuff.
-pub struct Cognito {}
+pub struct Cognito {
+    ctx: ProcessContext,
+}
 
 // Should automatically generate link_print_hello_world:
 // #[impl_wasm_linker]
 // should work for any struct, not just Cognito
 #[impl_wasm_linker]
 impl Cognito {
-    pub async fn print_hello_world(&self) {
-        info!("Hello, world!");
+    pub fn this_pid(&self) -> u64 {
+        self.ctx.get_pid().0
     }
 
-    pub async fn do_number(&self, number: u32) -> u32 {
-        info!("do_number({}) called", number);
-        number + 1
+    pub fn service_lookup(
+        &self,
+        mut memory: GuestMemory<'_>,
+        peer: u32,
+        name_ptr: u32,
+        name_len: u32,
+    ) -> u64 {
+        unimplemented!()
     }
 
-    // impl_wasm_linker should also work with non-async functions
-    //
-    // if a function is passed GuestMemory or GuestMemory<'_>, the macro should
-    // automatically create a GuestMemory instance using the Caller's exported
-    // memory extern
-    //
-    // it should also turn arguments in the core wasm types (u32, u64, i32, u64)
-    // into arguments for the linker's closure, as well as the return type,
-    // which in this example is just ().
-    pub fn log_message(&self, mut memory: GuestMemory<'_>, msg_ptr: u32, msg_len: u32) {
-        eprintln!("message from wasm: {}", memory.get_str(msg_ptr, msg_len));
+    pub fn service_register(
+        &self,
+        mut memory: GuestMemory<'_>,
+        pid: u64,
+        name_ptr: u32,
+        name_len: u32,
+    ) {
+        unimplemented!()
+    }
+
+    pub fn service_deregister(
+        &self,
+        mut memory: GuestMemory<'_>,
+        peer: u32,
+        name_ptr: u32,
+        name_len: u32,
+    ) {
+        unimplemented!()
+    }
+
+    pub async fn kill(&self, pid: u64) {
+        unimplemented!()
+    }
+
+    pub async fn send(&self, mut memory: GuestMemory<'_>, pid: u64, ptr: u32, len: u32) {
+        unimplemented!()
+    }
+
+    pub async fn recv(&self) {
+        unimplemented!()
+    }
+
+    pub async fn recv_timeout(&self, timeout_us: u64) {
+        unimplemented!()
+    }
+
+    pub fn message_get_sender(&self, msg: u32) -> u64 {
+        unimplemented!()
+    }
+
+    pub fn message_get_len(&self, msg: u32) -> u32 {
+        unimplemented!()
+    }
+
+    pub fn message_get_data(&self, mut memory: GuestMemory<'_>, msg: u32, ptr: u32) {
+        unimplemented!()
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+struct ProcessData {
+    cognito: Cognito,
+}
 
-    use wasmtime::{Config, Engine, Store};
+impl AsRef<Cognito> for ProcessData {
+    fn as_ref(&self) -> &Cognito {
+        &self.cognito
+    }
+}
 
-    #[tokio::test]
-    async fn host_works() {
-        let cognito = Cognito {};
-        cognito.print_hello_world().await;
+struct WasmProcess {
+    engine: Arc<Engine>,
+    linker: Arc<Linker<ProcessData>>,
+    module: Arc<Module>,
+}
+
+#[async_trait]
+impl Process for WasmProcess {
+    fn get_info(&self) -> ProcessInfo {
+        ProcessInfo {}
     }
 
-    struct MockStructure {
-        pub cognito: Cognito,
-    }
+    async fn run(&mut self, ctx: ProcessContext) {
+        // TODO log using the process log instead of tracing?
+        let cognito = Cognito { ctx };
+        let data = ProcessData { cognito };
+        let mut store = Store::new(&self.engine, data);
+        let instance = match self
+            .linker
+            .instantiate_async(&mut store, &self.module)
+            .await
+        {
+            Ok(instance) => instance,
+            Err(err) => {
+                error!("Failed to instantiate WasmProcess: {:?}", err);
+                return;
+            }
+        };
 
-    impl Default for MockStructure {
-        fn default() -> Self {
-            Self {
-                cognito: Cognito {},
+        // TODO better wasm invocation?
+        match instance.get_typed_func::<(), ()>(&mut store, "run") {
+            Ok(run) => {
+                if let Err(err) = run.call_async(&mut store, ()).await {
+                    error!("Wasm run error: {:?}", err);
+                }
+            }
+            Err(err) => {
+                error!("Couldn't find run function: {:?}", err);
             }
         }
     }
-    impl AsRef<Cognito> for MockStructure {
-        fn as_ref(&self) -> &Cognito {
-            &self.cognito
+}
+
+pub struct WasmProcessSpawner {
+    engine: Arc<Engine>,
+    linker: Arc<Linker<ProcessData>>,
+}
+
+#[async_trait]
+impl Process for WasmProcessSpawner {
+    fn get_info(&self) -> ProcessInfo {
+        ProcessInfo {}
+    }
+
+    async fn run(&mut self, mut ctx: ProcessContext) {
+        while let Some(message) = ctx.recv().await {
+            debug!("WasmProcessSpawner: got message from {:?}", message.sender);
         }
     }
+}
 
-    fn get_wasmtime_objs() -> (Linker<MockStructure>, Store<MockStructure>) {
+impl WasmProcessSpawner {
+    pub fn new() -> Self {
         let mut config = Config::new();
         config.async_support(true);
+
         let engine = Engine::new(&config).unwrap();
-        let mut linker: wasmtime::Linker<MockStructure> = Linker::new(&engine);
-        let mut store = Store::new(&engine, MockStructure::default());
+        let mut linker = Linker::new(&engine);
         Cognito::add_to_linker(&mut linker);
-        (linker, store)
+
+        Self {
+            engine: Arc::new(engine),
+            linker: Arc::new(linker),
+        }
+    }
+}
+
+pub struct WasmPlugin {}
+
+#[async_trait]
+impl Plugin for WasmPlugin {
+    fn build(&mut self, builder: &mut RuntimeBuilder) {
+        let name = "hearth.cognito.WasmProcessSpawner".to_string();
+        let spawner = WasmProcessSpawner::new();
+        builder.add_service(name, spawner);
     }
 
-    #[test]
-    fn print_hello_world() {
-        let (linker, mut store) = get_wasmtime_objs();
-        let r#extern = linker
-            .get(&mut store, "cognito", "print_hello_world")
-            .unwrap();
-        let typed_func = r#extern
-            .into_func()
-            .unwrap()
-            .typed::<(), ()>(&store)
-            .unwrap();
+    async fn run(&mut self, _runtime: Arc<Runtime>) {
+        // WasmProcessSpawner takes care of everything
     }
-    #[test]
-    fn do_number() {
-        let (linker, mut store) = get_wasmtime_objs();
-        let r#extern = linker.get(&mut store, "cognito", "do_number").unwrap();
-        let typed_func = r#extern
-            .into_func()
-            .unwrap()
-            .typed::<u32, u32>(&store)
-            .unwrap();
+}
+
+impl WasmPlugin {
+    pub fn new() -> Self {
+        Self {}
     }
 }

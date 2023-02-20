@@ -32,4 +32,16 @@ impl<'a> GuestMemory<'a> {
             std::slice::from_raw_parts_mut(ptr, len)
         }
     }
+
+    pub fn get_memory_ref<T: bytemuck::Pod>(&mut self, ptr: u32) -> &'a mut T {
+        let len = std::mem::size_of::<T>();
+        let bytes = self.get_slice(ptr as usize, len);
+        bytemuck::from_bytes_mut(bytes)
+    }
+
+    pub fn get_memory_slice<T: bytemuck::Pod>(&mut self, ptr: u32, num: u32) -> &'a mut [T] {
+        let len = num as usize * std::mem::size_of::<T>();
+        let bytes = self.get_slice(ptr as usize, len);
+        bytemuck::cast_slice_mut(bytes)
+    }
 }
