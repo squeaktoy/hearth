@@ -101,7 +101,7 @@ async fn main() {
 
     let mut builder = RuntimeBuilder::new();
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
-    
+
     let runtime = builder.run(config);
     let peer_api = runtime.clone().serve_peer_api();
 
@@ -125,6 +125,7 @@ async fn main() {
     let daemon_offer = DaemonOffer {
         peer_provider: offer.peer_provider,
         peer_id: offer.new_id,
+        process_factory: runtime.process_factory_client.clone(),
     };
 
     hearth_ipc::listen(daemon_listener, daemon_offer);
