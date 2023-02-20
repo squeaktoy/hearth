@@ -142,10 +142,7 @@ pub trait ProcessStore {
 #[remote]
 pub trait ProcessFactory {
     /// Spawns a remote process.
-    ///
-    /// Implement [ProcessBase], serve it, then send a client to this function
-    /// to add the process to the process store.
-    async fn spawn(&self, process: ProcessBaseClient, info: ProcessInfo) -> CallResult<ProcessOffer>;
+    async fn spawn(&self, process: ProcessBase) -> CallResult<ProcessOffer>;
 }
 
 /// The result of [ProcessFactory::ProcessOffer]. Sent from the runtime to an
@@ -179,26 +176,29 @@ pub trait ProcessApi {
     async fn follow_log(&self) -> CallResult<ListSubscription<ProcessLogEvent>>;
 }
 
-/// The base functionality of a single process.
+/// Channels connected to the base functionality of a single process.
 ///
 /// While [ProcessApi] defines an interface to interact with a running process,
 /// this is instead an interface for implementing a process itself. This is
-/// intended to be implemented by an IPC client for creating native IPC
+/// intended to be initialized by an IPC client for creating native IPC
 /// processes that execute outside of the main Hearth runtime. Because only
 /// processes can send messages to other processes, this is a necessary
 /// prerequisite for IPC to interact with Hearth processes via messages.
-#[remote]
-pub trait ProcessBase {
-    /// Gets a sender to this process's mailbox.
+#[derive(Deserialize, Serialize)]
+pub struct ProcessBase {
+    /// The info for this process.
+    pub info: ProcessInfo,
+
+    /// A sender to this process's mailbox.
     ///
-    /// The `pid` field represents the sender of the message.
-    async fn get_mailbox(&self) -> CallResult<mpsc::Sender<Message>>;
+    /// The `pid` field of each message represents the sender of the message.
+    pub mailbox: mpsc::Sender<Message>,
 
-    /// Gets a watcher to this process's alive status.
-    async fn get_is_alive(&self) -> CallResult<watch::Receiver<bool>>;
+    /// A watchable sender to this process's alive status.
+    pub is_alive: watch::Sender<bool>,
 
-    /// Subscribes this process's log.
-    async fn follow_log(&self) -> CallResult<ListSubscription<ProcessLogEvent>>;
+    /// A receiver to this process's log.
+    pub log: mpsc::Receiver<ProcessLogEvent>,
 }
 
 /// A single message between processes.
