@@ -181,9 +181,9 @@ impl Process for RemoteProcess {
     }
 
     async fn run(&mut self, mut ctx: ProcessContext) {
-        loop {
+        while *self.is_alive.borrow() {
             tokio::select! {
-                msg = ctx.mailbox.recv() => self.on_recv(msg).await,
+                msg = ctx.mailbox.recv() => self.on_recv(&mut ctx, msg).await,
                 _ = ctx.is_alive.changed() => self.on_is_alive(&mut ctx).await,
                 msg = self.outgoing.recv() => self.on_outgoing(&mut ctx, msg).await,
                 log = self.log.recv() => self.on_log(&mut ctx, log).await,
@@ -193,7 +193,7 @@ impl Process for RemoteProcess {
 }
 
 impl RemoteProcess {
-    async fn on_recv(&mut self, msg: Option<Message>) {
+    async fn on_recv(&mut self, ctx: &mut ProcessContext, msg: Option<Message>) {
         let msg = match msg {
             Some(msg) => msg,
             None => return,
@@ -204,7 +204,11 @@ impl RemoteProcess {
             data: msg.data,
         };
 
-        let _ = self.mailbox.send(msg).await; // TODO autokill on hang up?
+        if self.mailbox.send(msg).await.is_err() {
+            // SendErrors are always final
+            debug!("RemoteProcess channel hung up (mailbox SendError)");
+            self.on_kill(ctx); // remote hung up
+        }
     }
 
     async fn on_is_alive(&mut self, ctx: &mut ProcessContext) {
@@ -218,8 +222,9 @@ impl RemoteProcess {
         ctx: &mut ProcessContext,
         msg: Result<Option<RpcMessage>, remoc_mpsc::RecvError>,
     ) {
-        if let Some(msg) = self.handle_recv_result(msg) {
-            ctx.send_message(msg.pid, msg.data).await;
+        if let Some(msg) = self.handle_recv_result(ctx, msg) {
+            // TODO communicate send errors back to process base
+            let _ = ctx.send_message(msg.pid, msg.data).await;
         }
     }
 
@@ -228,25 +233,26 @@ impl RemoteProcess {
         ctx: &mut ProcessContext,
         log: Result<Option<ProcessLogEvent>, remoc_mpsc::RecvError>,
     ) {
-        if let Some(log) = self.handle_recv_result(log) {
+        if let Some(log) = self.handle_recv_result(ctx, log) {
             ctx.log(log);
         }
     }
 
     fn handle_recv_result<T>(
         &mut self,
+        ctx: &mut ProcessContext,
         result: Result<Option<T>, remoc_mpsc::RecvError>,
     ) -> Option<T> {
         match result {
             Ok(Some(val)) => Some(val),
             Ok(None) => {
                 debug!("RemoteProcess channel hung up (end of channel)");
-                // remote hung up
+                self.on_kill(ctx); // remote hung up
                 None
             }
             Err(err) if err.is_final() => {
                 debug!("RemoteProcess channel hung up (RecvError::is_final() == true)");
-                // remote hung up
+                self.on_kill(ctx); // remote hung up
                 None
             }
             Err(err) => {
@@ -254,6 +260,12 @@ impl RemoteProcess {
                 None
             }
         }
+    }
+
+    fn on_kill(&mut self, ctx: &mut ProcessContext) {
+        debug!("RemoteProcess has been killed");
+        let _ = self.is_alive.send(false);
+        ctx.kill();
     }
 }
 
