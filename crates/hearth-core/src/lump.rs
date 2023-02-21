@@ -6,7 +6,7 @@ use hearth_types::*;
 use remoc::robj::lazy_blob::LazyBlob;
 use remoc::rtc::async_trait;
 use tokio::sync::RwLock;
-use tracing::error;
+use tracing::{debug, error};
 
 struct Lump {
     data: Bytes,
@@ -21,7 +21,14 @@ pub struct LumpStoreImpl {
 impl LumpStore for LumpStoreImpl {
     async fn upload_lump(&self, id: Option<LumpId>, data: LazyBlob) -> ResourceResult<LumpId> {
         if let Some(id) = id {
+            debug!("Beginning lump upload (known ID: {})", id);
+        } else {
+            debug!("Beginning lump upload (unknown ID)");
+        }
+
+        if let Some(id) = id {
             if self.store.read().await.contains_key(&id) {
+                debug!("Already have lump {}", id);
                 return Ok(id);
             }
         }
@@ -53,6 +60,7 @@ impl LumpStore for LumpStoreImpl {
             }
         }
 
+        debug!("Storing lump {}", checked_id);
         let data = Bytes::from(data);
         let blob = LazyBlob::new(data.clone());
         let lump = Lump { data, blob };
@@ -62,6 +70,7 @@ impl LumpStore for LumpStoreImpl {
     }
 
     async fn download_lump(&self, id: LumpId) -> ResourceResult<LazyBlob> {
+        debug!("Downloading lump {}", id);
         self.store
             .read()
             .await

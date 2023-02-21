@@ -69,8 +69,9 @@ impl AssetStore {
         }
     }
 
-    pub fn add_loader(&mut self, class: String, loader: impl AssetLoader) {
-        debug!("Adding asset loader {}", class);
+    pub fn add_loader<T: AssetLoader>(&mut self, class: String, loader: T) {
+        let type_name = std::any::type_name::<T>();
+        debug!("Adding asset loader {} for class '{}'", type_name, class);
 
         if self.class_to_pool.contains_key(&class) {
             error!("Asset loader for class {} has already been added!", class);
