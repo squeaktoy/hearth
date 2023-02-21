@@ -22,6 +22,23 @@ use sharded_slab::Slab;
 use tokio::sync::{mpsc, watch, RwLock};
 use tracing::{debug, error, info, trace};
 
+/// A send error that may occur when sending a message from one process to
+/// another.
+#[derive(Clone, Debug)]
+pub enum SendError {
+    /// The destination process ID was not found.
+    ProcessNotFound,
+
+    /// There was an error while sending over a Remoc channel.
+    RemocSendError(remoc_mpsc::SendError<Message>),
+}
+
+impl From<remoc_mpsc::SendError<Message>> for SendError {
+    fn from(err: remoc_mpsc::SendError<Message>) -> Self {
+        SendError::RemocSendError(err)
+    }
+}
+
 /// An interface trait for processes.
 ///
 /// To create a new type of process, this trait may be implemented. Then, an
@@ -110,7 +127,7 @@ impl ProcessContext {
     }
 
     /// Sends a message to another process.
-    pub async fn send_message(&self, dst: ProcessId, data: Vec<u8>) {
+    pub async fn send_message(&self, dst: ProcessId, data: Vec<u8>) -> Result<(), SendError> {
         let (peer, local_dst) = dst.split();
 
         let msg = Message {
@@ -119,9 +136,10 @@ impl ProcessContext {
         };
 
         if peer == self.pid.split().0 {
-            self.process_store.send_message(local_dst, msg).await;
+            self.process_store.send_message(local_dst, msg).await
         } else {
             error!("Remote process message sending is unimplemented");
+            Err(remoc_mpsc::SendError::RemoteForward.into())
         }
     }
 
@@ -331,7 +349,7 @@ impl ProcessStoreImpl {
 
                     // if there is actually a process with this ID, notify its context that it's dead
                     if let Some(wrapper) = store.processes.take(pid.0 as usize) {
-                        wrapper.is_alive_tx.send(false).unwrap();
+                        let _ = wrapper.is_alive_tx.send(false); // ignore error; not our problem if the remote has hung up
                     } else {
                         // double-removal race conditions are bugs
                         error!("Attempted to kill dead PID {}", pid.0);
@@ -356,19 +374,18 @@ impl ProcessStoreImpl {
         });
     }
 
-    async fn send_message(&self, dst: LocalProcessId, msg: Message) {
+    async fn send_message(&self, dst: LocalProcessId, msg: Message) -> Result<(), SendError> {
         let sender = if let Some(wrapper) = self.processes.get(dst.0 as usize) {
             wrapper.mailbox_tx.clone()
         } else {
-            // TODO error handling for when process ID is invalid
-            return;
+            return Err(SendError::ProcessNotFound);
         };
 
-        // TODO i'm too high to tell if this error catching is necessary
         match sender.send(msg).await {
-            Ok(()) => {}
-            Err(err) => {
-                error!("Message mailbox sending error: {:?}", err);
+            Ok(()) => Ok(()),
+            Err(_err) => {
+                error!("Process wrapper was fetched but process mailbox hung up");
+                Err(SendError::ProcessNotFound)
             }
         }
     }
