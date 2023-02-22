@@ -5,6 +5,8 @@ Hearth is a shared, always-on execution environment for constructing
 
 [Come join our Discord server!](https://discord.gg/gzzJ3pWCft)
 
+If you're interested in contributing, read our [contribution guidelines](/CONTRIBUTING.md).
+
 # The History of Virtual Worlds
 
 Shared virtual spaces have been around for decades, in many forms. Before PCs
