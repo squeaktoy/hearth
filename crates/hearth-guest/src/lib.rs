@@ -84,7 +84,71 @@ impl Message {
     }
 }
 
+/// A loaded lump.
+pub struct Lump(u32);
+
+impl Drop for Lump {
+    fn drop(&mut self) {
+        unsafe { abi::lump::free(self.0) }
+    }
+}
+
+impl Lump {
+    /// Loads a new lump from in-process data.
+    pub fn load(data: &[u8]) -> Self {
+        unsafe {
+            let ptr = data.as_ptr() as u32;
+            let len = data.len() as u32;
+            let handle = abi::lump::load(ptr, len);
+            Self(handle)
+        }
+    }
+
+    /// Loads a lump from the ID of an already existing lump.
+    pub fn from_id(id: &LumpId) -> Self {
+        unsafe {
+            let handle = abi::lump::from_id(id as *const LumpId as u32);
+            Self(handle)
+        }
+    }
+
+    /// Gets the ID of this lump.
+    pub fn get_id(&self) -> LumpId {
+        unsafe {
+            let id = LumpId(Default::default());
+            let id_ptr = &id as *const LumpId as u32;
+            abi::lump::get_id(self.0, id_ptr);
+            id
+        }
+    }
+
+    /// Retrieves the data stored in this lump.
+    pub fn get_data(&self) -> Vec<u8> {
+        #[allow(clippy::uninit_vec)]
+        unsafe {
+            let len = abi::lump::get_len(self.0) as usize;
+            let mut data = Vec::with_capacity(len);
+            data.set_len(len);
+            abi::lump::get_data(self.0, data.as_ptr() as u32);
+            data
+        }
+    }
+}
+
+#[allow(clashing_extern_declarations)]
 mod abi {
+    pub mod lump {
+        #[link(wasm_import_module = "hearth::lump")]
+        extern "C" {
+            pub fn from_id(id_ptr: u32) -> u32;
+            pub fn load(ptr: u32, len: u32) -> u32;
+            pub fn get_id(handle: u32, id_ptr: u32);
+            pub fn get_len(handle: u32) -> u32;
+            pub fn get_data(handle: u32, ptr: u32);
+            pub fn free(handle: u32);
+        }
+    }
+
     pub mod message {
         #[link(wasm_import_module = "hearth::message")]
         extern "C" {
