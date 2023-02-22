@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Hearth runtime construction and the plugin interface.
 //!
 //! To get started, call [RuntimeBuilder::new] to start building a runtime,

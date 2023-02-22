@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use clap::{Parser, Subcommand};
 use hearth_rpc::DaemonOffer;
 

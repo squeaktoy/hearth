@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 pub use hearth_types::*;
 
 /// Fetches the process ID of the current process.

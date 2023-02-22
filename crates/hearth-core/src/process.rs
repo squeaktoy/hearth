@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Process interface, store, messages, and related resources.
 //!
 //! To create a process store from scratch, call [ProcessStoreImpl::new]. This

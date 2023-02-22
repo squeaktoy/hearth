@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use proc_macro2::{Literal, Span, TokenStream};
 use quote::quote;
 use syn::{parse_macro_input, FnArg, Ident, ImplItem, ImplItemMethod, Pat, PatIdent, Type};
