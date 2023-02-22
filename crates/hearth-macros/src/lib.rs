@@ -1,17 +1,37 @@
 use proc_macro2::{Literal, Span, TokenStream};
 use quote::quote;
-use syn::{parse_macro_input, FnArg, Ident, ImplItem, ImplItemMethod, Pat, PatIdent, Type};
+use syn::{
+    parse_macro_input, AttributeArgs, FnArg, Ident, ImplItem, ImplItemMethod, Meta, MetaNameValue,
+    NestedMeta, Pat, PatIdent, Type,
+};
 
 #[proc_macro_attribute]
 pub fn impl_wasm_linker(
-    _attr: proc_macro::TokenStream,
+    attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
+    let args = parse_macro_input!(attr as AttributeArgs);
     let impl_item = parse_macro_input!(item as syn::ItemImpl);
 
     let fn_items = impl_item.items;
     let impl_type = impl_item.self_ty;
-    let module = get_module_literal(impl_type.clone());
+
+    let module = args
+        .into_iter()
+        .next()
+        .expect("Expected one attribute argument");
+    let module = match module {
+        NestedMeta::Meta(Meta::NameValue(MetaNameValue { path, lit, .. })) => {
+            let path = path.get_ident().expect("Argument key must be ident");
+            assert_eq!(
+                path.to_string(),
+                "module",
+                "Only supported argument is 'module'"
+            );
+            lit
+        }
+        _ => panic!("Set only the module with 'module = \"your module\""),
+    };
 
     let mut items_within_impl = vec![];
     let mut link_wrapped_fns = vec![];
@@ -195,10 +215,6 @@ fn get_fn_name(fn_method: &ImplItemMethod) -> Ident {
 }
 fn get_func_wrap_literal(fn_method: &ImplItemMethod) -> Literal {
     Literal::string(fn_method.sig.ident.to_string().as_str())
-}
-fn get_module_literal(impl_type: Box<Type>) -> Literal {
-    let impl_type_ident = get_impl_type_ident(impl_type);
-    Literal::string(impl_type_ident.to_string().to_lowercase().as_str())
 }
 fn get_fn_args(fn_method: &ImplItemMethod) -> Vec<FnArg> {
     let mut args: Vec<FnArg> = fn_method.sig.inputs.iter().cloned().collect();
