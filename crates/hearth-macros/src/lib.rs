@@ -117,7 +117,8 @@ fn generate_func_wrap(fn_method: &ImplItemMethod, impl_type: &Ident) -> TokenStr
     if has_guest_memory(&get_fn_args(fn_method)) {
         quote! {
             linker.#func_wrap_ident(#module_literal, #fn_literal, |#closure_args| {
-                let memory = GuestMemory::from_caller(&mut caller);
+                // if constructing GuestMemory fails something is seriously wrong
+                let memory = GuestMemory::from_caller(&mut caller).unwrap();
 
                 #fn_call_thing
             }).unwrap();

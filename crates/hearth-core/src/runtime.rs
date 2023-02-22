@@ -67,11 +67,12 @@ impl RuntimeBuilder {
     /// Plugins may use their [Plugin::build] method to add other plugins,
     /// asset loaders, runners, or anything else.
     pub fn add_plugin<T: Plugin>(&mut self, mut plugin: T) -> &mut Self {
-        debug!("Adding plugin: {}", std::any::type_name::<T>());
+        let name = std::any::type_name::<T>();
+        debug!("Adding {} plugin", name);
 
         let id = plugin.type_id();
         if self.plugins.contains_key(&id) {
-            warn!("Attempted to add plugin twice: {:?}", id);
+            warn!("Attempted to add {} plugin twice", name);
             return self;
         }
 
@@ -81,9 +82,10 @@ impl RuntimeBuilder {
             id,
             PluginWrapper {
                 plugin: Box::new(plugin),
-                runner: Box::new(|plugin, runtime| {
+                runner: Box::new(move |plugin, runtime| {
                     let mut plugin = plugin.downcast::<T>().unwrap();
                     tokio::spawn(async move {
+                        debug!("Running {} plugin", name);
                         plugin.run(runtime).await;
                     });
                 }),
@@ -212,11 +214,13 @@ impl RuntimeBuilder {
             config,
         });
 
+        debug!("Running plugins");
         for (_id, wrapper) in self.plugins {
             let PluginWrapper { plugin, runner } = wrapper;
             runner(plugin, runtime.clone());
         }
 
+        debug!("Running runners");
         for runner in self.runners {
             runner(runtime.clone());
         }
