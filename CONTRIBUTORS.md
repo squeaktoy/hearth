@@ -2,6 +2,11 @@
 
 Thank you
 
+If this is your first time contributing to Hearth, feel free to to add your
+name and info to this list! This is a permanent record of your assistance on
+the project and explicitly adds your copyright to the code's
+[licensing](#licensing).
+
 # How To Use Git
 
 Hearth uses Git for its version control system (VCS). To contribute code or
@@ -21,11 +26,6 @@ For a pull request to be merged, our continuous integration tests must pass on
 the introduced code. This is to ensure that our main branch always compiles and
 runs as intended. You may need to push new commits to a pull request after it's
 opened in order to address the errors raised by our testing.
-
-If this is your first time contributing to Hearth, feel free to add a commit
-to add your name and info to [the contributors section of this document](#contributors)!
-This is a permanent record of your assistance on the project and adds your
-copyright to the code's [licensing](#licensing).
 
 # Naming Conventions
 
@@ -80,5 +80,41 @@ When in doubt, run `cargo fmt`.
 
 # Licensing
 
-- how to license files
-- how the AGPL works
+When you add a new source file to Hearth it needs to be given the proper
+licensing info. Prefix all source files in AGPL-licensed crates with the
+following:
+
+```
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+```
+
+This should go before documentation for that file and there needs to be a blank
+line separating the header from the contents of the file.
+
+If you've added your name to [the contributors list](#contributors) then you
+now have a copyright on part of Hearth's source code. What does that mean for
+you? Under the terms of the Affero GNU Public License (AGPL), if someone takes
+the source code you've contributed, modifies it, then redistributes compiled
+binaries of it without sharing their modifications, then you have had your
+rights violated as a copyright holder, and may pursue legal action. This is
+meant to protect Hearth from being profited off of by some big tech corporation
+that uses Hearth's features (and therefore the result of your valuable time and
+effort) but won't play nice and share its work with the world like you have.
+
+Because the specific license being used is the AGPL, and not the
+slightly-more-liberal GPL license, then even serving Hearth on the network
+counts as redistribution. Hearth's design is based on the idea that all peers
+are friendly so a highly-modified peer following different rules goes against
+the philosophy. The AGPL protects your rights as a programmer, your rights as a
+user of Hearth spaces, *and* the core Hearth philosophy.
+
+Now, this doesn't mean that you can't profit off of Hearth at all--far from it!
+You can sell copies of Hearth binaries or even sell access to private Hearth
+spaces, if you want. The AGPL only cares if you do that without also sharing
+the source code of whatever version of Hearth you're running, custom or not,
+with the other peers.
+
+Copyleft licensing is a highly nuanced topic so if you're curious on what the
+details involved in copyleft software are we encourage you to read the
+[section on the GNU website about licensing](https://www.gnu.org/licenses/).
