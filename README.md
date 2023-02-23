@@ -13,8 +13,9 @@ Hearth is a shared, always-on execution environment for constructing
 [Contributing](/CONTRIBUTORS.md) •
 [Discord server](https://discord.gg/gzzJ3pWCft)
 
-Hearth's logo was created by [Sasha Koshka](https://holanet.xyz) and is licensed
-under a [Creative Commons BY-SA 4.0 license](https://creativecommons.org/licenses/by-sa/4.0).
+Hearth's logo was created (c) 2023 by [Sasha Koshka](https://holanet.xyz) and
+is licensed under a
+[Creative Commons BY-SA 4.0 license](https://creativecommons.org/licenses/by-sa/4.0).
 
 </div>
 
