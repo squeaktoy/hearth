@@ -81,8 +81,9 @@ When in doubt, run `cargo fmt`.
 # Licensing
 
 When you add a new source file to Hearth it needs to be given the proper
-licensing info. Prefix all source files in AGPL-licensed crates with the
-following:
+licensing info. Most crates, such as all of the crates beginning with
+`hearth-`, are licensed under the AGPL. Prefix all source files in
+AGPL-licensed crates with the following:
 
 ```
 // Copyright (c) 2023 the Hearth contributors.
@@ -91,6 +92,10 @@ following:
 
 This should go before documentation for that file and there needs to be a blank
 line separating the header from the contents of the file.
+
+If the name of the crate does not begin with `hearth-` then please check the
+crate's `Cargo.toml` file for the correct license to use and replace the AGPL
+SPDX license identifier with the one found in the `package.license` entry.
 
 If you've added your name to [the contributors list](#contributors) then you
 now have a copyright on part of Hearth's source code. What does that mean for
