@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 struct SolidVertexIn {
     [[location(0)]] position: vec2<f32>;
     [[location(1)]] color: vec4<f32>;

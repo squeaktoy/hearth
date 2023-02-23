@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock, RwLockReadGuard, Weak};

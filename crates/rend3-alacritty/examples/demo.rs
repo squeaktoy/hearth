@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 use alacritty_terminal::config::PtyConfig;
 use alacritty_terminal::event::{Event as TermEvent, EventListener};
 use alacritty_terminal::event_loop::{
