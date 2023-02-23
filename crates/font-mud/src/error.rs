@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 use msdfgen::Range;
 use std::fmt;
 use std::fmt::Formatter;

@@ -1,3 +1,6 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::error::{FontError, FontResult, GlyphShapeError};
 use crate::glyph_bitmap::{GlyphBitmap, GlyphMtsdf};
 use glam::{UVec2, Vec2};
