@@ -78,8 +78,6 @@ order to determine the consequences of a commit.
 
 When in doubt, run `cargo fmt`.
 
-# Writing Log Messages
-
 # Licensing
 
 When you add a new source file to Hearth it needs to be given the proper
