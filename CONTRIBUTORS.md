@@ -7,6 +7,8 @@ name and info to this list! This is a permanent record of your assistance on
 the project and explicitly adds your copyright to the code's
 [licensing](#licensing).
 
+- Marceline Cramer (GitHub: [@marceline-cramer](https://github.com/marceline-cramer))
+
 # How To Use Git
 
 Hearth uses Git for its version control system (VCS). To contribute code or
