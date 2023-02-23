@@ -3,6 +3,7 @@
 Thank you to everyone who has contributed to Hearth!
 
 - Marceline Cramer, project creator (GitHub: [@marceline-cramer](https://github.com/marceline-cramer))
+- Sasha Koshka, logo artist ([website](https://holanet.xy))
 
 If this is your first time contributing to Hearth, feel free to to add your
 name and info to this list! This is a permanent record of your assistance on
