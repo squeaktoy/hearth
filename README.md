@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./resources/logo/logo.svg" width="300"/>
+<img src="./resources/logo/hearth.svg" width="300"/>
 
 # Hearth
 
