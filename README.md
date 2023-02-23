@@ -4,6 +4,8 @@
 
 # Hearth
 
+[![AGPLv3](/resources/misc/https://www.gnu.org/licenses/agpl-3.0.html)](https://www.gnu.org/licenses/agpl-3.0.html)
+
 Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
 
