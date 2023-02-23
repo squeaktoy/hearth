@@ -78,7 +78,7 @@ meaningfully contributing in the long run.
 - [ ] design a project logo
 - [ ] set up continuous integration to check pull requests
 - [x] write a CONTRIBUTORS.md describing contribution workflow
-- [ ] design a workspace structure
+- [x] design a workspace structure
 - [ ] set up licensing headers and copyright information
 - [ ] finalize the rest of the phases of the roadmap
 - [ ] create mocks for all of the codebase components
