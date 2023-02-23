@@ -179,9 +179,24 @@ the [alpha phase of development](#phase-2-alpha).
 
 # Implementation
 
-Hearth is written entirely in Rust. Rust rust rust rust rust rust rust. It's
-licensed under the GNU Affero General Public License version 3 (AGPLv3). Beer.
-Beeeeeeeeeeeeeeeeeeeeeeer. Freedom.
+Hearth is written entirely in [Rust](https://www.rust-lang.org/), a memory-safe
+compiled language with powerful generics and parallelization. Choosing Rust 
+eases developing a native runtime with rapid iteration and portability in mind
+without compromising on performance. Because Hearth uses WebAssembly, Rust can
+be used to write Hearth processes too. This monolanguage setup reduces
+development friction between guest and host code.
+
+Hearth is licensed under the [GNU Affero General Public License version 3.0](https://www.gnu.org/licenses/agpl-3.0.html).
+The AGPL is used for Hearth because it ensures that all peers on a network can
+view the source code of all other peers' runtimes. Hearth's philosophy affirms
+that there is no valid use of the Hearth runtime between unfriendly peers, and
+if a peer won't share their source code with you, they're not your friend.
+
+Some code developed in-house as a prerequisite for Hearth may not be directly
+linked to Hearth philosophy or implementation. In the spirit of sharing, this
+code is licensed under the [Apache 2.0](https://apache.org/licenses/LICENSE-2.0.html)
+license so that it may be reused by other projects who may not want to conform
+to the terms of the AGPL.
 
 ## Networking
 
