@@ -1,11 +1,18 @@
+<div align="center">
+
+<img src="./resources/logo/logo.svg" width="300"/>
+
 # Hearth
 
 Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
 
-[Come join our Discord server!](https://discord.gg/gzzJ3pWCft)
+[Philosophy](#philosophy) •
+[Design Document](/DESIGN.md) •
+[Contributing](/CONTRIBUTORS.md) •
+[Discord server](https://discord.gg/gzzJ3pWCft)
 
-If you're interested in contributing, read our [contribution guidelines](/CONTRIBUTING.md).
+</div>
 
 # The History of Virtual Worlds
 
