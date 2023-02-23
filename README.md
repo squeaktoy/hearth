@@ -8,6 +8,7 @@ Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
 
 [Philosophy](#philosophy) •
+[Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
 [Contributing](/CONTRIBUTORS.md) •
 [Discord server](https://discord.gg/gzzJ3pWCft)
@@ -68,6 +69,38 @@ its design principles.
 
 Read more about Hearth's design and architecture in its
 [design document](/DESIGN.md).
+
+# Setup and Installation
+
+To run Hearth you must build it from source. Hearth is written in Rust, so to
+compile Hearth you must [install the Rust toolchain](https://www.rust-lang.org/tools/install).
+You also need to install [Git](https://git-scm.com) to clone Hearth's source
+repository.
+
+Once you have all of the development tools installed, open a command prompt
+and run these commands in the directory where you'd like your local repository:
+
+```sh
+git clone https://github.com/hearth-rs/hearth.git # clone Hearth locally
+cd hearth # change directory into the source tree root
+cargo build --release # build Hearth in release mode
+```
+
+Once Cargo has finished, you can find Hearth's binaries in the `target/release`
+directory:
+
+- the client's binary is located at `target/release/hearth-client`
+- the server's binary is located at `target/release/hearth-server`
+- the CLI's binary is located at `target/release/hearth-ctl`
+
+More information on how to run each binary once compiled can be displayed using
+the `--help` flag on any binary.
+
+Example:
+
+```sh
+hearth-server --help # prints usage info for the Hearth server
+```
 
 # Roadmap
 
