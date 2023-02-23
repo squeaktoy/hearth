@@ -45,9 +45,10 @@ communication. ChaCha20 is another well-established cryptography protocol.
 
 ## Scripting
 
-Scripting in Hearth is done with WebAssembly. Blah blah blah, lightweight spec,
-blah blah blah, linear memory storage, blah blah blah, lots of runtime options,
-I've said all of this before.
+Scripting in Hearth is done with [WebAssembly](https://webassembly.org/).
+WebAssembly is extremely performant, simple,
+[a compile target for lots of languages](https://github.com/appcypher/awesome-wasm-langs),
+and has especially good support in Rust, Hearth's main development language.
 
 Hearth's execution model is inspired by BEAM, the virtual machine that the
 Erlang and Elixir programming languages run on. BEAM is a tried-and-true
