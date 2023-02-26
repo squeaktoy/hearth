@@ -188,6 +188,7 @@ unfeasible.
 - [ ] complete the WebAssembly host call APIs
 - [ ] complete `hearth-console`
 - [ ] add asset loaders for rend3 resources like meshes, textures, and materials
+- [ ] integrate `alacritty_terminal` with Tokio's child process API
 - [ ] create components and host-side systems for rend3 ECS integration
 - [ ] create native services for pancake mode input handling
 - [ ] create native services for rend3 configuration like skyboxes, global lighting, and camera setup
