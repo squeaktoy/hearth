@@ -157,12 +157,19 @@ component separately.
 
 - [x] implement password authentication and stream encryption
 - [x] create a standalone, usable, rend3-based 3D terminal emulator
-- [ ] design initial RPC network interfaces
+- [x] design an inter-subsystem plugin interface
+- [x] create a process store capable of sending messages between local processes
+- [ ] implement process linking
+- [x] create a lump store data structure
+- [x] create an asset loading system
+- [x] design initial RPC network interfaces
 - [ ] write mock RPC endpoints for testing subsystems in isolation
-- [ ] implement IPC using Unix domain sockets (Unix only)
-- [ ] design an inter-subsystem plugin interface
-- [ ] create a lump store data structure
+- [x] implement IPC using Unix domain sockets (Unix only)
+- [ ] complete `hearth-ctl`
 - [ ] define guest-to-host WebAssembly APIs for logging, lump loading, asset loading, and message transmission
+- [ ] create a native service for spawning WebAssembly processes
+- [ ] integrate an ECS framework into Hearth (and update design docs on the deets)
+- [ ] integrate rend3 and winit into `hearth-client`
 
 ## Phase 2: Alpha
 
@@ -173,12 +180,18 @@ servers are started up for testing, the protocols between subsystems are
 highly unstable, so long-lived, self-sustaining virtual spaces are still
 unfeasible.
 
-- [ ] asynchronous MSDF glyph loading
+- [ ] write a unit test suite for Wasm guests written in Rust
+- [ ] implement message-sending between processes on different peers
+- [ ] implement a process supervision tree in `hearth-guest`
+- [ ] asynchronous MSDF glyph loading for large fonts
 - [ ] support IPC on Windows using an appropriate alternative to Unix domain sockets
 - [ ] complete the WebAssembly host call APIs
-- [ ] create native services for pancake mode input handling
+- [ ] complete `hearth-console`
 - [ ] add asset loaders for rend3 resources like meshes, textures, and materials
-- [ ] create native services for rend3 configuration like skyboxes, ambient and directional lighting, and camera setup
+- [ ] integrate `alacritty_terminal` with Tokio's child process API
+- [ ] create components and host-side systems for rend3 ECS integration
+- [ ] create native services for pancake mode input handling
+- [ ] create native services for rend3 configuration like skyboxes, global lighting, and camera setup
 - [ ] create native services for virtual terminal management
 
 ## Phase 3: Beta
@@ -214,8 +227,12 @@ beta:
 - voice chat
 - collaborative world editing
 - live mesh editing
+- live interior design and virtual architecture tooling
+- in-space virtual cameras for external applications to record the space through
 - WASI-based text editors for non-native script authoring
 - Wasm compilers in Hearth for non-native script development
+- guest APIs for more WebAssembly languages (i.e. C/C++, AssemblyScript, Grain)
+- non-Wasm process scripting runtimes (i.e. Lua, Mono, Javascript, Lisp)
 
 These topics may be further explored post-beta. They mainly serve the purpose
 of guiding Hearth's developers towards supporting an aligned set of expected
@@ -225,3 +242,6 @@ usecases and to fuel curiosity into Hearth's potential.
 
 - [ ] publish Hearth on the AUR
 - [ ] publish Hearth's crates to the AUR
+- [ ] evaluate Hearth's design and brainstorm future improvements to found problems
+- [ ] create comprehensive documentation on usage
+- [ ] create a web page for promoting and reusing community contributions
