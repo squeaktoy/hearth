@@ -13,6 +13,34 @@ name and info to this list! This is a permanent record of your assistance on
 the project and explicitly adds your copyright to the code's
 [licensing](#licensing).
 
+# Finding Work
+
+If you'd like to begin contributing to Hearth, the best place to look for work
+to do is in the issue tracker on the GitHub repo. Issues always have the most
+relevant tasks for the current state of the codebase. Issues tagged with "help
+wanted" are not ready to be implemented in code because their design is
+incomplete or missing important information, so please consider reading those
+issues and researching them. Issues tagged with "good first issue" are probably
+complete design-wise and have relatively easy work required to complete them,
+so if you're new to Hearth, this is the best work to do as you'll grow to be
+more familiar in its codebase without needing to make major changes to it.
+
+Generally speaking, any issue that does not have the "help wanted" tag and that
+does not have anyone assigned to it is fair game for code contribution. If you
+decide to pick up an issue like that, please either self-assign it if you're in
+the Hearth organization or leave a comment on it letting us know that it's
+taken.
+
+If you don't see any issues that you like, the next place to go is the roadmap.
+You may see some incomplete items on it that may be adjacent to your skillset
+and you think that you may have something to offer on a subsystem design level.
+If this is the case, please join our
+[Discord server](https://discord.gg/gzzJ3pWCft) and get in contact with us! We
+would love to have you on our team with experienced hands and more points of
+view on our diverse codebase. We can discuss design and architecture, add you
+to the organization, and begin opening issues to plan out additions to the
+codebase.
+
 # How To Use Git
 
 Hearth uses Git for its version control system (VCS). To contribute code or
