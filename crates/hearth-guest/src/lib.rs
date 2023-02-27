@@ -1,5 +1,13 @@
 pub use hearth_types::*;
 
+/// Internal helper function to turn a string into a pointer and length.
+fn abi_string(str: &str) -> (u32, u32) {
+    let bytes = str.as_bytes();
+    let ptr = bytes.as_ptr() as u32;
+    let len = bytes.len() as u32;
+    (ptr, len)
+}
+
 /// Fetches the process ID of the current process.
 pub fn this_pid() -> ProcessId {
     let pid = unsafe { abi::process::this_pid() };
@@ -8,8 +16,8 @@ pub fn this_pid() -> ProcessId {
 
 /// Looks up the process ID of a peer's service by name.
 pub fn service_lookup(peer: PeerId, name: &str) -> Option<ProcessId> {
-    let bytes = name.as_bytes();
-    let pid = unsafe { abi::service::lookup(peer.0, bytes.as_ptr() as u32, bytes.len() as u32) };
+    let (name_ptr, name_len) = abi_string(name);
+    let pid = unsafe { abi::service::lookup(peer.0, name_ptr, name_len) };
     if pid == u64::MAX {
         None
     } else {
@@ -19,14 +27,14 @@ pub fn service_lookup(peer: PeerId, name: &str) -> Option<ProcessId> {
 
 /// Registers a process as a service on its peer.
 pub fn service_register(pid: ProcessId, name: &str) {
-    let bytes = name.as_bytes();
-    unsafe { abi::service::register(pid.0, bytes.as_ptr() as u32, bytes.len() as u32) }
+    let (name_ptr, name_len) = abi_string(name);
+    unsafe { abi::service::register(pid.0, name_ptr, name_len) }
 }
 
 /// Deregisters a peer's service.
 pub fn service_deregister(peer: PeerId, name: &str) {
-    let bytes = name.as_bytes();
-    unsafe { abi::service::deregister(peer.0, bytes.as_ptr() as u32, bytes.len() as u32) }
+    let (name_ptr, name_len) = abi_string(name);
+    unsafe { abi::service::deregister(peer.0, name_ptr, name_len) }
 }
 
 /// Kills a process.
@@ -148,9 +156,7 @@ impl Asset {
     /// Loads an asset from a lump.
     pub fn load(lump: &Lump, class: &str) -> Self {
         unsafe {
-            let class = class.as_bytes();
-            let class_ptr = class.as_ptr() as u32;
-            let class_len = class.len() as u32;
+            let (class_ptr, class_len) = abi_string(class);
             let handle = abi::asset::load(lump.0, class_ptr, class_len);
             Self(handle)
         }
