@@ -135,8 +135,43 @@ impl Lump {
     }
 }
 
+/// A loaded asset.
+pub struct Asset(u32);
+
+impl Drop for Asset {
+    fn drop(&mut self) {
+        unsafe { abi::asset::free(self.0) }
+    }
+}
+
+impl Asset {
+    /// Loads an asset from a lump.
+    pub fn load(lump: &Lump, class: &str) -> Self {
+        unsafe {
+            let class = class.as_bytes();
+            let class_ptr = class.as_ptr() as u32;
+            let class_len = class.len() as u32;
+            let handle = abi::asset::load(lump.0, class_ptr, class_len);
+            Self(handle)
+        }
+    }
+
+    /// Returns the internal handle ID of this asset.
+    pub fn get_id(&self) -> u32 {
+        self.0
+    }
+}
+
 #[allow(clashing_extern_declarations)]
 mod abi {
+    pub mod asset {
+        #[link(wasm_import_module = "hearth::asset")]
+        extern "C" {
+            pub fn load(lump_handle: u32, class_ptr: u32, class_len: u32) -> u32;
+            pub fn free(lump_handle: u32);
+        }
+    }
+
     pub mod lump {
         #[link(wasm_import_module = "hearth::lump")]
         extern "C" {
