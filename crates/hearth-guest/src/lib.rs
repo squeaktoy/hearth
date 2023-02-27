@@ -168,6 +168,14 @@ impl Asset {
     }
 }
 
+/// Log a message.
+pub fn log(level: ProcessLogLevel, target: &str, content: &str) {
+    let level = level.into();
+    let (target_ptr, target_len) = abi_string(target);
+    let (content_ptr, content_len) = abi_string(content);
+    unsafe { abi::log::log(level, target_ptr, target_len, content_ptr, content_len) }
+}
+
 #[allow(clashing_extern_declarations)]
 mod abi {
     pub mod asset {
@@ -175,6 +183,19 @@ mod abi {
         extern "C" {
             pub fn load(lump_handle: u32, class_ptr: u32, class_len: u32) -> u32;
             pub fn free(lump_handle: u32);
+        }
+    }
+
+    pub mod log {
+        #[link(wasm_import_module = "hearth::log")]
+        extern "C" {
+            pub fn log(
+                level: u32,
+                target_ptr: u32,
+                target_len: u32,
+                content_ptr: u32,
+                content_len: u32,
+            );
         }
     }
 
