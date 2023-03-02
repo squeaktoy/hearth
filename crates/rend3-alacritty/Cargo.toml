@@ -1,0 +1,20 @@
+[package]
+name = "rend3-alacritty"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+alacritty_terminal = "0.16"
+bytemuck = { version = "1.13", features = ["derive"] }
+font-mud = { path = "../font-mud" }
+glam = "0.20"
+owned_ttf_parser = "0.18.1"
+rend3 = "0.3"
+rend3-routine = "0.3"
+wgpu = "^0.12"
+
+[dev-dependencies]
+rend3-framework = "0.3"
+mio-extras = "2"
+winit = "0.26"

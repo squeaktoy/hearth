@@ -1,6 +1,28 @@
-use std::net::SocketAddr;
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Hearth.
+//
+// Hearth is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// Hearth is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Hearth. If not, see <https://www.gnu.org/licenses/>.
+
+use std::{
+    net::{SocketAddr, ToSocketAddrs},
+    str::FromStr,
+};
 
 use clap::Parser;
+use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
 use hearth_network::auth::login;
 use hearth_rpc::*;
 use tokio::net::TcpStream;
@@ -14,7 +36,7 @@ pub struct Args {
     /// IP address and port of the server to connect to.
     // TODO support DNS resolution too
     #[arg(short, long)]
-    pub server: SocketAddr,
+    pub server: String,
 
     /// Password to use to authenticate to the server. Defaults to empty.
     #[arg(short, long, default_value = "")]
@@ -24,6 +46,25 @@ pub struct Args {
 fn main() {
     let args = Args::parse();
     hearth_core::init_logging();
+    let server = match SocketAddr::from_str(&args.server) {
+        Err(_) => {
+            info!(
+                "Failed to parse \'{}\' to SocketAddr, attempting DNS resolution",
+                args.server
+            );
+            match args.server.to_socket_addrs() {
+                Err(err) => {
+                    error!("Failed to resolve IP: {:?}", err);
+                    return;
+                }
+                Ok(addrs) => match addrs.last() {
+                    None => return,
+                    Some(addr) => addr,
+                },
+            }
+        }
+        Ok(addr) => addr,
+    };
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -63,8 +104,8 @@ fn main() {
 }
 
 async fn async_main(args: Args) {
-    info!("Connecting to server at {:?}", args.server);
-    let mut socket = match TcpStream::connect(args.server).await {
+    info!("Connecting to server at {:?}", server);
+    let mut socket = match TcpStream::connect(server).await {
         Ok(s) => s,
         Err(err) => {
             error!("Failed to connect to server: {:?}", err);
@@ -109,7 +150,17 @@ async fn async_main(args: Args) {
     info!("Assigned peer ID {:?}", offer.new_id);
 
     let peer_info = PeerInfo { nickname: None };
-    let peer_api = hearth_core::api::spawn_peer_api(peer_info);
+    let config = RuntimeConfig {
+        peer_provider: offer.peer_provider.clone(),
+        this_peer: offer.new_id,
+        info: peer_info,
+    };
+
+    let mut builder = RuntimeBuilder::new();
+    builder.add_plugin(hearth_cognito::WasmPlugin::new());
+
+    let runtime = builder.run(config);
+    let peer_api = runtime.clone().serve_peer_api();
 
     tx.send(ClientOffer {
         peer_api: peer_api.to_owned(),
@@ -129,8 +180,9 @@ async fn async_main(args: Args) {
     };
 
     let daemon_offer = DaemonOffer {
-        peer_provider: offer.peer_provider.clone(),
+        peer_provider: offer.peer_provider,
         peer_id: offer.new_id,
+        process_factory: runtime.process_factory_client.clone(),
     };
 
     hearth_ipc::listen(daemon_listener, daemon_offer);

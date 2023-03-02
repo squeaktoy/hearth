@@ -1,9 +1,27 @@
+<div align="center">
+
+<img src="./resources/logo/hearth.svg" width="300"/>
+
 # Hearth
 
 Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
 
-[Come join our Discord server!](https://discord.gg/gzzJ3pWCft)
+[Philosophy](#philosophy) •
+[Setup and Installation](#setup-and-installation) •
+[Design Document](/DESIGN.md) •
+[Contributing](/CONTRIBUTORS.md) •
+[Discord server](https://discord.gg/gzzJ3pWCft)
+
+<a href="https://www.gnu.org/licenses/agpl-3.0.html">
+  <img src="./resources/misc/agplv3-with-text-162x68.png"/>
+</a>
+
+Hearth's logo was created (c) 2023 by [Sasha Koshka](https://holanet.xyz) and
+is licensed under a
+[Creative Commons BY-SA 4.0 license](https://creativecommons.org/licenses/by-sa/4.0).
+
+</div>
 
 # The History of Virtual Worlds
 
@@ -57,198 +75,40 @@ has achieved this, the next goal will be to explore and research the
 possibilities of the shared virtual space, to evaluate potential further use of
 its design principles.
 
-# Architecture
+Read more about Hearth's design and architecture in its
+[design document](/DESIGN.md).
 
-The name "Hearth" is meant to invoke the coziness of sharing a warm fireplace
-with loved ones. Hearth is based on a straight-forward client-server network
-architecture, with multiple peers connecting to a single persistent host. In
-Hearth, all peers on the network are assumed to be friendly, so any peer can
-perform any action on the world. This assumption sidesteps a massive amount of
-design dilemmas that have plagued virtual spaces for as long as they have
-existed.
+# Setup and Installation
 
-In order to upgrade Hearth's design from a trustful private environment to a
-trustless public service, future systems will need to solve these dilemmas in
-order to prevent griefing. Hearth's goal is to explore implementations of
-shared execution and content workflow, not security or permissions systems.
+To run Hearth you must build it from source. Hearth is written in Rust, so to
+compile Hearth you must [install the Rust toolchain](https://www.rust-lang.org/tools/install).
+You also need to install [Git](https://git-scm.com) to clone Hearth's source
+repository.
 
-Hearth is effectively two programs at once: a distributed scripting
-environment and a game engine. The scripting provides the metatextual rules of
-the environment and the game engine creates the spatial substrate of the world.
-The bridge between distributed execution logic and game engine logic is in the
-scripting API. Scripts perform high-level logic in the environment, but are
-also singularly responsible for loading and managing all of the spatial
-content.
+Once you have all of the development tools installed, open a command prompt
+and run these commands in the directory where you'd like your local repository:
 
-## Network
+```sh
+git clone https://github.com/hearth-rs/hearth.git # clone Hearth locally
+cd hearth # change directory into the source tree root
+cargo build --release # build Hearth in release mode
+```
 
-Hearth operates over TCP socket connections. Although other real-time
-networking options like GameNetworkingSockets or QUIC have significantly
-better performance, TCP is being used because it doesn't require NAT traversal
-and it performs packet ordering and error checking without help from userspace.
-When a connection to a Hearth server is made, the client and server will
-perform a handshake to exchange encryption keys, and all further communication
-will be  encrypted. Hearth assumes that peers are friendly, but not that
-man-in-the-middle attacks are impossible. The specific encryption protocol is
-TBD.
+Once Cargo has finished, you can find Hearth's binaries in the `target/release`
+directory:
 
-## Scripting
+- the client's binary is located at `target/release/hearth-client`
+- the server's binary is located at `target/release/hearth-server`
+- the CLI's binary is located at `target/release/hearth-ctl`
 
-Scripting in Hearth is done with WebAssembly. Blah blah blah, lightweight spec,
-blah blah blah, linear memory storage, blah blah blah, lots of runtime options,
-I've said all of this before.
+More information on how to run each binary once compiled can be displayed using
+the `--help` flag on any binary.
 
-Hearth's execution model is inspired by BEAM, the virtual machine that the
-Erlang and Elixir programming languages run on. BEAM is a tried-and-true
-solution for creating resilient, fault-tolerant, hot-swappable systems, so many
-of Hearth's design choices follow BEAM's. Hearth scripts are ran as green
-thread "processes" that can spawn and kill other processes. Processes share
-data by sending messages back and forth from each other. A significant
-departure from BEAM is that because Hearth runs on multiple computers at once,
-processes can spawn other processes on different peers, which can be either
-another client or the server. Hearth's networking implementation will then
-transport messages sent from a process on one peer to another, and the server
-will relay client-to-client messages.
+Example:
 
-A working example of a BEAM-like WebAssembly runtime is Lunatic. Lunatic runs
-green Wasm threads on top of a Rust asynchronous runtime, which handles all of
-the cooperative multitasking and async IO. Lunatic also implements preemptive
-multitasking by timeslicing Wasm execution, then yielding to other green
-threads. Lunatic's operation is another large influence on Hearth's design, and
-Hearth may reference--or even directly use--Lunatic's code in its own codebase.
-
-## IPC
-
-To administrate the network, every peer in a Hearth network exposes an IPC
-interface on a Unix domain socket. This can be used to query running processes,
-retrieve properties of the other peers on the network, send and receive
-messages to processes, kill or restart misbehaving processes, and most
-importantly, load new WebAssembly modules into the environment. The expected
-content development loop in Hearth is to develop new scripts natively, then
-load and execute the compiled module into Hearth using IPC.
-
-## Rendering
-
-## ECS
-
-## Assets
-
-Assets are multipurpose, hash-identified binary blobs that are exchanged
-on-demand over the Hearth network. To distribute modules to other peers, Hearth
-first hashes each asset and uses that hash as an identifier to other peers. If
-a peer does not own a copy of an asset, it will not recognize the hash of that
-asset in its cache, and it will request the asset's data from another peer.
-Client peers request asset data from the server, and the server requests asset
-data from the client that has referenced the unrecognized ID.
-
-Before assets can be specialized for different kinds of content, they must be
-loaded. Different asset classes, like meshes, textures, and WebAssembly modules
-have different named identifiers. The names for those asset classes may be
-`Mesh`, `Texture`, or `WebAssembly`, for example. Once an asset is loaded, it
-may be passed into the engine in the places that expect a loaded asset, such as
-in a mesh renderer component. Wasm processes are also spawned using a loaded
-WebAssembly module asset as the executable source.
-
-Processes may create their own assets in memory and read a foreign asset's data
-back into process memory. In this way, processes may procedurally generate
-runtime Hearth content into the space, load content data formats that the
-core Hearth runtime does not recognize, or pipeline assets through multiple
-processes that each perform some transformation on them.
-
-Note that because Wasm modules are loaded from assets and because assets can be
-dynamically created by processes, Hearth processes may generate and load Wasm
-modules at runtime. This may be used, for example, in a WebAssembly compiler
-running inside of Hearth itself.
-
-Processes have the ability to send and receive the IDs of assets to other
-processes. However, the runtime may not be aware that those IDs are being
-exchanged, so a process running on a remote peer may receive an ID in a message
-but the runtime will have no way of tracing it back to a peer that has that
-ID's data. To remedy this, processes have a host call that explicitly warms a
-target peer's asset cache with a given asset, and must use that host call when
-referencing asset IDs to a remote process that does not have the asset.
-
-## Terminal Emulator
-
-So far, only Hearth's network architecture, execution model, and content model
-have been described. These fulfill the first and second principles of Hearth's
-design philosophy, but not the third principle: the space itself must provide
-tooling to extend and modify itself. The easiest and simplest way to do this is
-to implement a virtual terminal emulator inside of the 3D space, as a floating
-window. This terminal emulator runs a native shell on the hosting user's
-computer, with full access to the filesystem, native programs, and the IPC
-interface for the Hearth process. The user can use the virtual terminal to edit
-Hearth scripts using an existing terminal text editor like Vim, Neovim, or
-Emacs, compile the script into a WebAssembly module, then load and execute that
-module, all without ever switching from Hearth to another application or
-shutting down Hearth itself.
-
-The terminal emulator's text is rendered with multichannel signed distance
-field (MSDF) rendering. MSDF rendering is good for text in 3D space because
-each glyph can be drawn with high-quality antialiasing and texture filtering
-from a large variety of viewing angles.
-
-## Platform
-
-Hearth runs outside of the browser as a native application. Linux is the only
-target platform to start with but Windows support will also be added during
-the [alpha phase of development](#phase-2-alpha).
-
-# Usecases
-
-# Implementation
-
-Hearth is written entirely in Rust. Rust rust rust rust rust rust rust. It's
-licensed under the GNU Affero General Public License version 3 (AGPLv3). Beer.
-Beeeeeeeeeeeeeeeeeeeeeeer. Freedom.
-
-## Networking
-
-The [Tokio](https://tokio.rs) provides an asynchronous Rust runtime for async
-code, non-blocking IO over both TCP and Unix domain sockets, and a foundation
-for WebAssembly multitasking.
-
-The protocols for both IPC and client-server communication are based on the
-[Remoc](https://docs.rs/remoc/) crate, which implements transport-agnostic
-channels, binary blob transport, remote procedure calls (RPC), watchable data
-collections, and other networking constructs. This will save a lot of
-development time that would otherwise be spent writing networking primitives.
-Using Remoc makes it difficult to standardize a top-to-bottom protocol
-definition, and the assumption is being made that no programs other than Hearth
-or its forks will be using the protocol. The development time saved is more
-than worth the loss of interoperability.
-
-## Rendering
-
-Scenes are rendered with [rend3](https://github.com/BVE-Reborn/rend3), a
-batteries-included rendering engine based on
-[wgpu](https://github.com/gfx-rs/wgpu). rend3 includes PBR, lighting, a render
-graph, skybox rendering, frustum culling, rigged mesh skinning, tone mapping,
-and other handy renderer features that Hearth doesn't need to do itself.
-Additionally, rend3's frame graph allows us to easily extend the renderer with
-new features as needed.
-
-## Terminal Emulator
-
-The terminal emulator is implemented with the help of the
-[alacritty_terminal](https://crates.io/crates/alacritty_terminal) crate, which
-parses the output of native child processes and writes it into a display-ready
-grid of characters. Then, Hearth draws the characters onto 2D planes projected
-in 3D space using MSDF textures generated with the
-[msdfgen](https://crates.io/crates/msdfgen) crate. This rendering is a custom
-node in the rend3 frame graph with a custom shader.
-
-- TBD: can we load glyph outlines from a TTF file without building Freetype?
-  * note: the ttf-parser crate looks like what we need)
-- TBD: UX for interacting with in-space terminals?
-
-## Input
-
-## WebAssembly
-
-## TUIs
-
-## CLIs
+```sh
+hearth-server --help # prints usage info for the Hearth server
+```
 
 # Roadmap
 
@@ -259,17 +119,18 @@ on which libraries and resources to use in its development, and finds a handful
 of core developers who understand Hearth's goals and who are capable of
 meaningfully contributing in the long run.
 
-- [ ] Write a design document
-- [x] Create a Discord server
-- [x] Create a GitHub repository
-- [ ] Onboard 3-4 core developers who can contribute to Hearth long-term
-- [ ] Design a project logo
-- [ ] Set up continuous integration to check pull requests
-- [ ] Write a CONTRIBUTORS.md describing contribution workflow
-- [ ] Design a workspace structure
-- [ ] Finalize the rest of the phases of the roadmap
-- [ ] Create mocks for all of the codebase components
-- [ ] Money?
+- [ ] write a design document
+- [x] create a Discord server
+- [x] create a GitHub repository
+- [ ] onboard 3-4 core developers who can contribute to Hearth long-term
+- [x] design a project logo
+- [ ] set up continuous integration to check pull requests
+- [x] write a CONTRIBUTORS.md describing contribution workflow
+- [x] design a workspace structure
+- [x] set up licensing headers and copyright information
+- [ ] finalize the rest of the phases of the roadmap
+- [ ] create mocks for all of the codebase components
+- [ ] money?
 
 ## Phase 1: Pre-Alpha
 
@@ -294,6 +155,22 @@ to alpha as quickly as possible. Mock interfaces and placeholder data where
 functioning inter-component code would otherwise go are used to develop each
 component separately.
 
+- [x] implement password authentication and stream encryption
+- [x] create a standalone, usable, rend3-based 3D terminal emulator
+- [x] design an inter-subsystem plugin interface
+- [x] create a process store capable of sending messages between local processes
+- [ ] implement process linking
+- [x] create a lump store data structure
+- [x] create an asset loading system
+- [x] design initial RPC network interfaces
+- [ ] write mock RPC endpoints for testing subsystems in isolation
+- [x] implement IPC using Unix domain sockets (Unix only)
+- [ ] complete `hearth-ctl`
+- [ ] define guest-to-host WebAssembly APIs for logging, lump loading, asset loading, and message transmission
+- [ ] create a native service for spawning WebAssembly processes
+- [ ] integrate an ECS framework into Hearth (and update design docs on the deets)
+- [ ] integrate rend3 and winit into `hearth-client`
+
 ## Phase 2: Alpha
 
 In phase 2, Hearth begins to come together as a whole. Each subsystem is hooked
@@ -302,6 +179,20 @@ a single functioning application. Although at this point in development network
 servers are started up for testing, the protocols between subsystems are
 highly unstable, so long-lived, self-sustaining virtual spaces are still
 unfeasible.
+
+- [ ] write a unit test suite for Wasm guests written in Rust
+- [ ] implement message-sending between processes on different peers
+- [ ] implement a process supervision tree in `hearth-guest`
+- [ ] asynchronous MSDF glyph loading for large fonts
+- [ ] support IPC on Windows using an appropriate alternative to Unix domain sockets
+- [ ] complete the WebAssembly host call APIs
+- [ ] complete `hearth-console`
+- [ ] add asset loaders for rend3 resources like meshes, textures, and materials
+- [ ] integrate `alacritty_terminal` with Tokio's child process API
+- [ ] create components and host-side systems for rend3 ECS integration
+- [ ] create native services for pancake mode input handling
+- [ ] create native services for rend3 configuration like skyboxes, global lighting, and camera setup
+- [ ] create native services for virtual terminal management
 
 ## Phase 3: Beta
 
@@ -319,4 +210,38 @@ makes phase 3 the most difficult phase to complete, as Hearth's goal during
 this step is to explore uncharted design territory in a unique execution
 environment.
 
+Here are some ideas for subjects of exploration that Hearth may explore in
+beta:
+- data backup
+- process-to-host integration with database APIs
+- persistent world storage
+- avatar movement and input handling systems
+- guest-side physics engines (using [Rapier](https://rapier.rs))
+- OBJ loading
+- FBX loading
+- glTF loading
+- avatar skeletal animation
+- inverse kinematics
+- audio compression
+- spatial audio
+- voice chat
+- collaborative world editing
+- live mesh editing
+- live interior design and virtual architecture tooling
+- in-space virtual cameras for external applications to record the space through
+- WASI-based text editors for non-native script authoring
+- Wasm compilers in Hearth for non-native script development
+- guest APIs for more WebAssembly languages (i.e. C/C++, AssemblyScript, Grain)
+- non-Wasm process scripting runtimes (i.e. Lua, Mono, Javascript, Lisp)
+
+These topics may be further explored post-beta. They mainly serve the purpose
+of guiding Hearth's developers towards supporting an aligned set of expected
+usecases and to fuel curiosity into Hearth's potential.
+
 ## Phase 4: Release
+
+- [ ] publish Hearth on the AUR
+- [ ] publish Hearth's crates to the AUR
+- [ ] evaluate Hearth's design and brainstorm future improvements to found problems
+- [ ] create comprehensive documentation on usage
+- [ ] create a web page for promoting and reusing community contributions

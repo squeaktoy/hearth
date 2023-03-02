@@ -1,14 +1,33 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Hearth.
+//
+// Hearth is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// Hearth is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Hearth. If not, see <https://www.gnu.org/licenses/>.
+
 use std::collections::HashMap;
 
-use bytes::Buf;
-use hearth_rpc::remoc::{self, rtc::CallError};
-use remoc::robj::lazy_blob::{LazyBlob, Provider as BlobProvider};
+use bytes::{Buf, Bytes};
+use hearth_rpc::*;
+use hearth_types::*;
+use remoc::robj::lazy_blob::LazyBlob;
+use remoc::rtc::async_trait;
 use tokio::sync::RwLock;
-
-use super::*;
+use tracing::{debug, error};
 
 struct Lump {
-    provider: BlobProvider,
+    data: Bytes,
     blob: LazyBlob,
 }
 
@@ -20,7 +39,14 @@ pub struct LumpStoreImpl {
 impl LumpStore for LumpStoreImpl {
     async fn upload_lump(&self, id: Option<LumpId>, data: LazyBlob) -> ResourceResult<LumpId> {
         if let Some(id) = id {
+            debug!("Beginning lump upload (known ID: {})", id);
+        } else {
+            debug!("Beginning lump upload (unknown ID)");
+        }
+
+        if let Some(id) = id {
             if self.store.read().await.contains_key(&id) {
+                debug!("Already have lump {}", id);
                 return Ok(id);
             }
         }
@@ -52,14 +78,17 @@ impl LumpStore for LumpStoreImpl {
             }
         }
 
-        let (blob, provider) = LazyBlob::provided(data.into());
-        let lump = Lump { provider, blob };
+        debug!("Storing lump {}", checked_id);
+        let data = Bytes::from(data);
+        let blob = LazyBlob::new(data.clone());
+        let lump = Lump { data, blob };
         let mut store = self.store.write().await;
         store.insert(checked_id, lump);
         Ok(checked_id)
     }
 
     async fn download_lump(&self, id: LumpId) -> ResourceResult<LazyBlob> {
+        debug!("Downloading lump {}", id);
         self.store
             .read()
             .await
@@ -75,10 +104,22 @@ impl LumpStoreImpl {
             store: Default::default(),
         }
     }
+
+    pub async fn get_lump(&self, id: &LumpId) -> Option<Bytes> {
+        self.store
+            .read()
+            .await
+            .get(id)
+            .map(|lump| lump.data.clone())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use hearth_rpc::remoc::rtc::ServerShared;
+
     use super::*;
 
     fn make_id(bytes: &[u8]) -> LumpId {

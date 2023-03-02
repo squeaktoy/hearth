@@ -16,38 +16,28 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use clap::{Parser, Subcommand};
-use hearth_rpc::DaemonOffer;
+use clap::Parser;
+use hearth_rpc::*;
 
-mod list_peers;
-
-/// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
+/// Lists all peers currently participating in the space.
 #[derive(Debug, Parser)]
-pub struct Args {
-    #[command(subcommand)]
-    pub command: Commands,
-}
+pub struct ListPeers {}
 
-#[derive(Debug, Subcommand)]
-pub enum Commands {
-    Placeholder,
-    ListPeers(list_peers::ListPeers),
-}
-
-impl Commands {
+impl ListPeers {
     pub async fn run(self, daemon: DaemonOffer) {
-        match self {
-            Commands::Placeholder => {}
-            Commands::ListPeers(args) => args.run(daemon).await,
-        }
-    }
-}
+        let peer_list = daemon
+            .peer_provider
+            .follow_peer_list()
+            .await
+            .unwrap()
+            .take_initial()
+            .unwrap();
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    let args = Args::parse();
-    let daemon = hearth_ipc::connect()
-        .await
-        .expect("Failed to connect to Hearth daemon");
-    args.command.run(daemon).await;
+        //must be updated as time goes on when more peer info is added
+        println!("PID\tNickname");
+        for (peer_id, peer_info) in peer_list{
+            print!("{}\t{}\n", peer_id.0, peer_info.nickname.unwrap_or(String::from("None")));
+        }
+        
+    }
 }

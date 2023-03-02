@@ -2,10 +2,12 @@
 name = "hearth-client"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 clap = { version= "4", features = ["derive"] }
 glam = "0.20"
+hearth-cognito = { workspace = true }
 hearth-core = { workspace = true }
 hearth-ipc = { workspace = true }
 hearth-network = { workspace = true }
