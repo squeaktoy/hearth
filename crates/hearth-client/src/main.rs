@@ -46,25 +46,6 @@ pub struct Args {
 fn main() {
     let args = Args::parse();
     hearth_core::init_logging();
-    let server = match SocketAddr::from_str(&args.server) {
-        Err(_) => {
-            info!(
-                "Failed to parse \'{}\' to SocketAddr, attempting DNS resolution",
-                args.server
-            );
-            match args.server.to_socket_addrs() {
-                Err(err) => {
-                    error!("Failed to resolve IP: {:?}", err);
-                    return;
-                }
-                Ok(addrs) => match addrs.last() {
-                    None => return,
-                    Some(addr) => addr,
-                },
-            }
-        }
-        Ok(addr) => addr,
-    };
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -104,6 +85,26 @@ fn main() {
 }
 
 async fn async_main(args: Args) {
+    let server = match SocketAddr::from_str(&args.server) {
+        Err(_) => {
+            info!(
+                "Failed to parse \'{}\' to SocketAddr, attempting DNS resolution",
+                args.server
+            );
+            match args.server.to_socket_addrs() {
+                Err(err) => {
+                    error!("Failed to resolve IP: {:?}", err);
+                    return;
+                }
+                Ok(addrs) => match addrs.last() {
+                    None => return,
+                    Some(addr) => addr,
+                },
+            }
+        }
+        Ok(addr) => addr,
+    };
+
     info!("Connecting to server at {:?}", server);
     let mut socket = match TcpStream::connect(server).await {
         Ok(s) => s,
@@ -156,10 +157,12 @@ async fn async_main(args: Args) {
         info: peer_info,
     };
 
-    let mut builder = RuntimeBuilder::new();
-    builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    let runtime = { // move into block to make this async fn Send
+        let mut builder = RuntimeBuilder::new();
+        builder.add_plugin(hearth_cognito::WasmPlugin::new());
+        builder.run(config)
+    };
 
-    let runtime = builder.run(config);
     let peer_api = runtime.clone().serve_peer_api();
 
     tx.send(ClientOffer {
