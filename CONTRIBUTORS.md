@@ -108,7 +108,9 @@ order to determine the consequences of a commit.
 
 # Coding Style
 
-When in doubt, run `cargo fmt`.
+We're not picky on specific formatting, although if you don't format your code
+with `rustfmt` or `cargo fmt`, our continuous integration checks will fail.
+`rustfmt` has sole authority of code formatting.
 
 # Licensing
 
