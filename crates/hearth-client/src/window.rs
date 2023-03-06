@@ -18,6 +18,7 @@
 
 use std::sync::Arc;
 
+use hearth_rend3::{rend3, rend3_routine, wgpu, FrameRequest, Rend3Plugin};
 use rend3::{InstanceAdapterDevice, Renderer};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
@@ -93,10 +94,10 @@ pub enum WindowTxMessage {
 }
 
 /// Message sent from the window on initialization.
-#[derive(Debug)]
 pub struct WindowOffer {
     pub event_rx: EventLoopProxy<WindowRxMessage>,
     pub event_tx: mpsc::UnboundedReceiver<WindowTxMessage>,
+    pub rend3_plugin: Rend3Plugin,
 }
 
 pub struct Window {
@@ -106,9 +107,7 @@ pub struct Window {
     surface: Arc<wgpu::Surface>,
     config: wgpu::SurfaceConfiguration,
     renderer: Arc<Renderer>,
-    pbr_routine: rend3_routine::pbr::PbrRoutine,
-    tonemapping_routine: rend3_routine::tonemapping::TonemappingRoutine,
-    base_rendergraph: rend3_routine::base::BaseRenderGraph,
+    frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
     _object_handle: rend3::types::ResourceHandle<rend3::types::Object>,
     _directional_handle: rend3::types::ResourceHandle<rend3::types::DirectionalLight>,
 }
@@ -137,26 +136,9 @@ impl Window {
 
         surface.configure(&iad.device, &config);
         let (event_rx, event_tx) = mpsc::unbounded_channel();
-
-        let renderer =
-            rend3::Renderer::new(iad.to_owned(), rend3::types::Handedness::Left, None).unwrap();
-
-        let base_rendergraph = rend3_routine::base::BaseRenderGraph::new(&renderer);
-
-        let mut data_core = renderer.data_core.lock();
-        let pbr_routine = rend3_routine::pbr::PbrRoutine::new(
-            &renderer,
-            &mut data_core,
-            &base_rendergraph.interfaces,
-        );
-
-        drop(data_core);
-
-        let tonemapping_routine = rend3_routine::tonemapping::TonemappingRoutine::new(
-            &renderer,
-            &base_rendergraph.interfaces,
-            swapchain_format,
-        );
+        let rend3_plugin = Rend3Plugin::new(iad.to_owned(), swapchain_format);
+        let renderer = rend3_plugin.renderer.to_owned();
+        let frame_request_tx = rend3_plugin.frame_request_tx.clone();
 
         let mesh = create_mesh();
         let mesh_handle = renderer.add_mesh(mesh);
@@ -176,18 +158,6 @@ impl Window {
 
         let object_handle = renderer.add_object(object);
 
-        let view_location = glam::Vec3::new(3.0, 3.0, -5.0);
-        let view = glam::Mat4::from_euler(glam::EulerRot::XYZ, -0.55, 0.5, 0.0);
-        let view = view * glam::Mat4::from_translation(-view_location);
-
-        renderer.set_camera_data(rend3::types::Camera {
-            projection: rend3::types::CameraProjection::Perspective {
-                vfov: 60.0,
-                near: 0.1,
-            },
-            view,
-        });
-
         let directional_handle = renderer.add_directional_light(rend3::types::DirectionalLight {
             color: glam::Vec3::ONE,
             intensity: 10.0,
@@ -202,9 +172,7 @@ impl Window {
             surface,
             config,
             renderer,
-            base_rendergraph,
-            pbr_routine,
-            tonemapping_routine,
+            frame_request_tx,
             _object_handle: object_handle,
             _directional_handle: directional_handle,
         };
@@ -212,6 +180,7 @@ impl Window {
         let offer = WindowOffer {
             event_rx: event_loop.create_proxy(),
             event_tx,
+            rend3_plugin,
         };
 
         (window, offer)
@@ -240,29 +209,39 @@ impl Window {
             }
         };
 
-        let frame = rend3::util::output::OutputFrame::SurfaceAcquired {
+        let output_frame = rend3::util::output::OutputFrame::SurfaceAcquired {
             view: frame.texture.create_view(&Default::default()),
             surface_tex: frame,
         };
 
-        let (cmd_bufs, ready) = self.renderer.ready();
-        let mut graph = rend3::graph::RenderGraph::new();
-
         let size = self.window.inner_size();
         let resolution = glam::UVec2::new(size.width, size.height);
 
-        self.base_rendergraph.add_to_graph(
-            &mut graph,
-            &ready,
-            &self.pbr_routine,
-            None,
-            &self.tonemapping_routine,
-            resolution,
-            rend3::types::SampleCount::One,
-            glam::Vec4::ZERO,
-        );
+        let eye = glam::Vec3::new(3.0, 3.0, -5.0);
+        let center = glam::Vec3::ZERO;
+        let up = glam::Vec3::Y;
+        let view = glam::Mat4::look_at_rh(eye, center, up);
 
-        graph.execute(&self.renderer, frame, cmd_bufs, &ready);
+        let (on_complete, on_complete_rx) = oneshot::channel();
+
+        let request = FrameRequest {
+            output_frame,
+            camera: rend3::types::Camera {
+                projection: rend3::types::CameraProjection::Perspective {
+                    vfov: 60.0,
+                    near: 0.1,
+                },
+                view,
+            },
+            resolution,
+            on_complete,
+        };
+
+        if self.frame_request_tx.send(request).is_err() {
+            tracing::warn!("failed to request frame");
+        } else {
+            let _ = on_complete_rx.blocking_recv();
+        }
     }
 }
 
@@ -275,7 +254,11 @@ impl WindowCtx {
     pub fn new(runtime: &Runtime, offer_sender: oneshot::Sender<WindowOffer>) -> Self {
         let event_loop = EventLoopBuilder::with_user_event().build();
         let (inner, offer) = runtime.block_on(async { Window::new(&event_loop).await });
-        offer_sender.send(offer).unwrap();
+
+        if offer_sender.send(offer).is_err() {
+            tracing::warn!("WindowOffer receiver hung up");
+        }
+
         Self { event_loop, inner }
     }
 

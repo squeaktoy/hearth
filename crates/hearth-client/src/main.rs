@@ -24,6 +24,7 @@ use std::{
 use clap::Parser;
 use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
 use hearth_network::auth::login;
+use hearth_rend3::Rend3Plugin;
 use hearth_rpc::*;
 use tokio::net::TcpStream;
 use tracing::{debug, error, info};
@@ -58,7 +59,7 @@ fn main() {
     runtime.block_on(async {
         let mut window = window_rx.await.unwrap();
         let mut join_main = runtime.spawn(async move {
-            async_main(args).await;
+            async_main(args, window.rend3_plugin).await;
         });
 
         runtime.spawn(async move {
@@ -84,7 +85,7 @@ fn main() {
     window.run();
 }
 
-async fn async_main(args: Args) {
+async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     let server = match SocketAddr::from_str(&args.server) {
         Err(_) => {
             info!(
@@ -160,6 +161,7 @@ async fn async_main(args: Args) {
     let runtime = { // move into block to make this async fn Send
         let mut builder = RuntimeBuilder::new();
         builder.add_plugin(hearth_cognito::WasmPlugin::new());
+        builder.add_plugin(rend3_plugin);
         builder.run(config)
     };
 

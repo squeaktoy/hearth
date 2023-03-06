@@ -11,11 +11,9 @@ hearth-cognito = { workspace = true }
 hearth-core = { workspace = true }
 hearth-ipc = { workspace = true }
 hearth-network = { workspace = true }
+hearth-rend3 = { workspace = true }
 hearth-rpc = { workspace = true }
 remoc = { workspace = true, features = ["full"] }
-rend3 = "0.3"
-rend3-routine = "0.3"
 tokio = { version = "1.24", features = ["full"] }
 tracing = { workspace = true }
-wgpu = "^0.12"
 winit = "0.27"
