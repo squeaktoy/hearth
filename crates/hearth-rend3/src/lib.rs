@@ -20,11 +20,30 @@ use std::sync::Arc;
 
 use hearth_core::async_trait;
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
+use rend3::graph::RenderGraph;
+use rend3::types::{SampleCount, Camera};
+use rend3::util::output::OutputFrame;
 use rend3::{InstanceAdapterDevice, Renderer};
 use rend3_routine::base::BaseRenderGraph;
 use rend3_routine::pbr::PbrRoutine;
 use rend3_routine::tonemapping::TonemappingRoutine;
+use tokio::sync::{oneshot, mpsc};
 use wgpu::TextureFormat;
+
+/// A request to the renderer to draw a single frame.
+pub struct FrameRequest {
+    /// The rend3-ready output frame.
+    pub output_frame: OutputFrame,
+
+    /// The dimensions of the frame.
+    pub resolution: glam::UVec2,
+
+    /// The camera to use for this frame.
+    pub camera: Camera,
+
+    /// This oneshot message is sent when the frame is done rendering.
+    pub on_complete: oneshot::Sender<()>,
+}
 
 /// A rend3 Hearth plugin for adding 3D rendering to a Hearth runtime.
 ///
@@ -36,13 +55,19 @@ pub struct Rend3Plugin {
     pub base_render_graph: BaseRenderGraph,
     pub pbr_routine: PbrRoutine,
     pub tonemapping_routine: TonemappingRoutine,
+    pub frame_request_rx: mpsc::UnboundedReceiver<FrameRequest>,
+    pub frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
 }
 
 #[async_trait]
 impl Plugin for Rend3Plugin {
-    fn build(&mut self, builder: &mut RuntimeBuilder) {}
+    fn build(&mut self, _builder: &mut RuntimeBuilder) {}
 
-    async fn run(&mut self, runtime: Arc<Runtime>) {}
+    async fn run(&mut self, _runtime: Arc<Runtime>) {
+        while let Some(frame) = self.frame_request_rx.recv().await {
+            self.draw(frame);
+        }
+    }
 }
 
 impl Rend3Plugin {
@@ -58,12 +83,42 @@ impl Rend3Plugin {
         let tonemapping_routine = TonemappingRoutine::new(&renderer, interfaces, format);
         drop(data_core);
 
+        let (frame_request_tx, frame_request_rx) = mpsc::unbounded_channel();
+
         Self {
             iad,
             renderer,
             base_render_graph,
             pbr_routine,
             tonemapping_routine,
+            frame_request_tx,
+            frame_request_rx,
         }
+    }
+
+    /// Draws a frame in response to a [FrameRequest].
+    pub fn draw(&self, request: FrameRequest) {
+        let (cmd_bufs, ready) = self.renderer.ready();
+        let mut graph = RenderGraph::new();
+
+        let aspect = request.resolution.as_vec2();
+        let aspect = aspect.x / aspect.y;
+        self.renderer.set_aspect_ratio(aspect);
+        self.renderer.set_camera_data(request.camera);
+
+        self.base_render_graph.add_to_graph(
+            &mut graph,
+            &ready,
+            &self.pbr_routine,
+            None,
+            &self.tonemapping_routine,
+            request.resolution,
+            SampleCount::One,
+            glam::Vec4::ZERO,
+        );
+
+        graph.execute(&self.renderer, request.output_frame, cmd_bufs, &ready);
+
+        let _ = request.on_complete.send(()); // ignore hangup
     }
 }
