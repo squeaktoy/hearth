@@ -30,6 +30,10 @@ use rend3_routine::tonemapping::TonemappingRoutine;
 use tokio::sync::{oneshot, mpsc};
 use wgpu::TextureFormat;
 
+pub use rend3;
+pub use rend3_routine;
+pub use wgpu;
+
 /// A request to the renderer to draw a single frame.
 pub struct FrameRequest {
     /// The rend3-ready output frame.
