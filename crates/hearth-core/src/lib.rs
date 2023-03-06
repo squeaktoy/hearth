@@ -19,6 +19,8 @@
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::prelude::*;
 
+pub use hearth_rpc::remoc::rtc::async_trait;
+
 /// Asset loading and storage.
 pub mod asset;
 
