@@ -27,6 +27,9 @@ pub mod lump;
 /// Process interfaces and message routing.
 pub mod process;
 
+/// Publish-subscribe utility struct for making pub-sub services.
+pub mod pubsub;
+
 /// Peer runtime building and execution.
 pub mod runtime;
 
