@@ -119,6 +119,7 @@ async fn main() {
 
     let mut builder = RuntimeBuilder::new();
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    builder.add_plugin(hearth_panels::PanelsPlugin::new());
 
     let runtime = builder.run(config);
     let peer_api = runtime.clone().serve_peer_api();
