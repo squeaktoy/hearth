@@ -18,6 +18,8 @@
 
 use tracing::{debug, error, info};
 
+pub use tokio;
+
 /// Asset loading and storage.
 pub mod asset;
 
