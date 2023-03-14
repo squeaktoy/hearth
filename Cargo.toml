@@ -28,6 +28,7 @@ hearth-network = { path = "crates/hearth-network" }
 hearth-rpc = { path = "crates/hearth-rpc" }
 hearth-types = { path = "crates/hearth-types" }
 hearth-wasm = { path = "crates/hearth-wasm" }
+serde_json = "1"
 tracing = "0.1.37"
 
 [workspace.dependencies.remoc]
