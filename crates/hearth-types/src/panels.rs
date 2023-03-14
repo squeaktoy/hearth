@@ -36,3 +36,10 @@ pub enum PanelEvent {
 }
 
 crate::impl_serialize_json_display!(PanelEvent);
+
+/// A message sent to the panel control service to control the panel store.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub enum PanelCommand {
+    /// Focuses a panel.
+    Focus(u32),
+}
