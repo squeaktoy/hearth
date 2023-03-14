@@ -38,7 +38,7 @@ pub const SELF_PEER_ID: PeerId = PeerId(0);
 pub struct Args {
     /// IP address and port to listen on.
     #[arg(short, long)]
-    pub bind: SocketAddr,
+    pub bind: Option<SocketAddr>,
 
     /// Password to use to authenticate with clients. Defaults to empty.
     #[arg(short, long, default_value = "")]
@@ -52,15 +52,6 @@ async fn main() {
 
     let authenticator = ServerAuthenticator::from_password(args.password.as_bytes()).unwrap();
     let authenticator = Arc::new(authenticator);
-
-    info!("Binding to {:?}", args.bind);
-    let listener = match TcpListener::bind(args.bind).await {
-        Ok(l) => l,
-        Err(err) => {
-            error!("Failed to listen: {:?}", err);
-            return;
-        }
-    };
 
     let peer_info = PeerInfo { nickname: None };
 
@@ -109,7 +100,19 @@ async fn main() {
         process_factory: runtime.process_factory_client.clone(),
     };
 
-    listen(listener, peer_provider, peer_provider_client, authenticator);
+    info!("Binding to {:?}", args.bind);
+    if let Some(bind) = args.bind {
+        let listener = match TcpListener::bind(bind).await {
+            Ok(l) => l,
+            Err(err) => {
+                error!("Failed to listen: {:?}", err);
+                return;
+            }
+        };
+        listen(listener, peer_provider, peer_provider_client, authenticator);
+    } else {
+        info!("Server running in headless mode");
+    }
     hearth_ipc::listen(daemon_listener, daemon_offer);
     hearth_core::wait_for_interrupt().await;
     info!("Interrupt received; exiting server");
