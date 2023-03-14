@@ -20,6 +20,7 @@ use clap::{Parser, Subcommand};
 use hearth_rpc::DaemonOffer;
 
 mod list_peers;
+mod list_processes;
 
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
 #[derive(Debug, Parser)]
@@ -32,6 +33,7 @@ pub struct Args {
 pub enum Commands {
     Placeholder,
     ListPeers(list_peers::ListPeers),
+    ListProcesses(list_processes::ListProcesses),
 }
 
 impl Commands {
@@ -39,6 +41,7 @@ impl Commands {
         match self {
             Commands::Placeholder => {}
             Commands::ListPeers(args) => args.run(daemon).await,
+            Commands::ListProcesses(args) => args.run(daemon).await,
         }
     }
 }
