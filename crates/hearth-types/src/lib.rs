@@ -59,6 +59,18 @@ impl Display for LumpId {
     }
 }
 
+#[macro_export]
+macro_rules! impl_serialize_json_display {
+    ($ty: ident) => {
+        impl ::std::fmt::Display for $ty {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                let string = ::serde_json::to_string(self).map_err(|_| ::std::fmt::Error)?;
+                f.write_str(&string)
+            }
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
