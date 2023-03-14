@@ -52,8 +52,7 @@ async fn main() {
 
     let authenticator = ServerAuthenticator::from_password(args.password.as_bytes()).unwrap();
     let authenticator = Arc::new(authenticator);
-    
-    
+
     let peer_info = PeerInfo { nickname: None };
 
     debug!("Creating peer provider");
@@ -100,7 +99,6 @@ async fn main() {
         peer_id: SELF_PEER_ID,
         process_factory: runtime.process_factory_client.clone(),
     };
-    
 
     info!("Binding to {:?}", args.bind);
     if let Some(bind) = args.bind {
