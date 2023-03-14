@@ -21,23 +21,26 @@ use std::sync::Arc;
 use hearth_core::process::{Process, ProcessContext};
 use hearth_core::pubsub::PublisherProcess;
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
-use hearth_core::tokio::sync::mpsc;
+use hearth_core::{tokio, tracing};
 use hearth_rpc::hearth_types::panels::*;
 use hearth_rpc::remoc::rtc::async_trait;
 use hearth_rpc::ProcessInfo;
 use slab::Slab;
+use tokio::sync::{mpsc, RwLock};
 
 /// Plugin to add paneling support to a Hearth runtime.
 ///
 /// Adds the [PanelControlService] and [AmbientPanelService] services.
-pub struct PanelsPlugin {}
+pub struct PanelsPlugin {
+    store: Arc<RwLock<PanelStore>>,
+}
 
 #[async_trait]
 impl Plugin for PanelsPlugin {
     fn build(&mut self, builder: &mut RuntimeBuilder) {
         builder.add_service(
             "hearth.panels.PanelControlService".into(),
-            PanelControlService::new(),
+            PanelControlService::new(self.store.to_owned()),
         );
 
         /*builder.add_service(
@@ -51,12 +54,18 @@ impl Plugin for PanelsPlugin {
 
 impl PanelsPlugin {
     pub fn new() -> Self {
-        Self {}
+        let store = PanelStore::new();
+        let store = RwLock::new(store);
+        let store = Arc::new(store);
+        Self { store }
     }
 }
 
-/// `hearth.panels.PanelControlService`: Controls panels.
-pub struct PanelControlService {}
+/// `hearth.panels.PanelControlService`: Receives [PanelCommands][PanelCommand]
+/// and executes them.
+pub struct PanelControlService {
+    store: Arc<RwLock<PanelStore>>,
+}
 
 #[async_trait]
 impl Process for PanelControlService {
@@ -65,13 +74,29 @@ impl Process for PanelControlService {
     }
 
     async fn run(&mut self, mut ctx: ProcessContext) {
-        ctx.join().await;
+        while let Some(message) = ctx.recv().await {
+            let cmd: PanelCommand = match serde_json::from_slice(&message.data) {
+                Ok(cmd) => cmd,
+                Err(err) => {
+                    // TODO use process log instead for better debugging
+                    tracing::error!("Error parsing PanelCommand: {:?}", err);
+                    continue;
+                }
+            };
+
+            let mut store = self.store.write().await;
+            match cmd {
+                PanelCommand::Focus(panel) => {
+                    store.focus(panel as _);
+                }
+            }
+        }
     }
 }
 
 impl PanelControlService {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(store: Arc<RwLock<PanelStore>>) -> Self {
+        Self { store }
     }
 }
 
