@@ -20,17 +20,17 @@ use clap::Parser;
 use hearth_rpc::*;
 use hearth_types::PeerId;
 
-/// Lists all proccesses of a singular peer or all peers in the space.
+/// Lists proccesses of either a singular peer or all peers in the space.
 #[derive(Debug, Parser)]
 pub struct ListProcesses {
-    #[arg(short, long)]
-    pub peer: MaybeAllPeerId,
+    #[arg(short, long, default_value = None)]
+    pub peer: Option<MaybeAllPeerId>,
 }
 
 #[derive(Debug, Clone)]
 pub enum MaybeAllPeerId {
     All,
-    One(PeerId),    
+    One(PeerId),
 }
 
 impl std::str::FromStr for MaybeAllPeerId {
@@ -44,7 +44,7 @@ impl std::str::FromStr for MaybeAllPeerId {
                 } else {
                     Err("Bad peer ID".into())
                 }
-            },
+            }
             Ok(val) => Ok(MaybeAllPeerId::One(PeerId(val))),
         }
     }
@@ -52,27 +52,55 @@ impl std::str::FromStr for MaybeAllPeerId {
 
 impl ListProcesses {
     pub async fn run(self, daemon: DaemonOffer) {
-        let peer_list = daemon.peer_provider.follow_peer_list().await.unwrap().take_initial().unwrap();
-        match self.peer {
+        let peer_list = daemon
+            .peer_provider
+            .follow_peer_list()
+            .await
+            .unwrap()
+            .take_initial()
+            .unwrap();
+        match self.peer.unwrap_or(MaybeAllPeerId::One(daemon.peer_id)) {
             MaybeAllPeerId::All => {
+                println!("Peer ID\tPID\tService");
                 for (id, _) in peer_list {
-                    ListProcesses::display_peer(daemon.peer_provider.find_peer(id).await.unwrap()).await;
+                    ListProcesses::display_peer(
+                        daemon.peer_provider.find_peer(id).await.unwrap(),
+                        Some(id),
+                    )
+                    .await;
                 }
-            },
+            }
             MaybeAllPeerId::One(id) => {
-                ListProcesses::display_peer(daemon.peer_provider.find_peer(id).await.unwrap()).await;
-            },
+                println!("PID\tService");
+                ListProcesses::display_peer(
+                    daemon.peer_provider.find_peer(id).await.unwrap(),
+                    None,
+                )
+                .await;
+            }
         }
     }
-    async fn display_peer(peer: PeerApiClient) {
+    async fn display_peer(peer: PeerApiClient, peer_id: Option<PeerId>) {
         let process_store = peer.get_process_store().await.unwrap();
-        let process_list = process_store.follow_process_list().await.unwrap().take_initial().unwrap();
-        let service_list = process_store.follow_service_list().await.unwrap().take_initial().unwrap();
-        println!("PID\tService");
+        let process_list = process_store
+            .follow_process_list()
+            .await
+            .unwrap()
+            .take_initial()
+            .unwrap();
+        let service_list = process_store
+            .follow_service_list()
+            .await
+            .unwrap()
+            .take_initial()
+            .unwrap();
 
         // process info will need to be updated when fields are added to the struct
         for (process_id, _) in process_list {
-            
+            if peer_id.is_some() {
+                print!("{}\t", peer_id.unwrap().0);
+            }
+
             print!("{}\t", process_id.0);
             let mut is_first = true;
             for (service_name, service_id) in service_list.clone() {
@@ -90,4 +118,3 @@ impl ListProcesses {
         }
     }
 }
-
