@@ -20,6 +20,9 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use serde::{Deserialize, Serialize};
 
+/// Paneling-related protocols and utilities.
+pub mod panels;
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProcessId(pub u64);
 
