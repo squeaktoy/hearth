@@ -7,3 +7,4 @@ license = "AGPL-3.0-or-later"
 [dependencies]
 hearth-core = { workspace = true }
 hearth-rpc = { workspace = true }
+slab = "0.4.8"
