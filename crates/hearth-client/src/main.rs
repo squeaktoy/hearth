@@ -18,7 +18,8 @@
 
 use std::{
     net::{SocketAddr, ToSocketAddrs},
-    str::FromStr, path::PathBuf,
+    path::PathBuf,
+    str::FromStr,
 };
 
 use clap::Parser;
