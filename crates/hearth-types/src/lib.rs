@@ -23,6 +23,9 @@ use serde::{Deserialize, Serialize};
 /// Paneling-related protocols and utilities.
 pub mod panels;
 
+/// WebAssembly process protocols and utilities.
+pub mod wasm;
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProcessId(pub u64);
 
