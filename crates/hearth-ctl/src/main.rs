@@ -31,7 +31,6 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    Placeholder,
     ListPeers(list_peers::ListPeers),
     ListProcesses(list_processes::ListProcesses),
 }
@@ -39,7 +38,6 @@ pub enum Commands {
 impl Commands {
     pub async fn run(self, daemon: DaemonOffer) {
         match self {
-            Commands::Placeholder => {}
             Commands::ListPeers(args) => args.run(daemon).await,
             Commands::ListProcesses(args) => args.run(daemon).await,
         }
