@@ -33,11 +33,11 @@ use tracing::{debug, error, info};
 pub struct Args {
     /// IP address and port of the server to connect to.
     // TODO support DNS resolution too
-    #[arg(short, long)]
+    #[clap(short, long)]
     pub server: String,
 
     /// Password to use to authenticate to the server. Defaults to empty.
-    #[arg(short, long, default_value = "")]
+    #[clap(short, long, default_value = "")]
     pub password: String,
 }
 
