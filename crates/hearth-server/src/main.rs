@@ -46,7 +46,7 @@ pub struct Args {
     pub password: String,
 
     /// A configuration file to use if not the default one.
-    #[arg(short, long)]
+    #[clap(short, long)]
     pub config: Option<PathBuf>,
 }
 
