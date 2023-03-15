@@ -166,7 +166,7 @@ component separately.
 - [ ] complete `hearth-ctl`
 - [ ] define guest-to-host WebAssembly APIs for logging, lump loading, asset loading, and message transmission
 - [ ] create a native service for spawning WebAssembly processes
-- [ ] integrate rend3 and winit into `hearth-client`
+- [x] integrate rend3 and winit into `hearth-client`
 
 ## Phase 2: Alpha
 

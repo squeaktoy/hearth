@@ -25,9 +25,12 @@ use std::{
 use clap::Parser;
 use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
 use hearth_network::auth::login;
+use hearth_rend3::Rend3Plugin;
 use hearth_rpc::*;
 use tokio::net::TcpStream;
 use tracing::{debug, error, info};
+
+mod window;
 
 /// Client program to the Hearth virtual space server.
 #[derive(Parser, Debug)]
@@ -46,10 +49,48 @@ pub struct Args {
     pub config: Option<PathBuf>,
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let args = Args::parse();
     hearth_core::init_logging();
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let (window_tx, window_rx) = tokio::sync::oneshot::channel();
+    let window = window::WindowCtx::new(&runtime, window_tx);
+
+    runtime.block_on(async {
+        let mut window = window_rx.await.unwrap();
+        let mut join_main = runtime.spawn(async move {
+            async_main(args, window.rend3_plugin).await;
+        });
+
+        runtime.spawn(async move {
+            loop {
+                tokio::select! {
+                    event = window.event_tx.recv() => {
+                        debug!("window event: {:?}", event);
+                        if let Some(window::WindowTxMessage::Quit) = event {
+                            break;
+                        }
+                    }
+                    _ = &mut join_main => {
+                        debug!("async_main joined");
+                        window.event_rx.send_event(window::WindowRxMessage::Quit).unwrap();
+                        break;
+                    }
+                }
+            }
+        });
+    });
+
+    debug!("Running window event loop");
+    window.run();
+}
+
+async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     let server = match SocketAddr::from_str(&args.server) {
         Err(_) => {
             info!(
@@ -126,10 +167,15 @@ async fn main() {
         .config
         .unwrap_or_else(|| hearth_core::get_config_path());
     let config_file = hearth_core::load_config(&config_path).unwrap();
-    let mut builder = RuntimeBuilder::new(config_file);
-    builder.add_plugin(hearth_cognito::WasmPlugin::new());
 
-    let runtime = builder.run(config);
+    let runtime = {
+        // move into block to make this async fn Send
+        let mut builder = RuntimeBuilder::new(config_file);
+        builder.add_plugin(hearth_cognito::WasmPlugin::new());
+        builder.add_plugin(rend3_plugin);
+        builder.run(config)
+    };
+
     let peer_api = runtime.clone().serve_peer_api();
 
     tx.send(ClientOffer {

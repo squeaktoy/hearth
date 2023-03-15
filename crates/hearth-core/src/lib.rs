@@ -18,7 +18,9 @@
 
 use std::path::{Path, PathBuf};
 
-use tracing::{debug, error, info};
+pub use hearth_rpc::remoc::rtc::async_trait;
+use tracing::{debug, error, info, Level};
+use tracing_subscriber::prelude::*;
 
 /// Asset loading and storage.
 pub mod asset;
@@ -34,10 +36,17 @@ pub mod runtime;
 
 /// Helper function to set up console logging with reasonable defaults.
 pub fn init_logging() {
-    let format = tracing_subscriber::fmt::format().compact();
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .event_format(format)
+    let filter = tracing_subscriber::filter::Targets::new()
+        .with_target("wgpu", Level::INFO)
+        .with_target("wgpu_core", Level::WARN)
+        .with_target("wgpu_hal", Level::WARN)
+        .with_default(Level::DEBUG);
+
+    let format = tracing_subscriber::fmt::layer().compact();
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(format)
         .init();
 }
 
