@@ -18,7 +18,7 @@
 
 use std::{
     net::{SocketAddr, ToSocketAddrs},
-    str::FromStr,
+    str::FromStr, path::PathBuf,
 };
 
 use clap::Parser;
@@ -39,6 +39,10 @@ pub struct Args {
     /// Password to use to authenticate to the server. Defaults to empty.
     #[arg(short, long, default_value = "")]
     pub password: String,
+
+    /// A configuration file to use if not the default one.
+    #[arg(short, long)]
+    pub config: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -117,7 +121,11 @@ async fn main() {
         info: peer_info,
     };
 
-    let mut builder = RuntimeBuilder::new();
+    let config_path = args
+        .config
+        .unwrap_or_else(|| hearth_core::get_config_path());
+    let config_file = hearth_core::load_config(&config_path).unwrap();
+    let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
 
     let runtime = builder.run(config);
