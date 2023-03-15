@@ -31,6 +31,10 @@ use tokio::sync::{mpsc, RwLock};
 /// Plugin to add paneling support to a Hearth runtime.
 ///
 /// Adds the [PanelControlService] and [AmbientPanelService] services.
+///
+/// To create panels in this store, use [Self::get_store] during plugin
+/// building to get access to the [PanelStore], then during runtime execution,
+/// call [PanelStore::add_panel] to add custom panels to the store.
 pub struct PanelsPlugin {
     store: Arc<RwLock<PanelStore>>,
 }
@@ -53,11 +57,17 @@ impl Plugin for PanelsPlugin {
 }
 
 impl PanelsPlugin {
+    /// Creates a new panel management plugin.
     pub fn new() -> Self {
         let store = PanelStore::new();
         let store = RwLock::new(store);
         let store = Arc::new(store);
         Self { store }
+    }
+
+    /// Retrieves the [PanelStore] this plugin will run.
+    pub fn get_store(&self) -> Arc<RwLock<PanelStore>> {
+        self.store.to_owned()
     }
 }
 
