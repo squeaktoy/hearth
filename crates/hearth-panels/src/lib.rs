@@ -127,6 +127,15 @@ impl PanelStore {
         self.panels.insert(wrapper)
     }
 
+    /// Removes a panel from the store, returning true if successful.
+    pub fn remove_panel(&mut self, panel: usize) -> bool {
+        if self.focused == Some(panel) {
+            self.focused = None;
+        }
+
+        self.panels.try_remove(panel).is_some()
+    }
+
     /// Changes panel focus to a new panel.
     ///
     /// Returns the ID of the last focused panel. Does nothing and returns
@@ -203,11 +212,26 @@ mod tests {
         let mut store = PanelStore::new();
         let (p1_id, mut p1_rx) = add_passthru(&mut store);
         let (p2_id, mut p2_rx) = add_passthru(&mut store);
-        assert_eq!(store.focus(42), None);
         assert_eq!(store.focus(p1_id), None);
         assert_eq!(p1_rx.try_recv().unwrap(), PanelEvent::Focus(true));
         assert_eq!(store.focus(p2_id), Some(p1_id));
         assert_eq!(p1_rx.try_recv().unwrap(), PanelEvent::Focus(false));
         assert_eq!(p2_rx.try_recv().unwrap(), PanelEvent::Focus(true));
+    }
+
+    #[test]
+    fn invalid_focus() {
+        let mut store = PanelStore::new();
+        let (_p_id, mut p_rx) = add_passthru(&mut store);
+        assert_eq!(store.focus(42), None);
+        assert_eq!(p_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty));
+    }
+
+    #[test]
+    fn remove() {
+        let mut store = PanelStore::new();
+        let (p_id, _p_rx) = add_passthru(&mut store);
+        assert_eq!(store.remove_panel(p_id), true);
+        assert_eq!(store.remove_panel(p_id), false);
     }
 }
