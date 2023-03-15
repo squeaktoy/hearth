@@ -129,7 +129,6 @@ meaningfully contributing in the long run.
 - [x] design a workspace structure
 - [x] set up licensing headers and copyright information
 - [ ] finalize the rest of the phases of the roadmap
-- [ ] create mocks for all of the codebase components
 - [ ] money?
 
 ## Phase 1: Pre-Alpha
