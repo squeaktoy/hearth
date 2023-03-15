@@ -97,8 +97,6 @@ load and execute the compiled module into Hearth using IPC.
 
 ## Rendering
 
-## ECS
-
 ## Lumps
 
 Lumps are multipurpose, hash-identified binary blobs that are exchanged
