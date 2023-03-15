@@ -145,8 +145,7 @@ into several different areas of development or subsystems:
 1. IPC, TUI, and CLI interfaces.
 2. Client-server networking.
 3. Process management.
-4. ECS integration.
-5. Virtual terminal emulator development.
+4. Virtual terminal emulator development.
 
 Because these different areas are independent, the goal is to work on each of
 these areas in parallel. During this point of development, it's important that
@@ -168,7 +167,6 @@ component separately.
 - [ ] complete `hearth-ctl`
 - [ ] define guest-to-host WebAssembly APIs for logging, lump loading, asset loading, and message transmission
 - [ ] create a native service for spawning WebAssembly processes
-- [ ] integrate an ECS framework into Hearth (and update design docs on the deets)
 - [ ] integrate rend3 and winit into `hearth-client`
 
 ## Phase 2: Alpha
@@ -187,9 +185,9 @@ unfeasible.
 - [ ] support IPC on Windows using an appropriate alternative to Unix domain sockets
 - [ ] complete the WebAssembly host call APIs
 - [ ] complete `hearth-console`
-- [ ] add asset loaders for rend3 resources like meshes, textures, and materials
+- [ ] add asset loaders for rend3 meshes, 2D textures, cube textures, and materials
 - [ ] integrate `alacritty_terminal` with Tokio's child process API
-- [ ] create components and host-side systems for rend3 ECS integration
+- [ ] create native services for rend3 meshes, lights, and skeletons
 - [ ] create native services for pancake mode input handling
 - [ ] create native services for rend3 configuration like skyboxes, global lighting, and camera setup
 - [ ] create native services for virtual terminal management
