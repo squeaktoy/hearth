@@ -35,9 +35,12 @@ impl ListPeers {
 
         //must be updated as time goes on when more peer info is added
         println!("PID\tNickname");
-        for (peer_id, peer_info) in peer_list{
-            print!("{}\t{}\n", peer_id.0, peer_info.nickname.unwrap_or(String::from("None")));
+        for (peer_id, peer_info) in peer_list {
+            print!(
+                "{}\t{}\n",
+                peer_id.0,
+                peer_info.nickname.unwrap_or(String::from("None"))
+            );
         }
-        
     }
 }

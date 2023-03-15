@@ -18,6 +18,7 @@
 
 use std::{
     net::{SocketAddr, ToSocketAddrs},
+    path::PathBuf,
     str::FromStr,
 };
 
@@ -36,12 +37,16 @@ mod window;
 pub struct Args {
     /// IP address and port of the server to connect to.
     // TODO support DNS resolution too
-    #[arg(short, long)]
+    #[clap(short, long)]
     pub server: String,
 
     /// Password to use to authenticate to the server. Defaults to empty.
-    #[arg(short, long, default_value = "")]
+    #[clap(short, long, default_value = "")]
     pub password: String,
+
+    /// A configuration file to use if not the default one.
+    #[clap(short, long)]
+    pub config: Option<PathBuf>,
 }
 
 fn main() {
@@ -158,8 +163,14 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
         info: peer_info,
     };
 
-    let runtime = { // move into block to make this async fn Send
-        let mut builder = RuntimeBuilder::new();
+    let config_path = args
+        .config
+        .unwrap_or_else(|| hearth_core::get_config_path());
+    let config_file = hearth_core::load_config(&config_path).unwrap();
+
+    let runtime = {
+        // move into block to make this async fn Send
+        let mut builder = RuntimeBuilder::new(config_file);
         builder.add_plugin(hearth_cognito::WasmPlugin::new());
         builder.add_plugin(rend3_plugin);
         builder.run(config)

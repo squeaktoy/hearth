@@ -16,10 +16,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use tracing::{debug, error, info, Level};
-use tracing_subscriber::prelude::*;
+use std::path::{Path, PathBuf};
 
 pub use hearth_rpc::remoc::rtc::async_trait;
+use tracing::{debug, error, info, Level};
+use tracing_subscriber::prelude::*;
 
 /// Asset loading and storage.
 pub mod asset;
@@ -56,4 +57,30 @@ pub async fn wait_for_interrupt() {
         Ok(()) => info!("Interrupt signal received"),
         Err(err) => error!("Interrupt await error: {:?}", err),
     }
+}
+
+/// Gets the system directory for Hearth configuration files.
+///
+/// Panics if something fails for whatever reason.
+pub fn get_config_dir() -> PathBuf {
+    directories::ProjectDirs::from("rs", "hearth", "hearth")
+        .expect("Failed to get Hearth project directories")
+        .config_dir()
+        .to_owned()
+}
+
+/// Gets the default path of the main Hearth configuration file.
+///
+/// Panics if something fails for whatever reason.
+pub fn get_config_path() -> PathBuf {
+    get_config_dir().join("config.toml")
+}
+
+/// Loads a configuration file from the given path.
+pub fn load_config(path: &Path) -> anyhow::Result<toml::Table> {
+    info!("Loading configuration file from {:?}", path);
+    let config = std::fs::read_to_string(path)
+        .map_err(|err| anyhow::anyhow!("Failed to load config file at {:?}: {:?}", path, err))?;
+    toml::from_str(&config)
+        .map_err(|err| anyhow::anyhow!("Failed to deserialize config: {:?}", err))
 }

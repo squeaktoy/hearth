@@ -58,6 +58,7 @@ struct PluginWrapper {
 
 /// Builder struct for a single Hearth [Runtime].
 pub struct RuntimeBuilder {
+    config_file: toml::Table,
     plugins: HashMap<TypeId, PluginWrapper>,
     runners: Vec<Box<dyn FnOnce(Arc<Runtime>)>>,
     services: HashSet<String>,
@@ -67,17 +68,31 @@ pub struct RuntimeBuilder {
 
 impl RuntimeBuilder {
     /// Creates a new [RuntimeBuilder] with nothing loaded.
-    pub fn new() -> Self {
+    pub fn new(config_file: toml::Table) -> Self {
         let lump_store = Arc::new(LumpStoreImpl::new());
         let asset_store = AssetStore::new(lump_store.clone());
 
         Self {
+            config_file,
             plugins: Default::default(),
             runners: Default::default(),
             services: Default::default(),
             lump_store,
             asset_store,
         }
+    }
+
+    /// Loads a configuration value from a table in the config file.
+    pub fn load_config<T: serde::de::DeserializeOwned>(&self, table: &str) -> anyhow::Result<T> {
+        let value = self
+            .config_file
+            .get(table)
+            .ok_or_else(|| anyhow::anyhow!("No table '{}' in config file", table))?
+            .to_owned();
+
+        T::deserialize(value).map_err(|err| {
+            anyhow::anyhow!("Failed to deserialize '{}' in config: {:?}", table, err)
+        })
     }
 
     /// Adds a plugin to the runtime.
