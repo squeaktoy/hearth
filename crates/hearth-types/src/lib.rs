@@ -20,6 +20,9 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use serde::{Deserialize, Serialize};
 
+/// Paneling-related protocols and utilities.
+pub mod panels;
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProcessId(pub u64);
 
@@ -96,6 +99,18 @@ impl Into<u32> for ProcessLogLevel {
             Error => 4,
         }
     }
+}
+
+#[macro_export]
+macro_rules! impl_serialize_json_display {
+    ($ty: ident) => {
+        impl ::std::fmt::Display for $ty {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                let string = ::serde_json::to_string(self).map_err(|_| ::std::fmt::Error)?;
+                f.write_str(&string)
+            }
+        }
+    };
 }
 
 #[cfg(test)]
