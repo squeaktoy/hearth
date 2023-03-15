@@ -169,7 +169,7 @@ component separately.
 - [ ] define guest-to-host WebAssembly APIs for logging, lump loading, asset loading, and message transmission
 - [ ] create a native service for spawning WebAssembly processes
 - [ ] integrate an ECS framework into Hearth (and update design docs on the deets)
-- [ ] integrate rend3 and winit into `hearth-client`
+- [x] integrate rend3 and winit into `hearth-client`
 
 ## Phase 2: Alpha
 
