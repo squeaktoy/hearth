@@ -1,3 +1,21 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Hearth.
+//
+// Hearth is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// Hearth is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Hearth. If not, see <https://www.gnu.org/licenses/>.
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -20,7 +38,7 @@ pub const SELF_PEER_ID: PeerId = PeerId(0);
 pub struct Args {
     /// IP address and port to listen on.
     #[arg(short, long)]
-    pub bind: SocketAddr,
+    pub bind: Option<SocketAddr>,
 
     /// Password to use to authenticate with clients. Defaults to empty.
     #[arg(short, long, default_value = "")]
@@ -34,15 +52,6 @@ async fn main() {
 
     let authenticator = ServerAuthenticator::from_password(args.password.as_bytes()).unwrap();
     let authenticator = Arc::new(authenticator);
-
-    info!("Binding to {:?}", args.bind);
-    let listener = match TcpListener::bind(args.bind).await {
-        Ok(l) => l,
-        Err(err) => {
-            error!("Failed to listen: {:?}", err);
-            return;
-        }
-    };
 
     let peer_info = PeerInfo { nickname: None };
 
@@ -91,7 +100,19 @@ async fn main() {
         process_factory: runtime.process_factory_client.clone(),
     };
 
-    listen(listener, peer_provider, peer_provider_client, authenticator);
+    info!("Binding to {:?}", args.bind);
+    if let Some(bind) = args.bind {
+        let listener = match TcpListener::bind(bind).await {
+            Ok(l) => l,
+            Err(err) => {
+                error!("Failed to listen: {:?}", err);
+                return;
+            }
+        };
+        listen(listener, peer_provider, peer_provider_client, authenticator);
+    } else {
+        info!("Server running in headless mode");
+    }
     hearth_ipc::listen(daemon_listener, daemon_offer);
     hearth_core::wait_for_interrupt().await;
     info!("Interrupt received; exiting server");
