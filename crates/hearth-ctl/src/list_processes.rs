@@ -23,7 +23,7 @@ use hearth_types::PeerId;
 /// Lists proccesses of either a singular peer or all peers in the space.
 #[derive(Debug, Parser)]
 pub struct ListProcesses {
-    #[arg(short, long, default_value = None)]
+    #[clap(short, long)]
     pub peer: Option<MaybeAllPeerId>,
 }
 
