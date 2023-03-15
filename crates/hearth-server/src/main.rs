@@ -38,11 +38,11 @@ pub const SELF_PEER_ID: PeerId = PeerId(0);
 #[derive(Parser, Debug)]
 pub struct Args {
     /// IP address and port to listen on.
-    #[arg(short, long)]
+    #[clap(short, long)]
     pub bind: Option<SocketAddr>,
 
     /// Password to use to authenticate with clients. Defaults to empty.
-    #[arg(short, long, default_value = "")]
+    #[clap(short, long, default_value = "")]
     pub password: String,
 
     /// A configuration file to use if not the default one.

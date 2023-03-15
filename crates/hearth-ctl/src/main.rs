@@ -25,7 +25,7 @@ mod list_processes;
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
 #[derive(Debug, Parser)]
 pub struct Args {
-    #[command(subcommand)]
+    #[clap(subcommand)]
     pub command: Commands,
 }
 
