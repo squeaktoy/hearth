@@ -212,7 +212,9 @@ mod tests {
 
     #[test]
     fn link() {
-        let engine = Engine::default();
+        let mut config = Config::new();
+        config.async_support(true);
+        let engine = Engine::new(&config).unwrap();
         let mut linker = Linker::new(&engine);
         ProcessData::add_to_linker(&mut linker);
     }
