@@ -18,6 +18,7 @@
 
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
 /// Paneling-related protocols and utilities.
@@ -52,7 +53,8 @@ pub struct LocalProcessId(pub u32);
 pub struct AssetId(pub u32);
 
 /// Identifier for a lump (digest of BLAKE3 cryptographic hash).
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize, Pod, Zeroable)]
 pub struct LumpId(pub [u8; 32]);
 
 impl Display for LumpId {
