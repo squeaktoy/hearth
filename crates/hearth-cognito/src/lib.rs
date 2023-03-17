@@ -80,22 +80,22 @@ pub struct ProcessData {
     pub service: ServiceAbi,
 }
 
-macro_rules! impl_asref {
+macro_rules! impl_asmut {
     ($ty: ident, $sub_ty: ident, $sub_field: ident) => {
-        impl ::std::convert::AsRef<$sub_ty> for $ty {
-            fn as_ref(&self) -> &$sub_ty {
-                &self.$sub_field
+        impl ::std::convert::AsMut<$sub_ty> for $ty {
+            fn as_mut(&mut self) -> &mut $sub_ty {
+                &mut self.$sub_field
             }
         }
     };
 }
 
-impl_asref!(ProcessData, AssetAbi, asset);
-impl_asref!(ProcessData, LogAbi, log);
-impl_asref!(ProcessData, LumpAbi, lump);
-impl_asref!(ProcessData, MessageAbi, message);
-impl_asref!(ProcessData, ProcessAbi, process);
-impl_asref!(ProcessData, ServiceAbi, service);
+impl_asmut!(ProcessData, AssetAbi, asset);
+impl_asmut!(ProcessData, LogAbi, log);
+impl_asmut!(ProcessData, LumpAbi, lump);
+impl_asmut!(ProcessData, MessageAbi, message);
+impl_asmut!(ProcessData, ProcessAbi, process);
+impl_asmut!(ProcessData, ServiceAbi, service);
 
 impl ProcessData {
     /// Adds all module ABIs to the given linker.
