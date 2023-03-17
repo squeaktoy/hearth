@@ -18,12 +18,16 @@
 
 use std::sync::Arc;
 
+use anyhow::{anyhow, Result};
+use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_core::process::{Process, ProcessContext};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_macros::impl_wasm_linker;
+use hearth_rpc::hearth_types::LumpId;
 use hearth_rpc::{remoc, ProcessInfo};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use remoc::rtc::async_trait;
+use slab::Slab;
 use tracing::{debug, error};
 use wasmtime::*;
 
@@ -41,12 +45,77 @@ pub struct LogAbi {}
 #[impl_wasm_linker(module = "hearth::log")]
 impl LogAbi {}
 
+/// A script-local lump stored in [LumpAbi].
+#[derive(Debug)]
+pub struct LocalLump {
+    pub id: LumpId,
+    pub bytes: Bytes,
+}
+
 /// Implements the `hearth::lump` ABI module.
 #[derive(Debug, Default)]
-pub struct LumpAbi {}
+pub struct LumpAbi {
+    pub lump_store: Arc<LumpStoreImpl>,
+    pub lump_handles: Slab<LocalLump>,
+}
 
 #[impl_wasm_linker(module = "hearth::lump")]
-impl LumpAbi {}
+impl LumpAbi {
+    async fn from_id(&mut self, memory: GuestMemory<'_>, id_ptr: u32) -> Result<u32> {
+        let id: LumpId = *memory.get_memory_ref(id_ptr)?;
+        let bytes = self
+            .lump_store
+            .get_lump(&id)
+            .await
+            .ok_or_else(|| anyhow!("Couldn't find {:?} in lump store", id))?;
+        Ok(self.lump_handles.insert(LocalLump { id, bytes }) as u32)
+    }
+
+    async fn load(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<u32> {
+        let bytes: Bytes = memory
+            .get_slice(ptr as usize, len as usize)?
+            .to_vec()
+            .into();
+        let id = self.lump_store.add_lump(bytes.clone()).await;
+        let lump = LocalLump { id, bytes };
+        let handle = self.lump_handles.insert(lump) as u32;
+        Ok(handle)
+    }
+
+    fn get_id(&self, memory: GuestMemory<'_>, handle: u32, id_ptr: u32) -> Result<()> {
+        let lump = self.get_lump(handle)?;
+        let id: &mut LumpId = memory.get_memory_ref(id_ptr)?;
+        *id = lump.id;
+        Ok(())
+    }
+
+    fn get_len(&self, handle: u32) -> Result<u32> {
+        self.get_lump(handle).map(|lump| lump.bytes.len() as u32)
+    }
+
+    fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
+        let lump = self.get_lump(handle)?;
+        let len = lump.bytes.len();
+        let dst = memory.get_slice(ptr as usize, len)?;
+        dst.copy_from_slice(&lump.bytes);
+        Ok(())
+    }
+
+    fn free(&mut self, handle: u32) -> Result<()> {
+        self.lump_handles
+            .try_remove(handle as usize)
+            .map(|_| ())
+            .ok_or_else(|| anyhow!("Lump handle {} is invalid", handle))
+    }
+}
+
+impl LumpAbi {
+    fn get_lump(&self, handle: u32) -> Result<&LocalLump> {
+        self.lump_handles
+            .get(handle as usize)
+            .ok_or_else(|| anyhow!("Lump handle {} is invalid", handle))
+    }
+}
 
 /// Implements the `hearth::message` ABI module.
 #[derive(Debug, Default)]
