@@ -27,86 +27,85 @@ use remoc::rtc::async_trait;
 use tracing::{debug, error};
 use wasmtime::*;
 
+/// Implements the `hearth::asset` ABI module.
+#[derive(Debug, Default)]
+pub struct AssetAbi {}
+
+#[impl_wasm_linker(module = "hearth::asset")]
+impl AssetAbi {}
+
+/// Implements the `hearth::log` ABI module.
+#[derive(Debug, Default)]
+pub struct LogAbi {}
+
+#[impl_wasm_linker(module = "hearth::log")]
+impl LogAbi {}
+
+/// Implements the `hearth::lump` ABI module.
+#[derive(Debug, Default)]
+pub struct LumpAbi {}
+
+#[impl_wasm_linker(module = "hearth::lump")]
+impl LumpAbi {}
+
+/// Implements the `hearth::message` ABI module.
+#[derive(Debug, Default)]
+pub struct MessageAbi {}
+
+#[impl_wasm_linker(module = "hearth::message")]
+impl MessageAbi {}
+
+/// Implements the `hearth::process` ABI module.
+#[derive(Debug, Default)]
+pub struct ProcessAbi {}
+
+#[impl_wasm_linker(module = "hearth::process")]
+impl ProcessAbi {}
+
+/// Implements the `hearth::service` ABI module.
+#[derive(Debug, Default)]
+pub struct ServiceAbi {}
+
+#[impl_wasm_linker(module = "hearth::service")]
+impl ServiceAbi {}
+
 /// This contains all script-accessible process-related stuff.
-pub struct Cognito {
-    ctx: ProcessContext,
+#[derive(Debug, Default)]
+pub struct ProcessData {
+    pub asset: AssetAbi,
+    pub log: LogAbi,
+    pub lump: LumpAbi,
+    pub message: MessageAbi,
+    pub process: ProcessAbi,
+    pub service: ServiceAbi,
 }
 
-// Should automatically generate link_print_hello_world:
-// #[impl_wasm_linker]
-// should work for any struct, not just Cognito
-#[impl_wasm_linker(module = "cognito")]
-impl Cognito {
-    pub fn this_pid(&self) -> u64 {
-        self.ctx.get_pid().0
-    }
-
-    pub fn service_lookup(
-        &self,
-        mut memory: GuestMemory<'_>,
-        peer: u32,
-        name_ptr: u32,
-        name_len: u32,
-    ) -> u64 {
-        unimplemented!()
-    }
-
-    pub fn service_register(
-        &self,
-        mut memory: GuestMemory<'_>,
-        pid: u64,
-        name_ptr: u32,
-        name_len: u32,
-    ) {
-        unimplemented!()
-    }
-
-    pub fn service_deregister(
-        &self,
-        mut memory: GuestMemory<'_>,
-        peer: u32,
-        name_ptr: u32,
-        name_len: u32,
-    ) {
-        unimplemented!()
-    }
-
-    pub async fn kill(&self, pid: u64) {
-        unimplemented!()
-    }
-
-    pub async fn send(&self, mut memory: GuestMemory<'_>, pid: u64, ptr: u32, len: u32) {
-        unimplemented!()
-    }
-
-    pub async fn recv(&self) {
-        unimplemented!()
-    }
-
-    pub async fn recv_timeout(&self, timeout_us: u64) {
-        unimplemented!()
-    }
-
-    pub fn message_get_sender(&self, msg: u32) -> u64 {
-        unimplemented!()
-    }
-
-    pub fn message_get_len(&self, msg: u32) -> u32 {
-        unimplemented!()
-    }
-
-    pub fn message_get_data(&self, mut memory: GuestMemory<'_>, msg: u32, ptr: u32) {
-        unimplemented!()
-    }
+macro_rules! impl_asref {
+    ($ty: ident, $sub_ty: ident, $sub_field: ident) => {
+        impl ::std::convert::AsRef<$sub_ty> for $ty {
+            fn as_ref(&self) -> &$sub_ty {
+                &self.$sub_field
+            }
+        }
+    };
 }
 
-struct ProcessData {
-    cognito: Cognito,
-}
+impl_asref!(ProcessData, AssetAbi, asset);
+impl_asref!(ProcessData, LogAbi, log);
+impl_asref!(ProcessData, LumpAbi, lump);
+impl_asref!(ProcessData, MessageAbi, message);
+impl_asref!(ProcessData, ProcessAbi, process);
+impl_asref!(ProcessData, ServiceAbi, service);
 
-impl AsRef<Cognito> for ProcessData {
-    fn as_ref(&self) -> &Cognito {
-        &self.cognito
+impl ProcessData {
+    /// Adds all module ABIs to the given linker.
+    pub fn add_to_linker(linker: &mut Linker<Self>) {
+        AssetAbi::add_to_linker(linker);
+        LogAbi::add_to_linker(linker);
+        LumpAbi::add_to_linker(linker);
+        MessageAbi::add_to_linker(linker);
+        ProcessAbi::add_to_linker(linker);
+        ServiceAbi::add_to_linker(linker);
     }
 }
 
@@ -124,8 +123,7 @@ impl Process for WasmProcess {
 
     async fn run(&mut self, ctx: ProcessContext) {
         // TODO log using the process log instead of tracing?
-        let cognito = Cognito { ctx };
-        let data = ProcessData { cognito };
+        let data = ProcessData::default();
         let mut store = Store::new(&self.engine, data);
         let instance = match self
             .linker
@@ -178,7 +176,7 @@ impl WasmProcessSpawner {
 
         let engine = Engine::new(&config).unwrap();
         let mut linker = Linker::new(&engine);
-        Cognito::add_to_linker(&mut linker);
+        ProcessData::add_to_linker(&mut linker);
 
         Self {
             engine: Arc::new(engine),
@@ -205,5 +203,17 @@ impl Plugin for WasmPlugin {
 impl WasmPlugin {
     pub fn new() -> Self {
         Self {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link() {
+        let engine = Engine::default();
+        let mut linker = Linker::new(&engine);
+        ProcessData::add_to_linker(&mut linker);
     }
 }
