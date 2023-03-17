@@ -19,7 +19,7 @@
 use anyhow::{anyhow, Context, Result};
 use wasmtime::Caller;
 
-pub trait WasmLinker<T: AsRef<Self>> {
+pub trait WasmLinker<T: AsMut<Self>> {
     fn add_to_linker(linker: &mut wasmtime::Linker<T>);
 }
 
