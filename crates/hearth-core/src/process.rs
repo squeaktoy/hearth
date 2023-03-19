@@ -26,6 +26,7 @@
 //! [ProcessStoreImpl] implements the [ProcessStore] RPC trait, which provides
 //! access to the store to other network peers or IPC daemons.
 
+use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Weak};
 
 use hearth_rpc::remoc::robs::hash_map::HashMapSubscription;
@@ -45,7 +46,7 @@ use tracing::{debug, error, info, trace};
 #[derive(Clone, Debug)]
 pub enum SendError {
     /// The destination process ID was not found.
-    ProcessNotFound,
+    ProcessNotFound(ProcessId),
 
     /// There was an error while sending over a Remoc channel.
     RemocSendError(remoc_mpsc::SendError<Message>),
@@ -54,6 +55,24 @@ pub enum SendError {
 impl From<remoc_mpsc::SendError<Message>> for SendError {
     fn from(err: remoc_mpsc::SendError<Message>) -> Self {
         SendError::RemocSendError(err)
+    }
+}
+
+impl Display for SendError {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SendError::ProcessNotFound(pid) => write!(fmt, "process {:?} not found", pid),
+            SendError::RemocSendError(err) => err.fmt(fmt),
+        }
+    }
+}
+
+impl std::error::Error for SendError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SendError::ProcessNotFound(_) => None,
+            SendError::RemocSendError(err) => Some(err),
+        }
     }
 }
 
@@ -405,17 +424,18 @@ impl ProcessStoreImpl {
     }
 
     async fn send_message(&self, dst: LocalProcessId, msg: Message) -> Result<(), SendError> {
+        let full_dst = ProcessId::from_peer_process(self.this_peer, dst);
         let sender = if let Some(wrapper) = self.processes.get(dst.0 as usize) {
             wrapper.mailbox_tx.clone()
         } else {
-            return Err(SendError::ProcessNotFound);
+            return Err(SendError::ProcessNotFound(full_dst));
         };
 
         match sender.send(msg).await {
             Ok(()) => Ok(()),
             Err(_err) => {
                 error!("Process wrapper was fetched but process mailbox hung up");
-                Err(SendError::ProcessNotFound)
+                Err(SendError::ProcessNotFound(full_dst))
             }
         }
     }
