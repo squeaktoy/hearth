@@ -190,11 +190,26 @@ impl MessageAbi {
 }
 
 /// Implements the `hearth::process` ABI module.
-#[derive(Debug, Default)]
-pub struct ProcessAbi {}
+pub struct ProcessAbi {
+    pub ctx: Arc<Mutex<ProcessContext>>,
+}
 
 #[impl_wasm_linker(module = "hearth::process")]
-impl ProcessAbi {}
+impl ProcessAbi {
+    async fn this_pid(&self) -> u64 {
+        self.ctx.lock().await.get_pid().0
+    }
+
+    async fn kill(&self, _pid: u64) -> Result<()> {
+        Err(anyhow!("Killing other processes is unimplemented"))
+    }
+}
+
+impl ProcessAbi {
+    pub fn new(ctx: Arc<Mutex<ProcessContext>>) -> Self {
+        Self { ctx }
+    }
+}
 
 /// Implements the `hearth::service` ABI module.
 #[derive(Debug, Default)]
@@ -222,7 +237,7 @@ impl ProcessData {
             log: Default::default(),
             lump: Default::default(),
             message: MessageAbi::new(ctx.to_owned()),
-            process: Default::default(),
+            process: ProcessAbi::new(ctx),
             service: Default::default(),
         }
     }
