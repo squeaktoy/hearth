@@ -76,9 +76,13 @@ pub fn recv() -> Message {
 ///
 /// Setting the timeout to 0 skips any blocking and in effect polls the message
 /// queue for a new message.
-pub fn recv_timeout(timeout_us: u64) -> Message {
+pub fn recv_timeout(timeout_us: u64) -> Option<Message> {
     let msg = unsafe { abi::message::recv_timeout(timeout_us) };
-    Message(msg)
+    if msg == u32::MAX {
+        None
+    } else {
+        Some(Message(msg))
+    }
 }
 
 /// A message that has been received from another process.
