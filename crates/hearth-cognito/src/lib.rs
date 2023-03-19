@@ -20,14 +20,16 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
-use hearth_core::process::{Process, ProcessContext};
+use hearth_core::process::{Message, Process, ProcessContext};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
+use hearth_core::tokio;
 use hearth_macros::impl_wasm_linker;
-use hearth_rpc::hearth_types::LumpId;
+use hearth_rpc::hearth_types::{LumpId, ProcessId};
 use hearth_rpc::{remoc, ProcessInfo};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use remoc::rtc::async_trait;
 use slab::Slab;
+use tokio::sync::Mutex;
 use tracing::{debug, error};
 use wasmtime::*;
 
@@ -118,11 +120,74 @@ impl LumpAbi {
 }
 
 /// Implements the `hearth::message` ABI module.
-#[derive(Debug, Default)]
-pub struct MessageAbi {}
+pub struct MessageAbi {
+    pub msg_store: Slab<Message>,
+    pub ctx: Arc<Mutex<ProcessContext>>,
+}
 
 #[impl_wasm_linker(module = "hearth::message")]
-impl MessageAbi {}
+impl MessageAbi {
+    async fn recv(&mut self) -> Result<u32> {
+        match self.ctx.lock().await.recv().await {
+            None => Err(anyhow!("Process killed")),
+            Some(msg) => Ok(self.msg_store.insert(msg) as u32),
+        }
+    }
+
+    async fn recv_timeout(&mut self, timeout_us: u64) -> Result<u32> {
+        let duration = std::time::Duration::from_micros(timeout_us);
+        tokio::select! {
+            result = self.recv() => result,
+            _ = tokio::time::sleep(duration) => Ok(u32::MAX),
+        }
+    }
+
+    async fn send(&mut self, memory: GuestMemory<'_>, pid: u64, ptr: u32, len: u32) -> Result<()> {
+        let data = memory.get_slice(ptr as usize, len as usize)?;
+        let data = data.to_vec();
+        let pid = ProcessId(pid);
+        self.ctx.lock().await.send_message(pid, data).await?;
+        Ok(())
+    }
+
+    async fn get_sender(&self, handle: u32) -> Result<u64> {
+        self.get_msg(handle).map(|msg| msg.sender.0)
+    }
+
+    async fn get_len(&self, handle: u32) -> Result<u32> {
+        self.get_msg(handle).map(|msg| msg.data.len() as u32)
+    }
+
+    async fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
+        let msg = self.get_msg(handle)?;
+        let len = msg.data.len();
+        let dst = memory.get_slice(ptr as usize, len)?;
+        dst.copy_from_slice(msg.data.as_slice());
+        Ok(())
+    }
+
+    async fn free(&mut self, handle: u32) -> Result<()> {
+        self.msg_store
+            .try_remove(handle as usize)
+            .map(|_| ())
+            .ok_or_else(|| anyhow!("Message handle {} is invalid", handle))
+    }
+}
+
+impl MessageAbi {
+    pub fn new(ctx: Arc<Mutex<ProcessContext>>) -> Self {
+        Self {
+            msg_store: Slab::new(),
+            ctx,
+        }
+    }
+
+    fn get_msg(&self, handle: u32) -> Result<&Message> {
+        self.msg_store
+            .get(handle as usize)
+            .ok_or_else(|| anyhow!("Message handle {} is invalid", handle))
+    }
+}
 
 /// Implements the `hearth::process` ABI module.
 #[derive(Debug, Default)]
@@ -139,7 +204,6 @@ pub struct ServiceAbi {}
 impl ServiceAbi {}
 
 /// This contains all script-accessible process-related stuff.
-#[derive(Debug, Default)]
 pub struct ProcessData {
     pub asset: AssetAbi,
     pub log: LogAbi,
@@ -147,6 +211,21 @@ pub struct ProcessData {
     pub message: MessageAbi,
     pub process: ProcessAbi,
     pub service: ServiceAbi,
+}
+
+impl ProcessData {
+    pub fn new(ctx: ProcessContext) -> Self {
+        let ctx = Arc::new(Mutex::new(ctx));
+
+        Self {
+            asset: Default::default(),
+            log: Default::default(),
+            lump: Default::default(),
+            message: MessageAbi::new(ctx.to_owned()),
+            process: Default::default(),
+            service: Default::default(),
+        }
+    }
 }
 
 macro_rules! impl_asmut {
@@ -192,7 +271,7 @@ impl Process for WasmProcess {
 
     async fn run(&mut self, ctx: ProcessContext) {
         // TODO log using the process log instead of tracing?
-        let data = ProcessData::default();
+        let data = ProcessData::new(ctx);
         let mut store = Store::new(&self.engine, data);
         let instance = match self
             .linker
