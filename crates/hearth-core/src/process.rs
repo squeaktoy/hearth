@@ -36,7 +36,7 @@ use remoc::rch::{mpsc as remoc_mpsc, watch as remoc_watch};
 use remoc::robs::hash_map::ObservableHashMap;
 use remoc::robs::list::{ListSubscription, ObservableList, ObservableListDistributor};
 use remoc::rtc::async_trait;
-use sharded_slab::Slab;
+use slab::Slab;
 use tokio::sync::{mpsc, watch, RwLock};
 use tracing::{debug, error, info, trace};
 
@@ -320,24 +320,16 @@ impl ProcessApi for ProcessApiImpl {
     }
 }
 
+#[derive(Default)]
 struct ProcessStoreInner {
     services: ObservableHashMap<String, LocalProcessId>,
     process_infos: ObservableHashMap<LocalProcessId, ProcessInfo>,
-}
-
-impl ProcessStoreInner {
-    fn new() -> Self {
-        Self {
-            services: Default::default(),
-            process_infos: Default::default(),
-        }
-    }
+    processes: Slab<ProcessWrapper>,
 }
 
 pub struct ProcessStoreImpl {
     inner: RwLock<ProcessStoreInner>,
     this_peer: PeerId,
-    processes: Slab<ProcessWrapper>,
     on_kill_tx: mpsc::UnboundedSender<LocalProcessId>,
 }
 
@@ -346,8 +338,7 @@ impl ProcessStoreImpl {
         let (on_kill_tx, on_kill_rx) = mpsc::unbounded_channel();
 
         let store = Arc::new(Self {
-            inner: RwLock::new(ProcessStoreInner::new()),
-            processes: Default::default(),
+            inner: Default::default(),
             this_peer,
             on_kill_tx,
         });
@@ -378,7 +369,7 @@ impl ProcessStoreImpl {
                     inner.process_infos.remove(&pid);
 
                     // if there is actually a process with this ID, notify its context that it's dead
-                    if let Some(wrapper) = store.processes.take(pid.0 as usize) {
+                    if let Some(wrapper) = inner.processes.try_remove(pid.0 as usize) {
                         let _ = wrapper.is_alive_tx.send(false); // ignore error; not our problem if the remote has hung up
                     } else {
                         // double-removal race conditions are bugs
@@ -405,7 +396,7 @@ impl ProcessStoreImpl {
     }
 
     async fn send_message(&self, dst: LocalProcessId, msg: Message) -> Result<(), SendError> {
-        let sender = if let Some(wrapper) = self.processes.get(dst.0 as usize) {
+        let sender = if let Some(wrapper) = self.inner.read().await.processes.get(dst.0 as usize) {
             wrapper.mailbox_tx.clone()
         } else {
             return Err(SendError::ProcessNotFound);
@@ -430,17 +421,16 @@ impl ProcessStoreImpl {
         let (is_alive_tx, is_alive) = watch::channel(true);
         let is_alive_tx = Arc::new(is_alive_tx);
         let log = ObservableList::new();
+        let mut store = self.inner.write().await;
 
         // this needs to be inside a block because entry doesn't implement the
         // Send trait and even though entry.insert() takes ownership of entry
         // the compiler still complains about entry maybe being used across
         // the await making this function's future non-Send
         let pid = {
-            let entry = self
-                .processes
-                .vacant_entry()
-                .expect("Ran out of process IDs. This shouldn't happen.");
-            let pid = LocalProcessId(entry.key() as u32);
+            let entry = store.processes.vacant_entry();
+            let pid: u32 = entry.key().try_into().expect("PID integer overflow");
+            let pid = LocalProcessId(pid);
 
             entry.insert(ProcessWrapper {
                 mailbox_tx,
@@ -448,12 +438,12 @@ impl ProcessStoreImpl {
                 is_alive_tx: is_alive_tx.clone(),
             });
 
-            trace!("Allocated {:?}", pid);
+            debug!("Allocated {:?}", pid);
 
             pid
         };
 
-        self.inner.write().await.process_infos.insert(pid, info);
+        store.process_infos.insert(pid, info);
 
         ProcessContext {
             pid: ProcessId::from_peer_process(self.this_peer, pid),
@@ -488,7 +478,7 @@ impl ProcessStore for ProcessStoreImpl {
     }
 
     async fn find_process(&self, pid: LocalProcessId) -> ResourceResult<ProcessApiClient> {
-        match self.processes.get(pid.0 as usize) {
+        match self.inner.read().await.processes.get(pid.0 as usize) {
             None => Err(ResourceError::Unavailable),
             Some(wrapper) => {
                 let api = Arc::new(ProcessApiImpl {
@@ -512,8 +502,8 @@ impl ProcessStore for ProcessStoreImpl {
 
     async fn register_service(&self, pid: LocalProcessId, name: String) -> ResourceResult<()> {
         debug!("Registering service '{}' to {:?}", name, pid);
-        let mut store = self.inner.write().await; // lock store early to avoid registering processes that have just been killed
-        if !self.processes.contains(pid.0 as usize) {
+        let mut store = self.inner.write().await;
+        if !store.processes.contains(pid.0 as usize) {
             debug!("Invalid local process ID");
             return Err(ResourceError::Unavailable);
         } else if store.services.contains_key(&name) {
@@ -597,9 +587,8 @@ mod tests {
 
     #[tokio::test]
     async fn register_service() {
-        crate::init_logging();
         let store = ProcessStoreImpl::new(PeerId(42));
         let pid = store.spawn(DummyProcess).await;
-        assert!(store.register_service(pid, "test".into()).await.is_ok());
+        store.register_service(pid, "test".into()).await.unwrap();
     }
 }
