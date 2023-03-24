@@ -372,6 +372,7 @@ impl rend3_framework::App for Demo {
                 let routine = inner.store.create_routine();
 
                 let pbr_routine = rend3_framework::lock(&routines.pbr);
+                let skybox_routine = rend3_framework::lock(&routines.skybox);
                 let tonemapping_routine = rend3_framework::lock(&routines.tonemapping);
                 let mut graph = rend3::graph::RenderGraph::new();
 
@@ -379,7 +380,7 @@ impl rend3_framework::App for Demo {
                     &mut graph,
                     &ready,
                     &pbr_routine,
-                    None,
+                    Some(&skybox_routine),
                     &tonemapping_routine,
                     resolution,
                     SAMPLE_COUNT,
