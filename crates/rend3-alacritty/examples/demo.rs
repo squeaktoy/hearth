@@ -360,8 +360,6 @@ impl rend3_framework::App for Demo {
                     surface: Arc::clone(surface.unwrap()),
                 };
 
-                let (cmd_bufs, ready) = renderer.ready();
-
                 let term = inner.term.lock();
                 inner
                     .term_render
@@ -372,8 +370,12 @@ impl rend3_framework::App for Demo {
                 let routine = inner.store.create_routine();
 
                 let pbr_routine = rend3_framework::lock(&routines.pbr);
-                let skybox_routine = rend3_framework::lock(&routines.skybox);
+                let mut skybox_routine = rend3_framework::lock(&routines.skybox);
                 let tonemapping_routine = rend3_framework::lock(&routines.tonemapping);
+
+                let (cmd_bufs, ready) = renderer.ready();
+                skybox_routine.ready(renderer);
+
                 let mut graph = rend3::graph::RenderGraph::new();
 
                 base_rendergraph.add_to_graph(
