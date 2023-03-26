@@ -23,6 +23,15 @@ is licensed under a
 
 </div>
 
+# Screenshots
+
+<div align="center">
+  <figure>
+    <img src="./resources/misc/terminal-demo-screenshot.jpg"/>
+    <figcaption>A screenshot of the Hearth terminal emulator demo program.</figcaption>
+  </figure>
+</div>
+
 # The History of Virtual Worlds
 
 Shared virtual spaces have been around for decades, in many forms. Before PCs
