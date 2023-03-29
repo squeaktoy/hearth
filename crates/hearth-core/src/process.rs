@@ -224,7 +224,7 @@ impl Process for RemoteProcess {
     }
 
     async fn run(&mut self, mut ctx: ProcessContext) {
-        while *self.is_alive.borrow() {
+        while ctx.is_alive() {
             tokio::select! {
                 msg = ctx.mailbox.recv() => self.on_recv(&mut ctx, msg).await,
                 _ = ctx.is_alive.changed() => self.on_is_alive(&mut ctx).await,
