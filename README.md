@@ -257,5 +257,6 @@ usecases and to fuel curiosity into Hearth's potential.
 - [ ] publish Hearth on the AUR
 - [ ] publish Hearth's crates to the AUR
 - [ ] evaluate Hearth's design and brainstorm future improvements to found problems
+- [ ] create a launcher for Hearth server and client
 - [ ] create comprehensive documentation on usage
 - [ ] create a web page for promoting and reusing community contributions
