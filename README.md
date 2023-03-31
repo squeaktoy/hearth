@@ -244,9 +244,12 @@ beta:
   - Wasm compilers in Hearth for non-native script development
   - guest APIs for more WebAssembly languages (i.e. C/C++, AssemblyScript, 
 Grain)
-  - non-Wasm process scripting runtimes (i.e. Lua, Mono, Javascript, Lisp)
+  - non-Wasm process scripting runtimes (i.e. Lua, Mono, Javascript, Lisp, 
+Python)
+  - Create a block-based [Scratch](https://scratch.mit.edu)-like scripting language
 - Miscellaneous
-  - in-space virtual cameras for external applications to record the space through
+  - in-space virtual cameras for external applications to record the space 
+through
 
 These topics may be further explored post-beta. They mainly serve the purpose
 of guiding Hearth's developers towards supporting an aligned set of expected
