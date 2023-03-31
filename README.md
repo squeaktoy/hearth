@@ -199,6 +199,7 @@ unfeasible.
 - [ ] create native services for pancake mode input handling
 - [ ] create native services for rend3 configuration like skyboxes, global lighting, and camera setup
 - [ ] create native services for virtual terminal management
+- [ ] create a server blocklist and allowlist system
 
 ## Phase 3: Beta
 
