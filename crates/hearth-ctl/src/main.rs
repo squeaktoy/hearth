@@ -36,10 +36,10 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub async fn run(self, daemon: DaemonOffer) {
+    pub async fn run(self) {
         match self {
-            Commands::ListPeers(args) => args.run(daemon).await,
-            Commands::ListProcesses(args) => args.run(daemon).await,
+            Commands::ListPeers(args) => args.run(get_daemon().await).await,
+            Commands::ListProcesses(args) => args.run(get_daemon().await).await,
         }
     }
 }
@@ -47,8 +47,11 @@ impl Commands {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let args = Args::parse();
-    let daemon = hearth_ipc::connect()
+    args.command.run().await;
+}
+
+async fn get_daemon() -> DaemonOffer {
+    hearth_ipc::connect()
         .await
-        .expect("Failed to connect to Hearth daemon");
-    args.command.run(daemon).await;
+        .expect("Failed to connect to Hearth daemon")
 }
