@@ -11,7 +11,7 @@ Hearth is a shared, always-on execution environment for constructing
 [Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
 [Contributing](/CONTRIBUTORS.md) •
-[Discord server](https://discord.gg/gzzJ3pWCft) •
+[Discord "server"](https://discord.gg/gzzJ3pWCft) •
 [Matrix room](https://matrix.to/#/#hearth:yoru.cafe)
 
 <a href="https://www.gnu.org/licenses/agpl-3.0.html">
