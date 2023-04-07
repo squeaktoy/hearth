@@ -2,6 +2,7 @@
 name = "rend3-alacritty"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
 
 [dependencies]
 alacritty_terminal = "0.16"
@@ -14,6 +15,7 @@ rend3-routine = "0.3"
 wgpu = "^0.12"
 
 [dev-dependencies]
+image = "0.24"
 rend3-framework = "0.3"
 mio-extras = "2"
 winit = "0.26"

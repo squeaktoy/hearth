@@ -1,7 +1,27 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Hearth.
+//
+// Hearth is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// Hearth is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Hearth. If not, see <https://www.gnu.org/licenses/>.
+
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 
-use hearth_rpc::DaemonOffer;
+use hearth_rpc::*;
+use hearth_types::LocalProcessId;
+use remoc::rch::{mpsc, watch};
 use tokio::net::{UnixListener, UnixStream};
 
 /// Returns the path of the Hearth IPC socket.
@@ -200,5 +220,57 @@ pub async fn connect() -> std::io::Result<DaemonOffer> {
             tracing::error!(msg);
             return Err(Error::new(kind, msg));
         }
+    }
+}
+
+/// Utility struct for creating and interacting with out-of-runtime processes.
+pub struct RemoteProcess {
+    /// The process ID for this process.
+    pub pid: LocalProcessId,
+
+    /// A sender for outgoing messages to other processes.
+    ///
+    /// Each [Message::pid] field represents the ID of the destination process.
+    pub outgoing: mpsc::Sender<Message>,
+
+    /// A receiver for incoming messages to this process.
+    ///
+    /// Each [Message::pid] field represents the ID of the sender process.
+    pub mailbox: mpsc::Receiver<Message>,
+
+    /// A receiver for the watch channel.
+    ///
+    /// Will be set to false when this process is killed.
+    pub is_alive: watch::Receiver<bool>,
+
+    /// A sender for log events.
+    pub log: mpsc::Sender<ProcessLogEvent>,
+}
+
+impl RemoteProcess {
+    /// Creates a new remote process on an IPC daemon.
+    ///
+    /// Calling interface functions on the daemon may return error values.
+    pub async fn new(daemon: &DaemonOffer, info: ProcessInfo) -> CallResult<Self> {
+        let (mailbox_tx, mailbox) = mpsc::channel(1024);
+        let (is_alive_tx, is_alive) = watch::channel(true);
+        let (log_tx, log) = mpsc::channel(1024);
+
+        let base = ProcessBase {
+            info,
+            mailbox: mailbox_tx,
+            is_alive: is_alive_tx,
+            log,
+        };
+
+        let offer = daemon.process_factory.spawn(base).await?;
+
+        Ok(Self {
+            pid: offer.pid,
+            outgoing: offer.outgoing,
+            mailbox,
+            is_alive,
+            log: log_tx,
+        })
     }
 }

@@ -2,13 +2,19 @@
 name = "hearth-client"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
-clap = { version= "4", features = ["derive"] }
+glam = "0.20"
+clap = { version= "3.2", features = ["derive"] }
+hearth-cognito = { workspace = true }
 hearth-core = { workspace = true }
 hearth-ipc = { workspace = true }
 hearth-network = { workspace = true }
+hearth-panels = { path = "../hearth-panels" }
+hearth-rend3 = { workspace = true }
 hearth-rpc = { workspace = true }
 remoc = { workspace = true, features = ["full"] }
 tokio = { version = "1.24", features = ["full"] }
 tracing = { workspace = true }
+winit = "0.27"

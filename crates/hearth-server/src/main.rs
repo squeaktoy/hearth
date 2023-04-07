@@ -1,13 +1,33 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Hearth.
+//
+// Hearth is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// Hearth is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Hearth. If not, see <https://www.gnu.org/licenses/>.
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
+use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
 use hearth_network::auth::ServerAuthenticator;
 use hearth_rpc::*;
 use hearth_types::*;
 use remoc::robs::hash_map::{HashMapSubscription, ObservableHashMap};
-use remoc::rtc::{async_trait, LocalRwLock, ServerShared, ServerSharedMut};
+use remoc::rtc::{async_trait, LocalRwLock, ServerSharedMut};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
 
@@ -18,12 +38,16 @@ pub const SELF_PEER_ID: PeerId = PeerId(0);
 #[derive(Parser, Debug)]
 pub struct Args {
     /// IP address and port to listen on.
-    #[arg(short, long)]
-    pub bind: SocketAddr,
+    #[clap(short, long)]
+    pub bind: Option<SocketAddr>,
 
     /// Password to use to authenticate with clients. Defaults to empty.
-    #[arg(short, long, default_value = "")]
+    #[clap(short, long, default_value = "")]
     pub password: String,
+
+    /// A configuration file to use if not the default one.
+    #[clap(short, long)]
+    pub config: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -34,22 +58,10 @@ async fn main() {
     let authenticator = ServerAuthenticator::from_password(args.password.as_bytes()).unwrap();
     let authenticator = Arc::new(authenticator);
 
-    info!("Binding to {:?}", args.bind);
-    let listener = match TcpListener::bind(args.bind).await {
-        Ok(l) => l,
-        Err(err) => {
-            error!("Failed to listen: {:?}", err);
-            return;
-        }
-    };
-
-    debug!("Creating peer API");
     let peer_info = PeerInfo { nickname: None };
-    let peer_api = hearth_core::api::spawn_peer_api(peer_info.clone());
 
     debug!("Creating peer provider");
-    let mut peer_provider = PeerProviderImpl::new();
-    peer_provider.add_peer(SELF_PEER_ID, peer_api, peer_info);
+    let peer_provider = PeerProviderImpl::new();
     let peer_provider = Arc::new(LocalRwLock::new(peer_provider));
 
     let (peer_provider_server, peer_provider_client) =
@@ -60,6 +72,27 @@ async fn main() {
         debug!("Running peer provider server");
         peer_provider_server.serve(true).await;
     });
+
+    debug!("Initializing runtime");
+    let config = RuntimeConfig {
+        peer_provider: peer_provider_client.clone(),
+        this_peer: SELF_PEER_ID,
+        info: peer_info.clone(),
+    };
+
+    let config_path = args
+        .config
+        .unwrap_or_else(|| hearth_core::get_config_path());
+    let config_file = hearth_core::load_config(&config_path).unwrap();
+    let mut builder = RuntimeBuilder::new(config_file);
+    builder.add_plugin(hearth_cognito::WasmPlugin::new());
+
+    let runtime = builder.run(config);
+    let peer_api = runtime.clone().serve_peer_api();
+    peer_provider
+        .write()
+        .await
+        .add_peer(SELF_PEER_ID, peer_api, peer_info);
 
     debug!("Initializing IPC");
     let daemon_listener = match hearth_ipc::Listener::new().await {
@@ -73,9 +106,22 @@ async fn main() {
     let daemon_offer = DaemonOffer {
         peer_provider: peer_provider_client.to_owned(),
         peer_id: SELF_PEER_ID,
+        process_factory: runtime.process_factory_client.clone(),
     };
 
-    listen(listener, peer_provider, peer_provider_client, authenticator);
+    info!("Binding to {:?}", args.bind);
+    if let Some(bind) = args.bind {
+        let listener = match TcpListener::bind(bind).await {
+            Ok(l) => l,
+            Err(err) => {
+                error!("Failed to listen: {:?}", err);
+                return;
+            }
+        };
+        listen(listener, peer_provider, peer_provider_client, authenticator);
+    } else {
+        info!("Server running in headless mode");
+    }
     hearth_ipc::listen(daemon_listener, daemon_offer);
     hearth_core::wait_for_interrupt().await;
     info!("Interrupt received; exiting server");

@@ -1,82 +1,209 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Hearth.
+//
+// Hearth is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// Hearth is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Hearth. If not, see <https://www.gnu.org/licenses/>.
+
+use std::sync::Arc;
+
+use hearth_core::process::{Process, ProcessContext};
+use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
+use hearth_macros::impl_wasm_linker;
+use hearth_rpc::{remoc, ProcessInfo};
 use hearth_wasm::{GuestMemory, WasmLinker};
-use wasmtime::{Caller, Linker};
+use remoc::rtc::async_trait;
+use tracing::{debug, error};
+use wasmtime::*;
 
 /// This contains all script-accessible process-related stuff.
-pub struct Cognito {}
+pub struct Cognito {
+    ctx: ProcessContext,
+}
 
 // Should automatically generate link_print_hello_world:
 // #[impl_wasm_linker]
 // should work for any struct, not just Cognito
+#[impl_wasm_linker(module = "cognito")]
 impl Cognito {
-    pub async fn print_hello_world(&self) {
-        eprintln!("Hello, world!");
+    pub fn this_pid(&self) -> u64 {
+        self.ctx.get_pid().0
     }
 
-    // impl_wasm_linker should also work with non-async functions
-    //
-    // if a function is passed GuestMemory or GuestMemory<'_>, the macro should
-    // automatically create a GuestMemory instance using the Caller's exported
-    // memory extern
-    //
-    // it should also turn arguments in the core wasm types (u32, u64, i32, u64)
-    // into arguments for the linker's closure, as well as the return type,
-    // which in this example is just ().
-    pub fn log_message(&self, mut memory: GuestMemory<'_>, msg_ptr: u32, msg_len: u32) {
-        eprintln!("message from wasm: {}", memory.get_str(msg_ptr, msg_len));
+    pub fn service_lookup(
+        &self,
+        mut memory: GuestMemory<'_>,
+        peer: u32,
+        name_ptr: u32,
+        name_len: u32,
+    ) -> u64 {
+        unimplemented!()
     }
 
-    // this is only generated; written up by hand for reference
-    // remember to use absolute identifiers (prefixed with ::) for all references to structs
-    pub fn link_print_hello_world<T: AsRef<Self> + Send>(linker: &mut Linker<T>) {
-        async fn print_hello_world<T: AsRef<Cognito> + Send>(caller: Caller<'_, T>) {
-            let cognito = caller.data().as_ref();
-            cognito.print_hello_world().await;
+    pub fn service_register(
+        &self,
+        mut memory: GuestMemory<'_>,
+        pid: u64,
+        name_ptr: u32,
+        name_len: u32,
+    ) {
+        unimplemented!()
+    }
+
+    pub fn service_deregister(
+        &self,
+        mut memory: GuestMemory<'_>,
+        peer: u32,
+        name_ptr: u32,
+        name_len: u32,
+    ) {
+        unimplemented!()
+    }
+
+    pub async fn kill(&self, pid: u64) {
+        unimplemented!()
+    }
+
+    pub async fn send(&self, mut memory: GuestMemory<'_>, pid: u64, ptr: u32, len: u32) {
+        unimplemented!()
+    }
+
+    pub async fn recv(&self) {
+        unimplemented!()
+    }
+
+    pub async fn recv_timeout(&self, timeout_us: u64) {
+        unimplemented!()
+    }
+
+    pub fn message_get_sender(&self, msg: u32) -> u64 {
+        unimplemented!()
+    }
+
+    pub fn message_get_len(&self, msg: u32) -> u32 {
+        unimplemented!()
+    }
+
+    pub fn message_get_data(&self, mut memory: GuestMemory<'_>, msg: u32, ptr: u32) {
+        unimplemented!()
+    }
+}
+
+struct ProcessData {
+    cognito: Cognito,
+}
+
+impl AsRef<Cognito> for ProcessData {
+    fn as_ref(&self) -> &Cognito {
+        &self.cognito
+    }
+}
+
+struct WasmProcess {
+    engine: Arc<Engine>,
+    linker: Arc<Linker<ProcessData>>,
+    module: Arc<Module>,
+}
+
+#[async_trait]
+impl Process for WasmProcess {
+    fn get_info(&self) -> ProcessInfo {
+        ProcessInfo {}
+    }
+
+    async fn run(&mut self, ctx: ProcessContext) {
+        // TODO log using the process log instead of tracing?
+        let cognito = Cognito { ctx };
+        let data = ProcessData { cognito };
+        let mut store = Store::new(&self.engine, data);
+        let instance = match self
+            .linker
+            .instantiate_async(&mut store, &self.module)
+            .await
+        {
+            Ok(instance) => instance,
+            Err(err) => {
+                error!("Failed to instantiate WasmProcess: {:?}", err);
+                return;
+            }
+        };
+
+        // TODO better wasm invocation?
+        match instance.get_typed_func::<(), ()>(&mut store, "run") {
+            Ok(run) => {
+                if let Err(err) = run.call_async(&mut store, ()).await {
+                    error!("Wasm run error: {:?}", err);
+                }
+            }
+            Err(err) => {
+                error!("Couldn't find run function: {:?}", err);
+            }
         }
-
-        linker
-            // arity for the function name should be read by the proc macro
-            // the module name can be derived by converting the struct's name to snake case
-            .func_wrap0_async("cognito", "print_hello_world", |caller: Caller<'_, T>| {
-                Box::new(print_hello_world(caller))
-            })
-            .unwrap();
-    }
-
-    pub fn link_log_message<T: AsRef<Self>>(linker: &mut Linker<T>) {
-        linker
-            .func_wrap(
-                "cognito",
-                "log_message",
-                |mut caller: Caller<'_, T>, msg_ptr: u32, msg_len: u32| {
-                    let memory = GuestMemory::from_caller(&mut caller);
-                    // note that cognito needs to be retrieved after memory
-                    // because it immutably borrows caller and memory does not
-                    let cognito = caller.data().as_ref();
-                    cognito.log_message(memory, msg_ptr, msg_len)
-                },
-            )
-            .unwrap();
     }
 }
 
-// this impl block should also be generated by #[impl_wasm_linker] with all of
-// the functions in its body
-impl<T: AsRef<Cognito> + Send + 'static> WasmLinker<T> for Cognito {
-    const MODULE_NAME: &'static str = "cognito";
+pub struct WasmProcessSpawner {
+    engine: Arc<Engine>,
+    linker: Arc<Linker<ProcessData>>,
+}
 
-    fn add_to_linker(linker: &mut Linker<T>) {
-        Self::link_print_hello_world(linker);
-        Self::link_log_message(linker);
+#[async_trait]
+impl Process for WasmProcessSpawner {
+    fn get_info(&self) -> ProcessInfo {
+        ProcessInfo {}
+    }
+
+    async fn run(&mut self, mut ctx: ProcessContext) {
+        while let Some(message) = ctx.recv().await {
+            debug!("WasmProcessSpawner: got message from {:?}", message.sender);
+        }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl WasmProcessSpawner {
+    pub fn new() -> Self {
+        let mut config = Config::new();
+        config.async_support(true);
 
-    #[tokio::test]
-    async fn host_works() {
-        let cognito = Cognito {};
-        cognito.print_hello_world().await;
+        let engine = Engine::new(&config).unwrap();
+        let mut linker = Linker::new(&engine);
+        Cognito::add_to_linker(&mut linker);
+
+        Self {
+            engine: Arc::new(engine),
+            linker: Arc::new(linker),
+        }
+    }
+}
+
+pub struct WasmPlugin {}
+
+#[async_trait]
+impl Plugin for WasmPlugin {
+    fn build(&mut self, builder: &mut RuntimeBuilder) {
+        let name = "hearth.cognito.WasmProcessSpawner".to_string();
+        let spawner = WasmProcessSpawner::new();
+        builder.add_service(name, spawner);
+    }
+
+    async fn run(&mut self, _runtime: Arc<Runtime>) {
+        // WasmProcessSpawner takes care of everything
+    }
+}
+
+impl WasmPlugin {
+    pub fn new() -> Self {
+        Self {}
     }
 }

@@ -8,7 +8,10 @@ members = [
   "crates/hearth-core",
   "crates/hearth-guest",
   "crates/hearth-ipc",
+  "crates/hearth-macros",
+  "crates/hearth-panels",
   "crates/hearth-network",
+  "crates/hearth-rend3",
   "crates/hearth-rpc",
   "crates/hearth-server",
   "crates/hearth-types",
@@ -17,12 +20,17 @@ members = [
 ]
 
 [workspace.dependencies]
+bytemuck = "1.13"
+hearth-cognito = { path = "crates/hearth-cognito" }
 hearth-core = { path = "crates/hearth-core" }
 hearth-ipc = { path = "crates/hearth-ipc" }
+hearth-macros = { path = "crates/hearth-macros" }
 hearth-network = { path = "crates/hearth-network" }
+hearth-rend3 = { path = "crates/hearth-rend3" }
 hearth-rpc = { path = "crates/hearth-rpc" }
 hearth-types = { path = "crates/hearth-types" }
 hearth-wasm = { path = "crates/hearth-wasm" }
+serde_json = "1"
 tracing = "0.1.37"
 
 [workspace.dependencies.remoc]
