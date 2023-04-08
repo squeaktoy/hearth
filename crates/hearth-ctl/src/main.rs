@@ -21,6 +21,7 @@ use hearth_rpc::DaemonOffer;
 
 mod list_peers;
 mod list_processes;
+mod run_mock_runtime;
 
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
 #[derive(Debug, Parser)]
@@ -33,6 +34,7 @@ pub struct Args {
 pub enum Commands {
     ListPeers(list_peers::ListPeers),
     ListProcesses(list_processes::ListProcesses),
+    RunMockRuntime(run_mock_runtime::RunMockRuntime),
 }
 
 impl Commands {
@@ -40,6 +42,7 @@ impl Commands {
         match self {
             Commands::ListPeers(args) => args.run(get_daemon().await).await,
             Commands::ListProcesses(args) => args.run(get_daemon().await).await,
+            Commands::RunMockRuntime(args) => args.run().await, 
         }
     }
 }
