@@ -1,3 +1,21 @@
+// Copyright (c) 2023 the Hearth contributors.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Hearth.
+//
+// Hearth is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// Hearth is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Hearth. If not, see <https://www.gnu.org/licenses/>.
+
 use super::*;
 use remoc::rtc::ServerShared;
 use remoc::{
@@ -10,7 +28,7 @@ use tokio::sync::RwLock;
 
 pub struct MockProcessStore {
     services: RwLock<ObservableHashMap<String, LocalProcessId>>,
-    processes: ObservableHashMap<LocalProcessId, ProcessInfo>,
+    processes: ObservableHashMap<LocalProcessId, ProcessStatus>,
     mock_processes: HashMap<LocalProcessId, ProcessApiClient>,
 }
 
@@ -48,7 +66,7 @@ impl ProcessStore for MockProcessStore {
 
     async fn follow_process_list(
         &self,
-    ) -> CallResult<HashMapSubscription<LocalProcessId, ProcessInfo>> {
+    ) -> CallResult<HashMapSubscription<LocalProcessId, ProcessStatus>> {
         Ok(self.processes.subscribe(128))
     }
 
@@ -62,8 +80,15 @@ impl MockProcessStore {
         let mut processes = ObservableHashMap::new();
         let mut mock_processes = HashMap::new();
         let test_pid = LocalProcessId(0);
-        let test_info = ProcessInfo {
-            source_lump: LumpId(Default::default()),
+        let (_, warning_num) = watch::channel(0);
+        let (_, error_num) = watch::channel(0);
+        let (_, log_num) = watch::channel(0);
+        let info = ProcessInfo {};
+        let test_info = ProcessStatus {
+            warning_num,
+            error_num,
+            log_num,
+            info,
         };
         let test_process = MockProcessApi::new();
         processes.insert(test_pid, test_info);
@@ -85,26 +110,30 @@ pub struct MockProcessApi {
     log: RwLock<ObservableList<ProcessLogEvent>>,
 }
 
+pub struct MockProcessFactory {}
+
+#[async_trait]
+impl ProcessFactory for MockProcessFactory {
+    async fn spawn(&self, _process: ProcessBase) -> CallResult<ProcessOffer> {
+        let (outgoing, _) = mpsc::channel(1024);
+        Ok(ProcessOffer {
+            outgoing,
+            pid: LocalProcessId(0),
+        })
+    }
+}
+
 #[async_trait]
 impl ProcessApi for MockProcessApi {
     async fn is_alive(&self) -> CallResult<bool> {
         Ok(true)
     }
 
-    async fn kill(&self) -> ResourceResult<()> {
-        Err(ResourceError::BadParams)
-    }
-
-    async fn send_message(&self, msg: Vec<u8>) -> ResourceResult<()> {
-        self.log.write().await.push(ProcessLogEvent {
-            level: ProcessLogLevel::Debug,
-            module: String::from("Received Message"),
-            content: String::from_utf8(msg.clone()).unwrap_or_else(|_| format!("{:?}", msg)),
-        });
+    async fn kill(&self) -> CallResult<()> {
         Ok(())
     }
 
-    async fn follow_log(&self) -> ResourceResult<ListSubscription<ProcessLogEvent>> {
+    async fn follow_log(&self) -> CallResult<ListSubscription<ProcessLogEvent>> {
         Ok(self.log.read().await.subscribe())
     }
 }
@@ -221,5 +250,19 @@ impl MockPeerProvider {
         });
         peers.insert(test_pid, peer_client);
         Self { peers, peer_info }
+    }
+}
+
+pub struct MockLumpStore {}
+
+#[async_trait]
+impl LumpStore for MockLumpStore {
+    async fn upload_lump(&self, _id: Option<LumpId>, _data: LazyBlob) -> ResourceResult<LumpId> {
+        Err(ResourceError::BadParams)
+    }
+
+    /// Downloads a lump from this store.
+    async fn download_lump(&self, _id: LumpId) -> ResourceResult<LazyBlob> {
+        Err(ResourceError::Unavailable)
     }
 }
