@@ -42,7 +42,7 @@ impl Commands {
         match self {
             Commands::ListPeers(args) => args.run(get_daemon().await).await,
             Commands::ListProcesses(args) => args.run(get_daemon().await).await,
-            Commands::RunMockRuntime(args) => args.run().await, 
+            Commands::RunMockRuntime(args) => args.run().await,
         }
     }
 }

@@ -64,7 +64,7 @@ impl RunMockRuntime {
             peer_id: PeerId(0),
             process_factory,
         };
-        
+
         hearth_ipc::listen(daemon_listener, daemon_offer);
 
         eprintln!("Waiting for interrupt signal");
