@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[derive(Debug)]
 pub struct MockProcessStore {
     services: RwLock<ObservableHashMap<String, LocalProcessId>>,
     processes: ObservableHashMap<LocalProcessId, ProcessStatus>,
@@ -106,10 +107,7 @@ impl MockProcessStore {
     }
 }
 
-pub struct MockProcessApi {
-    log: RwLock<ObservableList<ProcessLogEvent>>,
-}
-
+#[derive(Debug)]
 pub struct MockProcessFactory {}
 
 #[async_trait]
@@ -121,6 +119,11 @@ impl ProcessFactory for MockProcessFactory {
             pid: LocalProcessId(0),
         })
     }
+}
+
+#[derive(Debug)]
+pub struct MockProcessApi {
+    log: RwLock<ObservableList<ProcessLogEvent>>,
 }
 
 #[async_trait]
@@ -177,6 +180,7 @@ impl MockProcessApi {
     }
 }
 
+#[derive(Debug)]
 pub struct MockPeerApi {
     peer_info: PeerInfo,
     process_store: ProcessStoreClient,
@@ -214,6 +218,7 @@ impl MockPeerApi {
     }
 }
 
+#[derive(Debug)]
 pub struct MockPeerProvider {
     peers: HashMap<PeerId, PeerApiClient>,
     peer_info: ObservableHashMap<PeerId, PeerInfo>,
@@ -253,6 +258,7 @@ impl MockPeerProvider {
     }
 }
 
+#[derive(Debug)]
 pub struct MockLumpStore {}
 
 #[async_trait]
