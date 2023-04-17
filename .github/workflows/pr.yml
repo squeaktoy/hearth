@@ -39,9 +39,9 @@ jobs:
     - uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
-        flags: --all
         components: rustfmt
         override: true
     - uses: LoliGothick/rustfmt-check@master
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        flags: --all
