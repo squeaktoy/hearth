@@ -11,7 +11,8 @@ Hearth is a shared, always-on execution environment for constructing
 [Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
 [Contributing](/CONTRIBUTORS.md) •
-[Discord server](https://discord.gg/gzzJ3pWCft)
+[Discord "server"](https://discord.gg/gzzJ3pWCft) •
+[Matrix room](https://matrix.to/#/#hearth:yoru.cafe)
 
 <a href="https://www.gnu.org/licenses/agpl-3.0.html">
   <img src="./resources/misc/agplv3-with-text-162x68.png"/>
@@ -199,6 +200,7 @@ unfeasible.
 - [ ] create native services for pancake mode input handling
 - [ ] create native services for rend3 configuration like skyboxes, global lighting, and camera setup
 - [ ] create native services for virtual terminal management
+- [ ] create a server blocklist and allowlist system
 
 ## Phase 3: Beta
 
@@ -218,27 +220,38 @@ environment.
 
 Here are some ideas for subjects of exploration that Hearth may explore in
 beta:
-- data backup
-- process-to-host integration with database APIs
-- persistent world storage
-- avatar movement and input handling systems
-- guest-side physics engines (using [Rapier](https://rapier.rs))
-- OBJ loading
-- FBX loading
-- glTF loading
-- avatar skeletal animation
-- inverse kinematics
-- audio compression
-- spatial audio
-- voice chat
-- collaborative world editing
-- live mesh editing
-- live interior design and virtual architecture tooling
-- in-space virtual cameras for external applications to record the space through
-- WASI-based text editors for non-native script authoring
-- Wasm compilers in Hearth for non-native script development
-- guest APIs for more WebAssembly languages (i.e. C/C++, AssemblyScript, Grain)
-- non-Wasm process scripting runtimes (i.e. Lua, Mono, Javascript, Lisp)
+- Database
+  - data backup
+  - process-to-host integration with database APIs
+  - persistent world storage
+- Physics
+  - avatar movement and input handling systems
+  - guest-side physics engines (using [Rapier](https://rapier.rs))
+  - avatar skeletal animation
+  - inverse kinematics
+- Models
+  - OBJ loading
+  - FBX loading
+  - glTF loading
+- Audio
+  - audio compression
+  - spatial audio
+  - voice chat
+- Editing
+  - collaborative world editing
+  - live mesh editing
+  - live interior design and virtual architecture tooling
+- Languages/Scripting
+  - WASI-based text editors for non-native script authoring
+  - Wasm compilers in Hearth for non-native script development
+  - guest APIs for more WebAssembly languages (i.e. C/C++, AssemblyScript, 
+Grain)
+  - non-Wasm process scripting runtimes (i.e. Lua, Mono, Javascript, Lisp, 
+Python)
+  - Create a block-based [Scratch](https://scratch.mit.edu)-like scripting language
+- Miscellaneous
+  - in-space virtual cameras for external applications to record the space 
+through
 
 These topics may be further explored post-beta. They mainly serve the purpose
 of guiding Hearth's developers towards supporting an aligned set of expected
@@ -249,5 +262,6 @@ usecases and to fuel curiosity into Hearth's potential.
 - [ ] publish Hearth on the AUR
 - [ ] publish Hearth's crates to the AUR
 - [ ] evaluate Hearth's design and brainstorm future improvements to found problems
+- [ ] create a launcher for Hearth server and client
 - [ ] create comprehensive documentation on usage
 - [ ] create a web page for promoting and reusing community contributions

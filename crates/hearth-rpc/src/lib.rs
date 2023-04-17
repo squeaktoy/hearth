@@ -28,6 +28,9 @@ use serde::{Deserialize, Serialize};
 pub use hearth_types;
 pub use remoc;
 
+#[cfg(feature = "mocks")]
+pub mod mocks;
+
 pub type CallResult<T> = Result<T, CallError>;
 
 /// Wrapper around a [CallError] for requests involving resources.
