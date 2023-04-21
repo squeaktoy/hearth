@@ -19,6 +19,8 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
+use hearth_core::anyhow;
+use hearth_core::asset::AssetLoader;
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_core::process::{Message, Process, ProcessContext};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
@@ -359,19 +361,16 @@ impl Process for WasmProcessSpawner {
     }
 }
 
-impl WasmProcessSpawner {
-    pub fn new() -> Self {
-        let mut config = Config::new();
-        config.async_support(true);
+pub struct WasmModuleLoader {
+    engine: Arc<Engine>,
+}
 
-        let engine = Engine::new(&config).unwrap();
-        let mut linker = Linker::new(&engine);
-        ProcessData::add_to_linker(&mut linker);
+#[async_trait]
+impl AssetLoader for WasmModuleLoader {
+    type Asset = Module;
 
-        Self {
-            engine: Arc::new(engine),
-            linker: Arc::new(linker),
-        }
+    async fn load_asset(&self, data: &[u8]) -> anyhow::Result<Module> {
+        Module::new(&self.engine, data)
     }
 }
 
@@ -380,9 +379,28 @@ pub struct WasmPlugin {}
 #[async_trait]
 impl Plugin for WasmPlugin {
     fn build(&mut self, builder: &mut RuntimeBuilder) {
-        let name = "hearth.cognito.WasmProcessSpawner".to_string();
-        let spawner = WasmProcessSpawner::new();
-        builder.add_service(name, spawner);
+        let mut config = Config::new();
+        config.async_support(true);
+
+        let engine = Engine::new(&config).unwrap();
+        let mut linker = Linker::new(&engine);
+        ProcessData::add_to_linker(&mut linker);
+
+        let engine = Arc::new(engine);
+        let linker = Arc::new(linker);
+
+        builder.add_service(
+            "hearth.cognito.WasmProcessSpawner".into(),
+            WasmProcessSpawner {
+                engine: engine.to_owned(),
+                linker: linker.to_owned(),
+            },
+        );
+
+        builder.add_asset_loader(
+            "hearth.cognito.WasmModule".into(),
+            WasmModuleLoader { engine },
+        );
     }
 
     async fn run(&mut self, _runtime: Arc<Runtime>) {
