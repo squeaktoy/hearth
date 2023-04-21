@@ -191,11 +191,11 @@ impl Asset {
 }
 
 /// Log a message.
-pub fn log(level: ProcessLogLevel, target: &str, content: &str) {
+pub fn log(level: ProcessLogLevel, module: &str, content: &str) {
     let level = level.into();
-    let (target_ptr, target_len) = abi_string(target);
+    let (module_ptr, module_len) = abi_string(module);
     let (content_ptr, content_len) = abi_string(content);
-    unsafe { abi::log::log(level, target_ptr, target_len, content_ptr, content_len) }
+    unsafe { abi::log::log(level, module_ptr, module_len, content_ptr, content_len) }
 }
 
 #[allow(clashing_extern_declarations)]
@@ -213,8 +213,8 @@ mod abi {
         extern "C" {
             pub fn log(
                 level: u32,
-                target_ptr: u32,
-                target_len: u32,
+                module_ptr: u32,
+                module_len: u32,
                 content_ptr: u32,
                 content_len: u32,
             );
