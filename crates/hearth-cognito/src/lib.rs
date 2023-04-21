@@ -25,7 +25,7 @@ use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_core::tokio;
 use hearth_macros::impl_wasm_linker;
 use hearth_rpc::hearth_types::{LumpId, ProcessId};
-use hearth_rpc::{remoc, ProcessInfo};
+use hearth_rpc::{remoc, ProcessInfo, ProcessLogEvent};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use remoc::rtc::async_trait;
 use slab::Slab;
@@ -41,11 +41,38 @@ pub struct AssetAbi {}
 impl AssetAbi {}
 
 /// Implements the `hearth::log` ABI module.
-#[derive(Debug, Default)]
-pub struct LogAbi {}
+pub struct LogAbi {
+    pub ctx: Arc<Mutex<ProcessContext>>,
+}
 
 #[impl_wasm_linker(module = "hearth::log")]
-impl LogAbi {}
+impl LogAbi {
+    async fn log(
+        &self,
+        memory: GuestMemory<'_>,
+        level: u32,
+        module_ptr: u32,
+        module_len: u32,
+        content_ptr: u32,
+        content_len: u32,
+    ) -> Result<()> {
+        self.ctx.lock().await.log(ProcessLogEvent {
+            level: level
+                .try_into()
+                .map_err(|_| anyhow!("Invalid log level constant {}", level))?,
+            module: memory.get_str(module_ptr, module_len)?.to_string(),
+            content: memory.get_str(content_ptr, content_len)?.to_string(),
+        });
+
+        Ok(())
+    }
+}
+
+impl LogAbi {
+    pub fn new(ctx: Arc<Mutex<ProcessContext>>) -> Self {
+        Self { ctx }
+    }
+}
 
 /// A script-local lump stored in [LumpAbi].
 #[derive(Debug)]
@@ -234,7 +261,7 @@ impl ProcessData {
 
         Self {
             asset: Default::default(),
-            log: Default::default(),
+            log: LogAbi::new(ctx.to_owned()),
             lump: Default::default(),
             message: MessageAbi::new(ctx.to_owned()),
             process: ProcessAbi::new(ctx),
