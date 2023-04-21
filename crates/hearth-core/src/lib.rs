@@ -22,6 +22,7 @@ pub use hearth_rpc::remoc::rtc::async_trait;
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::prelude::*;
 
+pub use anyhow;
 pub use tokio;
 pub use tracing;
 
