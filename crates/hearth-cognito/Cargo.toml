@@ -5,10 +5,13 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+anyhow = "1"
+bytemuck = { workspace = true }
 hearth-core = { workspace = true }
 hearth-macros = { workspace = true }
 hearth-rpc = { workspace = true }
 hearth-wasm = { workspace = true }
+slab = "0.4.8"
 tracing = { workspace = true }
 wasmtime = "5.0.0"
 

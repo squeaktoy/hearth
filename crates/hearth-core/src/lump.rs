@@ -26,11 +26,15 @@ use remoc::rtc::async_trait;
 use tokio::sync::RwLock;
 use tracing::{debug, error};
 
+pub use bytes;
+
+#[derive(Debug)]
 struct Lump {
     data: Bytes,
     blob: LazyBlob,
 }
 
+#[derive(Debug, Default)]
 pub struct LumpStoreImpl {
     store: RwLock<HashMap<LumpId, Lump>>,
 }
@@ -103,6 +107,26 @@ impl LumpStoreImpl {
         Self {
             store: Default::default(),
         }
+    }
+
+    pub async fn add_lump(&self, data: Bytes) -> LumpId {
+        let id = LumpId(
+            blake3::Hasher::new()
+                .update(data.chunk())
+                .finalize()
+                .as_bytes()
+                .to_owned(),
+        );
+
+        let mut store = self.store.write().await;
+        if !store.contains_key(&id) {
+            debug!("Storing lump {}", id);
+            let blob = LazyBlob::new(data.clone());
+            let lump = Lump { data, blob };
+            store.insert(id, lump);
+        }
+
+        id
     }
 
     pub async fn get_lump(&self, id: &LumpId) -> Option<Bytes> {
