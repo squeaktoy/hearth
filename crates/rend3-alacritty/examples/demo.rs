@@ -23,6 +23,7 @@ use alacritty_terminal::term::color::{Colors, Rgb};
 use alacritty_terminal::tty::Pty;
 use alacritty_terminal::Term;
 use mio_extras::channel::Sender as MioSender;
+use rend3::types::TextureHandle;
 use rend3_alacritty::{FaceAtlas, FontSet, Terminal, TerminalConfig, TerminalStore};
 use rend3_routine::base::BaseRenderGraphIntermediateState;
 use winit::event::{Event, WindowEvent};
@@ -50,6 +51,11 @@ impl EventListener for TermListener {
     }
 }
 
+fn load_skybox_image(data: &mut Vec<u8>, image: &[u8]) {
+    let decoded = image::load_from_memory(image).unwrap().into_rgba8();
+    data.extend_from_slice(decoded.as_raw());
+}
+
 pub struct DemoInner {
     store: TerminalStore,
     term_loop: JoinHandle<(TermEventLoop<Pty, TermListener>, TermState)>,
@@ -58,6 +64,7 @@ pub struct DemoInner {
     term: Arc<FairMutex<Term<TermListener>>>,
     term_render: Arc<RwLock<Terminal>>,
     colors: Colors,
+    skybox: TextureHandle,
 }
 
 impl DemoInner {
@@ -114,6 +121,24 @@ impl DemoInner {
         let mut colors = Colors::default();
         Self::load_colors(&mut colors);
 
+        // load skybox
+        let mut data = Vec::new();
+        load_skybox_image(&mut data, include_bytes!("skybox/right.jpg"));
+        load_skybox_image(&mut data, include_bytes!("skybox/left.jpg"));
+        load_skybox_image(&mut data, include_bytes!("skybox/top.jpg"));
+        load_skybox_image(&mut data, include_bytes!("skybox/bottom.jpg"));
+        load_skybox_image(&mut data, include_bytes!("skybox/front.jpg"));
+        load_skybox_image(&mut data, include_bytes!("skybox/back.jpg"));
+
+        let skybox = renderer.add_texture_cube(rend3::types::Texture {
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            size: (2048, 2048).into(),
+            data,
+            label: Some("skybox".into()),
+            mip_count: rend3::types::MipmapCount::ONE,
+            mip_source: rend3::types::MipmapSource::Uploaded,
+        });
+
         Self {
             term_render: store.create_terminal(),
             store,
@@ -122,6 +147,7 @@ impl DemoInner {
             term_channel,
             term_events,
             colors,
+            skybox,
         }
     }
 
@@ -255,10 +281,15 @@ impl rend3_framework::App for Demo {
         &mut self,
         _window: &winit::window::Window,
         renderer: &Arc<rend3::Renderer>,
-        _routines: &Arc<rend3_framework::DefaultRoutines>,
+        routines: &Arc<rend3_framework::DefaultRoutines>,
         surface_format: rend3::types::TextureFormat,
     ) {
-        self.inner = Some(DemoInner::new(renderer, surface_format));
+        let inner = DemoInner::new(renderer, surface_format);
+
+        routines
+            .skybox
+            .lock()
+            .set_background_texture(Some(inner.skybox.clone()));
 
         renderer.set_camera_data(rend3::types::Camera {
             projection: rend3::types::CameraProjection::Perspective {
@@ -271,6 +302,8 @@ impl rend3_framework::App for Demo {
                 glam::Vec3::new(0.0, 1.0, 0.0),
             ),
         });
+
+        self.inner = Some(inner);
     }
 
     fn handle_event(
@@ -327,8 +360,6 @@ impl rend3_framework::App for Demo {
                     surface: Arc::clone(surface.unwrap()),
                 };
 
-                let (cmd_bufs, ready) = renderer.ready();
-
                 let term = inner.term.lock();
                 inner
                     .term_render
@@ -339,14 +370,19 @@ impl rend3_framework::App for Demo {
                 let routine = inner.store.create_routine();
 
                 let pbr_routine = rend3_framework::lock(&routines.pbr);
+                let mut skybox_routine = rend3_framework::lock(&routines.skybox);
                 let tonemapping_routine = rend3_framework::lock(&routines.tonemapping);
+
+                let (cmd_bufs, ready) = renderer.ready();
+                skybox_routine.ready(renderer);
+
                 let mut graph = rend3::graph::RenderGraph::new();
 
                 base_rendergraph.add_to_graph(
                     &mut graph,
                     &ready,
                     &pbr_routine,
-                    None,
+                    Some(&skybox_routine),
                     &tonemapping_routine,
                     resolution,
                     SAMPLE_COUNT,

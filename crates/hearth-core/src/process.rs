@@ -37,7 +37,7 @@ use remoc::rch::{mpsc as remoc_mpsc, watch as remoc_watch};
 use remoc::robs::hash_map::ObservableHashMap;
 use remoc::robs::list::{ListSubscription, ObservableList, ObservableListDistributor};
 use remoc::rtc::async_trait;
-use sharded_slab::Slab;
+use slab::Slab;
 use tokio::sync::{mpsc, watch, RwLock};
 use tracing::{debug, error, info, trace};
 
@@ -130,6 +130,15 @@ pub struct ProcessContext {
 
     /// Observable log for this process's log events.
     log: ObservableList<ProcessLogEvent>,
+
+    /// A sender to this process's number of warning logs.
+    warning_num_tx: remoc_watch::Sender<u32>,
+
+    /// A sender to this process's number of error logs.
+    error_num_tx: remoc_watch::Sender<u32>,
+
+    /// A sender to this process's total number of log events.
+    log_num_tx: remoc_watch::Sender<u32>,
 }
 
 impl Drop for ProcessContext {
@@ -199,6 +208,22 @@ impl ProcessContext {
 
     /// Adds a log event to this process's log.
     pub fn log(&mut self, event: ProcessLogEvent) {
+        // helper function for incrementing watched counter
+        let inc_num = |watch: &mut remoc_watch::Sender<u32>| {
+            watch.send_modify(|i| *i += 1);
+        };
+
+        // update level-specific log event counters
+        match event.level {
+            ProcessLogLevel::Warning => inc_num(&mut self.warning_num_tx),
+            ProcessLogLevel::Error => inc_num(&mut self.error_num_tx),
+            _ => {}
+        }
+
+        // always increment the total log event counter
+        inc_num(&mut self.log_num_tx);
+
+        // actually push the log event
         self.log.push(event);
     }
 }
@@ -218,7 +243,7 @@ impl Process for RemoteProcess {
     }
 
     async fn run(&mut self, mut ctx: ProcessContext) {
-        while *self.is_alive.borrow() {
+        while ctx.is_alive() {
             tokio::select! {
                 msg = ctx.mailbox.recv() => self.on_recv(&mut ctx, msg).await,
                 _ = ctx.is_alive.changed() => self.on_is_alive(&mut ctx).await,
@@ -339,24 +364,16 @@ impl ProcessApi for ProcessApiImpl {
     }
 }
 
+#[derive(Default)]
 struct ProcessStoreInner {
     services: ObservableHashMap<String, LocalProcessId>,
-    process_infos: ObservableHashMap<LocalProcessId, ProcessInfo>,
-}
-
-impl ProcessStoreInner {
-    fn new() -> Self {
-        Self {
-            services: Default::default(),
-            process_infos: Default::default(),
-        }
-    }
+    process_statuses: ObservableHashMap<LocalProcessId, ProcessStatus>,
+    processes: Slab<ProcessWrapper>,
 }
 
 pub struct ProcessStoreImpl {
     inner: RwLock<ProcessStoreInner>,
     this_peer: PeerId,
-    processes: Slab<ProcessWrapper>,
     on_kill_tx: mpsc::UnboundedSender<LocalProcessId>,
 }
 
@@ -365,8 +382,7 @@ impl ProcessStoreImpl {
         let (on_kill_tx, on_kill_rx) = mpsc::unbounded_channel();
 
         let store = Arc::new(Self {
-            inner: RwLock::new(ProcessStoreInner::new()),
-            processes: Default::default(),
+            inner: Default::default(),
             this_peer,
             on_kill_tx,
         });
@@ -394,10 +410,10 @@ impl ProcessStoreImpl {
 
                 if let Some(store) = store.upgrade() {
                     let mut inner = store.inner.write().await;
-                    inner.process_infos.remove(&pid);
+                    inner.process_statuses.remove(&pid);
 
                     // if there is actually a process with this ID, notify its context that it's dead
-                    if let Some(wrapper) = store.processes.take(pid.0 as usize) {
+                    if let Some(wrapper) = inner.processes.try_remove(pid.0 as usize) {
                         let _ = wrapper.is_alive_tx.send(false); // ignore error; not our problem if the remote has hung up
                     } else {
                         // double-removal race conditions are bugs
@@ -425,7 +441,7 @@ impl ProcessStoreImpl {
 
     async fn send_message(&self, dst: LocalProcessId, msg: Message) -> Result<(), SendError> {
         let full_dst = ProcessId::from_peer_process(self.this_peer, dst);
-        let sender = if let Some(wrapper) = self.processes.get(dst.0 as usize) {
+        let sender = if let Some(wrapper) = self.inner.read().await.processes.get(dst.0 as usize) {
             wrapper.mailbox_tx.clone()
         } else {
             return Err(SendError::ProcessNotFound(full_dst));
@@ -450,17 +466,16 @@ impl ProcessStoreImpl {
         let (is_alive_tx, is_alive) = watch::channel(true);
         let is_alive_tx = Arc::new(is_alive_tx);
         let log = ObservableList::new();
+        let mut store = self.inner.write().await;
 
         // this needs to be inside a block because entry doesn't implement the
         // Send trait and even though entry.insert() takes ownership of entry
         // the compiler still complains about entry maybe being used across
         // the await making this function's future non-Send
         let pid = {
-            let entry = self
-                .processes
-                .vacant_entry()
-                .expect("Ran out of process IDs. This shouldn't happen.");
-            let pid = LocalProcessId(entry.key() as u32);
+            let entry = store.processes.vacant_entry();
+            let pid: u32 = entry.key().try_into().expect("PID integer overflow");
+            let pid = LocalProcessId(pid);
 
             entry.insert(ProcessWrapper {
                 mailbox_tx,
@@ -468,12 +483,23 @@ impl ProcessStoreImpl {
                 is_alive_tx: is_alive_tx.clone(),
             });
 
-            trace!("Allocated {:?}", pid);
+            debug!("Allocated {:?}", pid);
 
             pid
         };
 
-        self.inner.write().await.process_infos.insert(pid, info);
+        let (warning_num_tx, warning_num) = remoc_watch::channel(0);
+        let (error_num_tx, error_num) = remoc_watch::channel(0);
+        let (log_num_tx, log_num) = remoc_watch::channel(0);
+
+        let status = ProcessStatus {
+            warning_num,
+            error_num,
+            log_num,
+            info,
+        };
+
+        store.process_statuses.insert(pid, status);
 
         ProcessContext {
             pid: ProcessId::from_peer_process(self.this_peer, pid),
@@ -483,6 +509,9 @@ impl ProcessStoreImpl {
             is_alive,
             is_alive_tx,
             log,
+            warning_num_tx,
+            error_num_tx,
+            log_num_tx,
         }
     }
 
@@ -508,7 +537,7 @@ impl ProcessStore for ProcessStoreImpl {
     }
 
     async fn find_process(&self, pid: LocalProcessId) -> ResourceResult<ProcessApiClient> {
-        match self.processes.get(pid.0 as usize) {
+        match self.inner.read().await.processes.get(pid.0 as usize) {
             None => Err(ResourceError::Unavailable),
             Some(wrapper) => {
                 let api = Arc::new(ProcessApiImpl {
@@ -532,8 +561,8 @@ impl ProcessStore for ProcessStoreImpl {
 
     async fn register_service(&self, pid: LocalProcessId, name: String) -> ResourceResult<()> {
         debug!("Registering service '{}' to {:?}", name, pid);
-        let mut store = self.inner.write().await; // lock store early to avoid registering processes that have just been killed
-        if !self.processes.contains(pid.0 as usize) {
+        let mut store = self.inner.write().await;
+        if !store.processes.contains(pid.0 as usize) {
             debug!("Invalid local process ID");
             return Err(ResourceError::Unavailable);
         } else if store.services.contains_key(&name) {
@@ -556,8 +585,8 @@ impl ProcessStore for ProcessStoreImpl {
 
     async fn follow_process_list(
         &self,
-    ) -> CallResult<HashMapSubscription<LocalProcessId, ProcessInfo>> {
-        Ok(self.inner.read().await.process_infos.subscribe(1024))
+    ) -> CallResult<HashMapSubscription<LocalProcessId, ProcessStatus>> {
+        Ok(self.inner.read().await.process_statuses.subscribe(1024))
     }
 
     async fn follow_service_list(&self) -> CallResult<HashMapSubscription<String, LocalProcessId>> {
@@ -617,9 +646,8 @@ mod tests {
 
     #[tokio::test]
     async fn register_service() {
-        crate::init_logging();
         let store = ProcessStoreImpl::new(PeerId(42));
         let pid = store.spawn(DummyProcess).await;
-        assert!(store.register_service(pid, "test".into()).await.is_ok());
+        store.register_service(pid, "test".into()).await.unwrap();
     }
 }

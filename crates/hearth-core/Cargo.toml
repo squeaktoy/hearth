@@ -13,6 +13,7 @@ hearth-ipc = { workspace = true }
 hearth-rpc = { workspace = true }
 serde = { workspace = true }
 sharded-slab = "0.1"
+slab = "0.4.8"
 tokio = { version = "1.24", features = ["full"] }
 toml = "0.7"
 tracing = { workspace = true }
