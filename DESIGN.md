@@ -121,31 +121,12 @@ its data. To remedy this, processes have a host call that explicitly transfers
 a lump's data to a remote peer. This way, processes can ensure that remote
 processes have access to lumps that are being transferred.
 
-## Assets
-
-Before lumps can be specialized for different kinds of content, they must be
-loaded into assets. Different asset classes, like meshes, textures, and
-WebAssembly modules have different named identifiers. The names for those asset
-classes may be `Mesh`, `Texture`, or `WebAssembly`, for example. An asset is
-loaded with the name of the asset class and the lump containing that asset's
-data. Once an asset is loaded, it may be passed into the engine in the places
-that expect a loaded asset, such as in a mesh renderer component. Wasm
-processes are also spawned using a loaded WebAssembly module asset as the
-executable source.
-
-Assets are peer-local and there is no way to transfer them between peers. This
-is because they have been specialized from a non-specialized binary blob into
-a specialized data format that may or may not be peer-specific. Processes have
-the responsibility and the privilege of converting opaque lumps into usable
-assets on their host peer.
-
-Note that lumps (and therefore assets) can be created by processes and that
-Wasm modules are a kind of asset. As a consequence of this, Hearth processes
-may generate and load Wasm modules at runtime. This allows a WebAssembly
-compiler that can create new Hearth processes to be in of itself a Wasm Hearth
-process. A major field of research in Hearth's [beta phase](#phase-3-beta) is
-to study the possibilities of a self-hosting Hearth environment using this
-technique.
+Note that lumps can be created by processes and that Wasm modules are loaded
+from lumps. As a consequence of this, Hearth processes may generate and load
+Wasm modules at runtime. This allows a WebAssembly compiler that can create new
+Hearth processes to be in of itself a Wasm Hearth process. A major field of
+research in Hearth's [beta phase](#phase-3-beta) is to study the possibilities
+of a self-hosting Hearth environment using this technique.
 
 ## Terminal Emulator
 
@@ -220,6 +201,19 @@ order to make this interfacing modular and optional Hearth defines a plugin
 system for all non-essential components that all of its major subsystems are
 built on top of. This includes IPC, rendering, input handling, terminal
 management, and WebAssembly process execution itself.
+
+## Assets
+
+Assets are specialized host-side objects that are loaded from lump data.
+Examples of assets are WebAssembly modules, 3D meshes, images, and other
+formatted media that's used by host-side plugins. To load a lump, each plugin
+may register asset loaders into the runtime on initialization. Each asset
+loader defines a function that takes a binary blob as input and returns an
+asset object. Then, the runtime's asset store returns a shared pointer to that
+new asset object. Assets are cached by lump ID in the asset store, and old,
+unused lumps are freed to conserve system memory usage. The primary purpose of
+the lump system is to provide native plugin authors with a reusable utility for
+loading serialized data and objects from lumps.
 
 ## Rendering
 
