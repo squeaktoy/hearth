@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use std::collections::HashMap;
+
 use clap::{Parser, Subcommand};
 use hearth_rpc::DaemonOffer;
 
@@ -60,4 +62,10 @@ async fn get_daemon() -> DaemonOffer {
     hearth_ipc::connect()
         .await
         .expect("Failed to connect to Hearth daemon")
+}
+
+fn hash_map_to_ordered_vec<K: Copy + Ord, V>(map: HashMap<K, V>) -> Vec<(K, V)> {
+    let mut vec = map.into_iter().collect::<Vec<(K, V)>>();
+    vec.sort_by_cached_key(|k| k.0);
+    vec
 }
