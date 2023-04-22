@@ -8,4 +8,5 @@ license = "AGPL-3.0-or-later"
 clap = { version = "3.2", features = ["derive"] }
 hearth-ipc = { workspace = true }
 hearth-rpc = { workspace = true, features = ["mocks"] }
+serde_json = { workspace = true }
 tokio = { version = "1.24", features = ["macros", "net", "rt", "signal"] }
