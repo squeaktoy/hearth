@@ -33,7 +33,7 @@ use hearth_wasm::{GuestMemory, WasmLinker};
 use remoc::rtc::async_trait;
 use slab::Slab;
 use tokio::sync::{oneshot, Mutex};
-use tracing::error;
+use tracing::{debug, error, warn};
 use wasmtime::*;
 
 /// Implements the `hearth::asset` ABI module.
@@ -363,8 +363,11 @@ impl Process for WasmProcessSpawner {
             .await
             .expect("Asset store sender dropped");
 
+        debug!("Listening to Wasm spawn requests");
         while let Some(message) = ctx.recv().await {
             let sender = message.sender;
+            debug!("Received message from {:?}", sender.split());
+
             let message: WasmSpawnInfo = match serde_json::from_slice(&message.data) {
                 Ok(message) => message,
                 Err(err) => {
@@ -374,9 +377,13 @@ impl Process for WasmProcessSpawner {
                         content: format!("Failed to parse WasmSpawnInfo: {:?}", err),
                     });
 
+                    warn!("Failed to parse WasmSpawnInfo: {:?}", err);
+
                     continue;
                 }
             };
+
+            debug!("Spawning Wasm module lump {}", message.lump);
 
             match asset_store
                 .load_asset::<WasmModuleLoader>(&message.lump)
@@ -388,8 +395,11 @@ impl Process for WasmProcessSpawner {
                         module: "WasmProcessSpawner".to_string(),
                         content: format!("Failed to load Wasm module: {:?}", err),
                     });
+
+                    warn!("Failed to load Wasm module {}: {:?}", message.lump, err);
                 }
                 Ok(module) => {
+                    debug!("Spawning module {}", message.lump);
                     let pid = ctx
                         .get_process_store()
                         .spawn(WasmProcess {
@@ -399,6 +409,7 @@ impl Process for WasmProcessSpawner {
                         })
                         .await;
 
+                    debug!("Spawned PID: {:?}", pid);
                     let _ = ctx
                         .send_message(sender, format!("{}", pid.0).into_bytes())
                         .await;
