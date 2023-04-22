@@ -174,7 +174,7 @@ component separately.
 - [ ] write mock RPC endpoints for testing subsystems in isolation
 - [x] implement IPC using Unix domain sockets (Unix only)
 - [ ] complete `hearth-ctl`
-- [ ] define guest-to-host WebAssembly APIs for logging, lump loading, asset loading, and message transmission
+- [ ] define guest-to-host WebAssembly APIs for logging, lump loading, and message transmission
 - [ ] create a native service for spawning WebAssembly processes
 - [x] integrate rend3 and winit into `hearth-client`
 
@@ -188,6 +188,7 @@ highly unstable, so long-lived, self-sustaining virtual spaces are still
 unfeasible.
 
 - [ ] write a unit test suite for Wasm guests written in Rust
+- [ ] implement an asset reaper for unused assets
 - [ ] implement message-sending between processes on different peers
 - [ ] implement a process supervision tree in `hearth-guest`
 - [ ] asynchronous MSDF glyph loading for large fonts
