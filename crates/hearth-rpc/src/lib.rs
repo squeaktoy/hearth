@@ -18,6 +18,8 @@
 
 use hearth_types::*;
 
+use std::fmt::{Display, Formatter};
+
 use remoc::rch::{mpsc, watch};
 use remoc::robj::lazy_blob::LazyBlob;
 use remoc::robs::hash_map::HashMapSubscription;
@@ -51,6 +53,18 @@ impl From<CallError> for ResourceError {
         ResourceError::CallError(err)
     }
 }
+
+impl Display for ResourceError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResourceError::Unavailable => write!(f, "resource unavailable"),
+            ResourceError::BadParams => write!(f, "invalid function parameters"),
+            ResourceError::CallError(err) => err.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ResourceError {}
 
 /// See [ResourceError] for more info.
 pub type ResourceResult<T> = Result<T, ResourceError>;
