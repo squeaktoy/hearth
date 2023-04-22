@@ -175,7 +175,7 @@ component separately.
 - [x] implement IPC using Unix domain sockets (Unix only)
 - [ ] complete `hearth-ctl`
 - [ ] define guest-to-host WebAssembly APIs for logging, lump loading, and message transmission
-- [ ] create a native service for spawning WebAssembly processes
+- [x] create a native service for spawning WebAssembly processes
 - [x] integrate rend3 and winit into `hearth-client`
 
 ## Phase 2: Alpha
