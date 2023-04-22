@@ -59,18 +59,15 @@ impl SpawnWasm {
             )
             .await
             .unwrap();
-        let wasm_spawm_info = WasmSpawnInfo {
-            lump: lump_id,
-        };
+        let wasm_spawn_info = WasmSpawnInfo { lump: lump_id };
 
         process
             .outgoing
             .send(Message {
                 pid: ProcessId::from_peer_process(peer, pid),
-                data: serde_json::to_vec(&wasm_spawm_info).unwrap(),
+                data: serde_json::to_vec(&wasm_spawn_info).unwrap(),
             })
             .await
             .unwrap();
-
     }
 }
