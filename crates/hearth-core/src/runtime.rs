@@ -31,6 +31,7 @@ use hearth_rpc::remoc::rtc::ServerShared;
 use hearth_rpc::*;
 use hearth_types::PeerId;
 use remoc::rtc::async_trait;
+use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
@@ -53,14 +54,14 @@ pub trait Plugin: Send + Sync + 'static {
 
 struct PluginWrapper {
     plugin: Box<dyn Any>,
-    runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>)>,
+    runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>) -> JoinHandle<()>>,
 }
 
 /// Builder struct for a single Hearth [Runtime].
 pub struct RuntimeBuilder {
     config_file: toml::Table,
     plugins: HashMap<TypeId, PluginWrapper>,
-    runners: Vec<Box<dyn FnOnce(Arc<Runtime>)>>,
+    runners: Vec<Box<dyn FnOnce(Arc<Runtime>) -> JoinHandle<()>>>,
     services: HashSet<String>,
     lump_store: Arc<LumpStoreImpl>,
     asset_store: AssetStore,
@@ -120,7 +121,7 @@ impl RuntimeBuilder {
                     tokio::spawn(async move {
                         debug!("Running {} plugin", name);
                         plugin.run(runtime).await;
-                    });
+                    })
                 }),
             },
         );
@@ -142,7 +143,7 @@ impl RuntimeBuilder {
         self.runners.push(Box::new(|runner| {
             tokio::spawn(async move {
                 cb(runner).await;
-            });
+            })
         }));
 
         self
@@ -173,7 +174,7 @@ impl RuntimeBuilder {
                         error!("Service registration error: {:?}", err);
                     }
                 }
-            });
+            })
         }));
 
         self
@@ -212,7 +213,10 @@ impl RuntimeBuilder {
     }
 
     /// Consumes this builder and starts up the full [Runtime].
-    pub fn run(self, config: RuntimeConfig) -> Arc<Runtime> {
+    ///
+    /// This returns a shared pointer to the new runtime, as well as all of the
+    /// [JoinHandles][JoinHandle] for the launched runners and plugins.
+    pub fn run(self, config: RuntimeConfig) -> (Arc<Runtime>, Vec<JoinHandle<()>>) {
         debug!("Spawning lump store server");
         let lump_store = self.lump_store;
         let (lump_store_server, lump_store_client) =
@@ -247,18 +251,22 @@ impl RuntimeBuilder {
             config,
         });
 
+        let mut join_handles = Vec::new();
+
         debug!("Running plugins");
         for (_id, wrapper) in self.plugins {
             let PluginWrapper { plugin, runner } = wrapper;
-            runner(plugin, runtime.clone());
+            let join = runner(plugin, runtime.clone());
+            join_handles.push(join);
         }
 
         debug!("Running runners");
         for runner in self.runners {
-            runner(runtime.clone());
+            let join = runner(runtime.clone());
+            join_handles.push(join);
         }
 
-        runtime
+        (runtime, join_handles)
     }
 }
 
