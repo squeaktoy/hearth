@@ -87,7 +87,7 @@ async fn main() {
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
 
-    let runtime = builder.run(config);
+    let (runtime, join_handles) = builder.run(config);
     let peer_api = runtime.clone().serve_peer_api();
     peer_provider
         .write()
@@ -124,7 +124,11 @@ async fn main() {
     }
     hearth_ipc::listen(daemon_listener, daemon_offer);
     hearth_core::wait_for_interrupt().await;
+
     info!("Interrupt received; exiting server");
+    for join in join_handles {
+        join.abort();
+    }
 }
 
 fn listen(

@@ -26,13 +26,14 @@ use hearth_core::process::{Message, Process, ProcessContext};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_core::tokio;
 use hearth_macros::impl_wasm_linker;
-use hearth_rpc::hearth_types::{LumpId, ProcessId};
+use hearth_rpc::hearth_types::wasm::WasmSpawnInfo;
+use hearth_rpc::hearth_types::{LumpId, ProcessId, ProcessLogLevel};
 use hearth_rpc::{remoc, ProcessInfo, ProcessLogEvent};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use remoc::rtc::async_trait;
 use slab::Slab;
 use tokio::sync::{oneshot, Mutex};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 use wasmtime::*;
 
 /// Implements the `hearth::asset` ABI module.
@@ -317,6 +318,7 @@ impl Process for WasmProcess {
         // TODO log using the process log instead of tracing?
         let data = ProcessData::new(ctx);
         let mut store = Store::new(&self.engine, data);
+        store.epoch_deadline_async_yield_and_update(1);
         let instance = match self
             .linker
             .instantiate_async(&mut store, &self.module)
@@ -357,10 +359,62 @@ impl Process for WasmProcessSpawner {
 
     async fn run(&mut self, mut ctx: ProcessContext) {
         let asset_store = oneshot::channel().1;
-        let asset_store = std::mem::replace(&mut self.asset_store, asset_store).await;
+        let asset_store = std::mem::replace(&mut self.asset_store, asset_store)
+            .await
+            .expect("Asset store sender dropped");
 
+        debug!("Listening to Wasm spawn requests");
         while let Some(message) = ctx.recv().await {
-            debug!("WasmProcessSpawner: got message from {}", message.sender);
+            let sender = message.sender;
+            debug!("Received message from {:?}", sender.split());
+
+            let message: WasmSpawnInfo = match serde_json::from_slice(&message.data) {
+                Ok(message) => message,
+                Err(err) => {
+                    ctx.log(ProcessLogEvent {
+                        level: ProcessLogLevel::Error,
+                        module: "WasmProcessSpawner".to_string(),
+                        content: format!("Failed to parse WasmSpawnInfo: {:?}", err),
+                    });
+
+                    warn!("Failed to parse WasmSpawnInfo: {:?}", err);
+
+                    continue;
+                }
+            };
+
+            debug!("Spawning Wasm module lump {}", message.lump);
+
+            match asset_store
+                .load_asset::<WasmModuleLoader>(&message.lump)
+                .await
+            {
+                Err(err) => {
+                    ctx.log(ProcessLogEvent {
+                        level: ProcessLogLevel::Error,
+                        module: "WasmProcessSpawner".to_string(),
+                        content: format!("Failed to load Wasm module: {:?}", err),
+                    });
+
+                    warn!("Failed to load Wasm module {}: {:?}", message.lump, err);
+                }
+                Ok(module) => {
+                    debug!("Spawning module {}", message.lump);
+                    let pid = ctx
+                        .get_process_store()
+                        .spawn(WasmProcess {
+                            engine: self.engine.to_owned(),
+                            linker: self.linker.to_owned(),
+                            module,
+                        })
+                        .await;
+
+                    debug!("Spawned PID: {:?}", pid);
+                    let _ = ctx
+                        .send_message(sender, format!("{}", pid.0).into_bytes())
+                        .await;
+                }
+            }
         }
     }
 }
@@ -379,21 +433,15 @@ impl AssetLoader for WasmModuleLoader {
 }
 
 pub struct WasmPlugin {
+    engine: Arc<Engine>,
     asset_store_tx: Vec<oneshot::Sender<Arc<AssetStore>>>,
 }
 
 #[async_trait]
 impl Plugin for WasmPlugin {
     fn build(&mut self, builder: &mut RuntimeBuilder) {
-        let mut config = Config::new();
-        config.async_support(true);
-
-        let engine = Engine::new(&config).unwrap();
-        let mut linker = Linker::new(&engine);
+        let mut linker = Linker::new(&self.engine);
         ProcessData::add_to_linker(&mut linker);
-
-        let engine = Arc::new(engine);
-        let linker = Arc::new(linker);
 
         let (asset_store_tx, asset_store) = oneshot::channel();
         self.asset_store_tx.push(asset_store_tx);
@@ -401,25 +449,41 @@ impl Plugin for WasmPlugin {
         builder.add_service(
             "hearth.cognito.WasmProcessSpawner".into(),
             WasmProcessSpawner {
-                engine: engine.to_owned(),
-                linker: linker.to_owned(),
+                engine: self.engine.to_owned(),
+                linker: Arc::new(linker),
                 asset_store,
             },
         );
 
-        builder.add_asset_loader(WasmModuleLoader { engine });
+        builder.add_asset_loader(WasmModuleLoader {
+            engine: self.engine.to_owned(),
+        });
     }
 
     async fn run(&mut self, runtime: Arc<Runtime>) {
         for tx in self.asset_store_tx.drain(..) {
             let _ = tx.send(runtime.asset_store.to_owned());
         }
+
+        // TODO make this time slice duration configurable
+        let duration = std::time::Duration::from_micros(100);
+        loop {
+            tokio::time::sleep(duration).await;
+            self.engine.increment_epoch();
+        }
     }
 }
 
 impl WasmPlugin {
     pub fn new() -> Self {
+        let mut config = Config::new();
+        config.async_support(true);
+        config.epoch_interruption(true);
+
+        let engine = Engine::new(&config).unwrap();
+
         Self {
+            engine: Arc::new(engine),
             asset_store_tx: Vec::new(),
         }
     }

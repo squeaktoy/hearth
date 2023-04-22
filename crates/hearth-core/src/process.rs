@@ -156,6 +156,11 @@ impl ProcessContext {
         self.pid
     }
 
+    /// Gets this context's [ProcessStoreImpl].
+    pub fn get_process_store(&self) -> &Arc<ProcessStoreImpl> {
+        &self.process_store
+    }
+
     /// Returns true when this process is still alive.
     pub fn is_alive(&self) -> bool {
         *self.is_alive.borrow()
