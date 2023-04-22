@@ -76,9 +76,13 @@ pub fn recv() -> Message {
 ///
 /// Setting the timeout to 0 skips any blocking and in effect polls the message
 /// queue for a new message.
-pub fn recv_timeout(timeout_us: u64) -> Message {
+pub fn recv_timeout(timeout_us: u64) -> Option<Message> {
     let msg = unsafe { abi::message::recv_timeout(timeout_us) };
-    Message(msg)
+    if msg == u32::MAX {
+        None
+    } else {
+        Some(Message(msg))
+    }
 }
 
 /// A message that has been received from another process.
@@ -187,11 +191,11 @@ impl Asset {
 }
 
 /// Log a message.
-pub fn log(level: ProcessLogLevel, target: &str, content: &str) {
+pub fn log(level: ProcessLogLevel, module: &str, content: &str) {
     let level = level.into();
-    let (target_ptr, target_len) = abi_string(target);
+    let (module_ptr, module_len) = abi_string(module);
     let (content_ptr, content_len) = abi_string(content);
-    unsafe { abi::log::log(level, target_ptr, target_len, content_ptr, content_len) }
+    unsafe { abi::log::log(level, module_ptr, module_len, content_ptr, content_len) }
 }
 
 #[allow(clashing_extern_declarations)]
@@ -209,8 +213,8 @@ mod abi {
         extern "C" {
             pub fn log(
                 level: u32,
-                target_ptr: u32,
-                target_len: u32,
+                module_ptr: u32,
+                module_len: u32,
                 content_ptr: u32,
                 content_len: u32,
             );

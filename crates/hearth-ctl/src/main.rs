@@ -21,6 +21,7 @@ use hearth_rpc::DaemonOffer;
 
 mod list_peers;
 mod list_processes;
+mod run_mock_runtime;
 mod spawn_wasm;
 
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
@@ -34,15 +35,17 @@ pub struct Args {
 pub enum Commands {
     ListPeers(list_peers::ListPeers),
     ListProcesses(list_processes::ListProcesses),
+    RunMockRuntime(run_mock_runtime::RunMockRuntime),
     SpawnWasm(spawn_wasm::SpawnWasm),
 }
 
 impl Commands {
-    pub async fn run(self, daemon: DaemonOffer) {
+    pub async fn run(self) {
         match self {
-            Commands::ListPeers(args) => args.run(daemon).await,
-            Commands::ListProcesses(args) => args.run(daemon).await,
-            Commands::SpawnWasm(args) => args.run(daemon).await,
+            Commands::ListPeers(args) => args.run(get_daemon().await).await,
+            Commands::ListProcesses(args) => args.run(get_daemon().await).await,
+            Commands::SpawnWasm(args) => args.run(get_daemon().await).await,
+            Commands::RunMockRuntime(args) => args.run().await,
         }
     }
 }
@@ -50,8 +53,11 @@ impl Commands {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let args = Args::parse();
-    let daemon = hearth_ipc::connect()
+    args.command.run().await;
+}
+
+async fn get_daemon() -> DaemonOffer {
+    hearth_ipc::connect()
         .await
-        .expect("Failed to connect to Hearth daemon");
-    args.command.run(daemon).await;
+        .expect("Failed to connect to Hearth daemon")
 }

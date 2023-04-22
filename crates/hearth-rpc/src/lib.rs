@@ -28,6 +28,9 @@ use serde::{Deserialize, Serialize};
 pub use hearth_types;
 pub use remoc;
 
+#[cfg(feature = "mocks")]
+pub mod mocks;
+
 pub type CallResult<T> = Result<T, CallError>;
 
 /// Wrapper around a [CallError] for requests involving resources.
@@ -146,7 +149,7 @@ pub trait ProcessStore {
     /// This list is updated live as processes are spawned, killed, or changed.
     async fn follow_process_list(
         &self,
-    ) -> CallResult<HashMapSubscription<LocalProcessId, ProcessInfo>>;
+    ) -> CallResult<HashMapSubscription<LocalProcessId, ProcessStatus>>;
 
     /// Subscribes to this store's service list.
     ///
@@ -258,6 +261,22 @@ pub struct ProcessLogEvent {
     // TODO serializeable timestamp?
 }
 
-/// A process's metadata.
+/// User information about a process.
 #[derive(Clone, Debug, Hash, Deserialize, Serialize)]
 pub struct ProcessInfo {}
+
+/// The state of a currently running process.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProcessStatus {
+    /// A live counter of the number of warnings that this process has logged.
+    pub warning_num: watch::Receiver<u32>,
+
+    /// A live counter of the number of errors that this process has logged.
+    pub error_num: watch::Receiver<u32>,
+
+    /// A live counter of the total number of log events that this process has logged.
+    pub log_num: watch::Receiver<u32>,
+
+    /// This process's user information.
+    pub info: ProcessInfo,
+}

@@ -3,8 +3,14 @@ name: Pull Request Checks
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "**/Cargo.toml"
+      - "**.rs"
   pull_request:
     branches: [ "main" ]
+    paths:
+      - "**/Cargo.toml"
+      - "**.rs"
 
 jobs:
   build:
@@ -44,3 +50,4 @@ jobs:
     - uses: LoliGothick/rustfmt-check@master
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        flags: --all

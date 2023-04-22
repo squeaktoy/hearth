@@ -17,4 +17,8 @@ hearth-rpc = { workspace = true }
 remoc = { workspace = true, features = ["full"] }
 tokio = { version = "1.24", features = ["full"] }
 tracing = { workspace = true }
-winit = "0.27"
+
+[dependencies.winit]
+version = "0.27"
+default-features = false
+features = ["x11", "wayland-dlopen"]
