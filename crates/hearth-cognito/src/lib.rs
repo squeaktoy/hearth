@@ -420,7 +420,7 @@ impl Plugin for WasmPlugin {
 impl WasmPlugin {
     pub fn new() -> Self {
         Self {
-            asset_store_tx: Vec::new()
+            asset_store_tx: Vec::new(),
         }
     }
 }
