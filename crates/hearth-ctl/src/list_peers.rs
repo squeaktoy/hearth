@@ -36,7 +36,7 @@ impl ListPeers {
             .unwrap();
 
         //must be updated as time goes on when more peer info is added
-        println!("{:>5} {:<10}", "PID", "Nickname");
+        println!("{:>5} {:<10}", "Peer", "Nickname");
         for (peer_id, peer_info) in hash_map_to_ordered_vec(peer_map) {
             println!(
                 "{:>5} {:<10}",
