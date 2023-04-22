@@ -22,6 +22,7 @@ use hearth_rpc::DaemonOffer;
 mod list_peers;
 mod list_processes;
 mod run_mock_runtime;
+mod spawn_wasm;
 
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
 #[derive(Debug, Parser)]
@@ -35,6 +36,7 @@ pub enum Commands {
     ListPeers(list_peers::ListPeers),
     ListProcesses(list_processes::ListProcesses),
     RunMockRuntime(run_mock_runtime::RunMockRuntime),
+    SpawnWasm(spawn_wasm::SpawnWasm),
 }
 
 impl Commands {
@@ -42,6 +44,7 @@ impl Commands {
         match self {
             Commands::ListPeers(args) => args.run(get_daemon().await).await,
             Commands::ListProcesses(args) => args.run(get_daemon().await).await,
+            Commands::SpawnWasm(args) => args.run(get_daemon().await).await,
             Commands::RunMockRuntime(args) => args.run().await,
         }
     }
