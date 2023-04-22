@@ -168,7 +168,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
         .unwrap_or_else(|| hearth_core::get_config_path());
     let config_file = hearth_core::load_config(&config_path).unwrap();
 
-    let runtime = {
+    let (runtime, join_handles) = {
         // move into block to make this async fn Send
         let mut builder = RuntimeBuilder::new(config_file);
         builder.add_plugin(hearth_cognito::WasmPlugin::new());
@@ -211,5 +211,10 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
         _ = hearth_core::wait_for_interrupt() => {
             info!("Ctrl+C hit; quitting client");
         }
+    }
+
+    debug!("Aborting runners");
+    for join in join_handles {
+        join.abort();
     }
 }

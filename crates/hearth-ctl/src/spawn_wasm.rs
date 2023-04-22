@@ -69,5 +69,8 @@ impl SpawnWasm {
             })
             .await
             .unwrap();
+
+        // necessary to flush the message send; remove when waiting for the returned PID
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
 }

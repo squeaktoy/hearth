@@ -49,13 +49,18 @@ impl<T: AssetLoader> AssetPool<T> {
     }
 
     async fn load_asset(&self, lump: &LumpId, data: &[u8]) -> Result<Arc<T::Asset>> {
-        if let Some(asset) = self.assets.read().await.get(&lump) {
+        let assets = self.assets.read().await;
+        if let Some(asset) = assets.get(&lump) {
             Ok(asset.to_owned())
         } else {
+            // switch to write lock
+            drop(assets);
+            let mut assets = self.assets.write().await;
+
             let loader = self.loader.lock().await;
             let asset = loader.load_asset(data).await?;
             let asset = Arc::new(asset);
-            self.assets.write().await.insert(*lump, asset.to_owned());
+            assets.insert(*lump, asset.to_owned());
             Ok(asset)
         }
     }
