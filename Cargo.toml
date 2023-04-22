@@ -6,7 +6,6 @@ members = [
   "crates/hearth-ctl",
   "crates/hearth-cognito",
   "crates/hearth-core",
-  "crates/hearth-guest",
   "crates/hearth-ipc",
   "crates/hearth-macros",
   "crates/hearth-panels",
@@ -17,6 +16,7 @@ members = [
   "crates/hearth-types",
   "crates/hearth-wasm",
   "crates/rend3-alacritty",
+  "guest/rust/hearth-guest",
 ]
 
 [workspace.dependencies]
