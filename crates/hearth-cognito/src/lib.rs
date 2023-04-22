@@ -356,7 +356,8 @@ impl Process for WasmProcessSpawner {
     }
 
     async fn run(&mut self, mut ctx: ProcessContext) {
-        let asset_store = self.asset_store.await;
+        let asset_store = oneshot::channel().1;
+        let asset_store = std::mem::replace(&mut self.asset_store, asset_store).await;
 
         while let Some(message) = ctx.recv().await {
             debug!("WasmProcessSpawner: got message from {:?}", message.sender);
@@ -377,7 +378,9 @@ impl AssetLoader for WasmModuleLoader {
     }
 }
 
-pub struct WasmPlugin {}
+pub struct WasmPlugin {
+    asset_store_tx: Vec<oneshot::Sender<Arc<AssetStore>>>,
+}
 
 #[async_trait]
 impl Plugin for WasmPlugin {
@@ -393,8 +396,7 @@ impl Plugin for WasmPlugin {
         let linker = Arc::new(linker);
 
         let (asset_store_tx, asset_store) = oneshot::channel();
-
-        builder.add_runner(|runtime| asset_store_tx.send(runtime.asset_store.to_owned()));
+        self.asset_store_tx.push(asset_store_tx);
 
         builder.add_service(
             "hearth.cognito.WasmProcessSpawner".into(),
@@ -408,14 +410,18 @@ impl Plugin for WasmPlugin {
         builder.add_asset_loader(WasmModuleLoader { engine });
     }
 
-    async fn run(&mut self, _runtime: Arc<Runtime>) {
-        // WasmProcessSpawner takes care of everything
+    async fn run(&mut self, runtime: Arc<Runtime>) {
+        for tx in self.asset_store_tx.drain(..) {
+            let _ = tx.send(runtime.asset_store.to_owned());
+        }
     }
 }
 
 impl WasmPlugin {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            asset_store_tx: Vec::new()
+        }
     }
 }
 
