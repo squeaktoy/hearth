@@ -360,7 +360,7 @@ impl Process for WasmProcessSpawner {
         let asset_store = std::mem::replace(&mut self.asset_store, asset_store).await;
 
         while let Some(message) = ctx.recv().await {
-            debug!("WasmProcessSpawner: got message from {:?}", message.sender);
+            debug!("WasmProcessSpawner: got message from {}", message.sender);
         }
     }
 }

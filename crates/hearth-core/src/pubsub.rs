@@ -89,7 +89,7 @@ impl<T: Display + Send + Sync + 'static> PublisherProcess<T> {
                 self.subscribers.remove(&message.sender);
             }
             _ => error!(
-                "Expected 'subscribe' or 'unsubscribe' from PID {:?}; received {:?}",
+                "Expected 'subscribe' or 'unsubscribe' from PID {}; received {:?}",
                 message.sender, message.data
             ),
         }

@@ -30,6 +30,13 @@ pub mod wasm;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProcessId(pub u64);
 
+impl Display for ProcessId {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        let (peer_id, local_pid) = self.split();
+        write!(fmt, "{}.{}", peer_id.0, local_pid.0)
+    }
+}
+
 impl ProcessId {
     pub fn split(self) -> (PeerId, LocalProcessId) {
         let peer = (self.0 >> 32) as u32;
