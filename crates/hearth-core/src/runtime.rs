@@ -179,11 +179,11 @@ impl RuntimeBuilder {
         self
     }
 
-    /// Adds a new asset loader for a given asset class.
+    /// Adds a new asset loader.
     ///
-    /// Logs an error event if the asset class already has a loader.
-    pub fn add_asset_loader(&mut self, class: String, loader: impl AssetLoader) -> &mut Self {
-        self.asset_store.add_loader(class, loader);
+    /// Logs an error event if the asset loader has already been added.
+    pub fn add_asset_loader(&mut self, loader: impl AssetLoader) -> &mut Self {
+        self.asset_store.add_loader(loader);
         self
     }
 
@@ -238,7 +238,7 @@ impl RuntimeBuilder {
         });
 
         let runtime = Arc::new(Runtime {
-            asset_store: self.asset_store,
+            asset_store: Arc::new(self.asset_store),
             lump_store,
             lump_store_client,
             process_store,
@@ -288,7 +288,7 @@ pub struct Runtime {
     pub config: RuntimeConfig,
 
     //// The assets in this runtime.
-    pub asset_store: AssetStore,
+    pub asset_store: Arc<AssetStore>,
 
     /// This runtime's lump store.
     pub lump_store: Arc<LumpStoreImpl>,

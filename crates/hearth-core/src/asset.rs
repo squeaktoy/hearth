@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -24,7 +25,7 @@ use anyhow::{anyhow, Result};
 use hearth_rpc::{hearth_types, remoc};
 use hearth_types::LumpId;
 use remoc::rtc::async_trait;
-use sharded_slab::Slab;
+use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error};
 
 #[async_trait]
@@ -33,104 +34,77 @@ pub trait AssetLoader: Send + Sync + 'static {
 
     async fn load_asset(&self, data: &[u8]) -> Result<Self::Asset>;
 }
-
-/// Object-safe wrapper trait for generic [AssetLoader]s.
-#[async_trait]
-pub trait AssetPool: Send + Sync + 'static {
-    async fn load_asset(&self, data: &[u8]) -> Result<usize>;
-
-    fn unload_asset(&self, id: usize);
+/// Loads and caches assets loaded from a loader.
+pub struct AssetPool<T: AssetLoader> {
+    loader: Mutex<T>,
+    assets: RwLock<HashMap<LumpId, Arc<T::Asset>>>,
 }
 
-/// Generic implementation of [AssetPool] for a given [AssetLoader].
-///
-/// Loads and stores assets loaded from a loader.
-pub struct AssetPoolImpl<T: AssetLoader> {
-    loader: T,
-    assets: Slab<T::Asset>,
-}
-
-#[async_trait]
-impl<T: AssetLoader> AssetPool for AssetPoolImpl<T> {
-    async fn load_asset(&self, data: &[u8]) -> Result<usize> {
-        let asset = self.loader.load_asset(data).await?;
-        let id = self.assets.insert(asset).unwrap();
-        Ok(id)
-    }
-
-    fn unload_asset(&self, id: usize) {
-        self.assets.remove(id);
-    }
-}
-
-impl<T: AssetLoader> AssetPoolImpl<T> {
+impl<T: AssetLoader> AssetPool<T> {
     pub fn new(loader: T) -> Self {
         Self {
-            loader,
-            assets: Slab::new(),
+            loader: Mutex::new(loader),
+            assets: Default::default(),
+        }
+    }
+
+    async fn load_asset(&self, lump: &LumpId, data: &[u8]) -> Result<Arc<T::Asset>> {
+        if let Some(asset) = self.assets.read().await.get(&lump) {
+            Ok(asset.to_owned())
+        } else {
+            let loader = self.loader.lock().await;
+            let asset = loader.load_asset(data).await?;
+            let asset = Arc::new(asset);
+            self.assets.write().await.insert(*lump, asset.to_owned());
+            Ok(asset)
         }
     }
 }
 
 pub struct AssetStore {
-    class_to_pool: HashMap<String, usize>,
-    pools: Vec<Box<dyn AssetPool>>,
+    pools: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
     lump_store: Arc<LumpStoreImpl>,
 }
 
 impl AssetStore {
     pub fn new(lump_store: Arc<LumpStoreImpl>) -> Self {
         Self {
-            class_to_pool: HashMap::new(),
-            pools: Vec::new(),
+            pools: HashMap::new(),
             lump_store,
         }
     }
 
-    pub fn add_loader<T: AssetLoader>(&mut self, class: String, loader: T) {
+    pub fn add_loader<T: AssetLoader>(&mut self, loader: T) {
         let type_name = std::any::type_name::<T>();
-        debug!("Adding asset loader {} for class '{}'", type_name, class);
+        debug!("Adding asset loader {:?}", type_name);
 
-        if self.class_to_pool.contains_key(&class) {
-            error!("Asset loader for class {} has already been added!", class);
+        let type_id = TypeId::of::<T>();
+        if self.pools.contains_key(&type_id) {
+            error!("Asset loader {:?} has already been added!", type_name);
             return;
         }
 
-        let id = self.pools.len();
-        let pool = AssetPoolImpl::new(loader);
-        self.pools.push(Box::new(pool));
-        self.class_to_pool.insert(class, id);
+        let pool = AssetPool::new(loader);
+        self.pools.insert(type_id, Box::new(pool));
     }
 
-    pub fn has_loader(&self, class: &str) -> bool {
-        self.class_to_pool.contains_key(class)
+    pub fn has_loader<T: AssetLoader>(&self) -> bool {
+        self.pools.contains_key(&TypeId::of::<T>())
     }
 
-    pub async fn load_asset(&self, class: &str, lump: &LumpId) -> Result<Handle> {
-        let pool_id = *self
-            .class_to_pool
-            .get(class)
-            .ok_or_else(|| anyhow!("Could not find asset loader for class '{}'", class))?;
-        let pool = self.pools.get(pool_id).unwrap(); // this should never panic; if it does it's a bug
+    pub async fn load_asset<T: AssetLoader>(&self, lump: &LumpId) -> Result<Arc<T::Asset>> {
+        let type_name = std::any::type_name::<T>();
+        let type_id = TypeId::of::<T>();
+        let pool = self
+            .pools
+            .get(&type_id)
+            .ok_or_else(|| anyhow!("Could not find asset loader '{:?}", type_name))?;
+        let pool: &AssetPool<T> = pool.downcast_ref().unwrap();
         let data = self
             .lump_store
             .get_lump(lump)
             .await
             .ok_or_else(|| anyhow!("Failed to get lump {}", lump))?;
-        let asset_id = pool.load_asset(&data).await?;
-
-        Ok(Handle {
-            count: Arc::new(()),
-            pool_id,
-            asset_id,
-        })
+        pool.load_asset(lump, &data).await
     }
-}
-
-#[allow(unused)]
-#[derive(Debug, Clone)]
-pub struct Handle {
-    count: Arc<()>,
-    pool_id: usize,
-    asset_id: usize,
 }
