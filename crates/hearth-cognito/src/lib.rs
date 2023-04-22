@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
-use hearth_core::anyhow;
+use hearth_core::anyhow::{self, bail, Context};
 use hearth_core::asset::{AssetLoader, AssetStore};
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_core::process::{Message, Process, ProcessContext};
@@ -27,8 +27,8 @@ use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_core::tokio;
 use hearth_macros::impl_wasm_linker;
 use hearth_rpc::hearth_types::wasm::WasmSpawnInfo;
-use hearth_rpc::hearth_types::{LumpId, ProcessId, ProcessLogLevel};
-use hearth_rpc::{remoc, ProcessInfo, ProcessLogEvent};
+use hearth_rpc::hearth_types::{LumpId, PeerId, ProcessId, ProcessLogLevel};
+use hearth_rpc::{remoc, ProcessInfo, ProcessLogEvent, ProcessStore};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use remoc::rtc::async_trait;
 use slab::Slab;
@@ -242,11 +242,86 @@ impl ProcessAbi {
 }
 
 /// Implements the `hearth::service` ABI module.
-#[derive(Debug, Default)]
-pub struct ServiceAbi {}
+pub struct ServiceAbi {
+    pub ctx: Arc<Mutex<ProcessContext>>,
+}
 
 #[impl_wasm_linker(module = "hearth::service")]
-impl ServiceAbi {}
+impl ServiceAbi {
+    async fn lookup(
+        &self,
+        memory: GuestMemory<'_>,
+        peer: u32,
+        name_ptr: u32,
+        name_len: u32,
+    ) -> Result<u64> {
+        let name = memory.get_str(name_ptr, name_len)?.to_string();
+
+        let ctx = self.ctx.lock().await;
+        if peer != ctx.get_pid().split().0 .0 {
+            bail!("Registry operations on remote peers are unimplemented");
+        }
+
+        let services = ctx
+            .get_process_store()
+            .follow_service_list()
+            .await?
+            .take_initial()
+            .context("Could not take initial service list")?;
+
+        services
+            .get(&name)
+            .ok_or_else(|| anyhow!("Could not lookup service {:?}", name))
+            .map(|pid| ProcessId::from_peer_process(PeerId(peer), *pid).0)
+    }
+
+    async fn register(
+        &self,
+        memory: GuestMemory<'_>,
+        pid: u64,
+        name_ptr: u32,
+        name_len: u32,
+    ) -> Result<()> {
+        let pid = ProcessId(pid);
+        let name = memory.get_str(name_ptr, name_len)?.to_string();
+
+        let ctx = self.ctx.lock().await;
+        if pid.split().0 != ctx.get_pid().split().0 {
+            bail!("Registry operations on remote peers are unimplemented");
+        }
+
+        ctx.get_process_store()
+            .register_service(pid.split().1, name)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn deregister(
+        &self,
+        memory: GuestMemory<'_>,
+        peer: u32,
+        name_ptr: u32,
+        name_len: u32,
+    ) -> Result<()> {
+        let name = memory.get_str(name_ptr, name_len)?.to_string();
+
+        let ctx = self.ctx.lock().await;
+        if peer != ctx.get_pid().split().0 .0 {
+            bail!("Registry operations on remote peers are unimplemented");
+        }
+
+        ctx.get_process_store().deregister_service(name).await?;
+
+        Ok(())
+    }
+}
+
+impl ServiceAbi {
+    pub fn new(ctx: Arc<Mutex<ProcessContext>>) -> Self {
+        Self { ctx }
+    }
+}
 
 /// This contains all script-accessible process-related stuff.
 pub struct ProcessData {
@@ -267,8 +342,8 @@ impl ProcessData {
             log: LogAbi::new(ctx.to_owned()),
             lump: Default::default(),
             message: MessageAbi::new(ctx.to_owned()),
-            process: ProcessAbi::new(ctx),
-            service: Default::default(),
+            process: ProcessAbi::new(ctx.to_owned()),
+            service: ServiceAbi::new(ctx),
         }
     }
 }
