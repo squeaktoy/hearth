@@ -335,8 +335,6 @@ impl Process for WasmProcess {
                 if let Err(err) = run.call_async(&mut store, ()).await {
                     error!("Wasm run error: {:?}", err);
                 }
-
-                error!("process exited");
             }
             Err(err) => {
                 error!("Couldn't find run function: {:?}", err);
