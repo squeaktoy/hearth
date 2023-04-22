@@ -27,7 +27,7 @@ pub struct ListPeers {}
 
 impl ListPeers {
     pub async fn run(self, daemon: DaemonOffer) {
-        let mut peer_map = daemon
+        let peer_map = daemon
             .peer_provider
             .follow_peer_list()
             .await
@@ -36,10 +36,10 @@ impl ListPeers {
             .unwrap();
 
         //must be updated as time goes on when more peer info is added
-        println!("PID\tNickname");
+        println!("{:>5} {:<10}", "PID", "Nickname");
         for (peer_id, peer_info) in hash_map_to_ordered_vec(peer_map) {
-            print!(
-                "{}\t{}\n",
+            println!(
+                "{:>5} {:<10}",
                 peer_id.0,
                 peer_info.nickname.unwrap_or(String::from("None"))
             );
