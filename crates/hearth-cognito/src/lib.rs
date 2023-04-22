@@ -26,13 +26,14 @@ use hearth_core::process::{Message, Process, ProcessContext};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_core::tokio;
 use hearth_macros::impl_wasm_linker;
-use hearth_rpc::hearth_types::{LumpId, ProcessId};
+use hearth_rpc::hearth_types::wasm::WasmSpawnInfo;
+use hearth_rpc::hearth_types::{LumpId, ProcessId, ProcessLogLevel};
 use hearth_rpc::{remoc, ProcessInfo, ProcessLogEvent};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use remoc::rtc::async_trait;
 use slab::Slab;
 use tokio::sync::{oneshot, Mutex};
-use tracing::{debug, error};
+use tracing::error;
 use wasmtime::*;
 
 /// Implements the `hearth::asset` ABI module.
@@ -358,10 +359,51 @@ impl Process for WasmProcessSpawner {
 
     async fn run(&mut self, mut ctx: ProcessContext) {
         let asset_store = oneshot::channel().1;
-        let asset_store = std::mem::replace(&mut self.asset_store, asset_store).await;
+        let asset_store = std::mem::replace(&mut self.asset_store, asset_store)
+            .await
+            .expect("Asset store sender dropped");
 
         while let Some(message) = ctx.recv().await {
-            debug!("WasmProcessSpawner: got message from {:?}", message.sender);
+            let sender = message.sender;
+            let message: WasmSpawnInfo = match serde_json::from_slice(&message.data) {
+                Ok(message) => message,
+                Err(err) => {
+                    ctx.log(ProcessLogEvent {
+                        level: ProcessLogLevel::Error,
+                        module: "WasmProcessSpawner".to_string(),
+                        content: format!("Failed to parse WasmSpawnInfo: {:?}", err),
+                    });
+
+                    continue;
+                }
+            };
+
+            match asset_store
+                .load_asset::<WasmModuleLoader>(&message.lump)
+                .await
+            {
+                Err(err) => {
+                    ctx.log(ProcessLogEvent {
+                        level: ProcessLogLevel::Error,
+                        module: "WasmProcessSpawner".to_string(),
+                        content: format!("Failed to load Wasm module: {:?}", err),
+                    });
+                }
+                Ok(module) => {
+                    let pid = ctx
+                        .get_process_store()
+                        .spawn(WasmProcess {
+                            engine: self.engine.to_owned(),
+                            linker: self.linker.to_owned(),
+                            module,
+                        })
+                        .await;
+
+                    let _ = ctx
+                        .send_message(sender, format!("{}", pid.0).into_bytes())
+                        .await;
+                }
+            }
         }
     }
 }
