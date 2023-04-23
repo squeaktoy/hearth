@@ -26,6 +26,13 @@ fn abi_string(str: &str) -> (u32, u32) {
     (ptr, len)
 }
 
+/// Fetches the lump ID of the module used to spawn the current process.
+pub fn this_lump() -> LumpId {
+    let mut id = LumpId(Default::default());
+    unsafe { abi::process::this_lump(&mut id as *const LumpId as u32) }
+    id
+}
+
 /// Fetches the process ID of the current process.
 pub fn this_pid() -> ProcessId {
     let pid = unsafe { abi::process::this_pid() };
@@ -249,6 +256,7 @@ mod abi {
     pub mod process {
         #[link(wasm_import_module = "hearth::process")]
         extern "C" {
+            pub fn this_lump(ptr: u32);
             pub fn this_pid() -> u64;
             pub fn kill(pid: u64);
         }
