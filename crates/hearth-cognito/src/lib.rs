@@ -62,7 +62,7 @@ impl LogAbi {
         self.ctx.lock().await.log(ProcessLogEvent {
             level: level
                 .try_into()
-                .map_err(|_| anyhow!("Invalid log level constant {}", level))?,
+                .map_err(|_| anyhow!("invalid log level constant {}", level))?,
             module: memory.get_str(module_ptr, module_len)?.to_string(),
             content: memory.get_str(content_ptr, content_len)?.to_string(),
         });
@@ -99,7 +99,7 @@ impl LumpAbi {
             .lump_store
             .get_lump(&id)
             .await
-            .ok_or_else(|| anyhow!("Couldn't find {:?} in lump store", id))?;
+            .ok_or_else(|| anyhow!("couldn't find {:?} in lump store", id))?;
         Ok(self.lump_handles.insert(LocalLump { id, bytes }) as u32)
     }
 
@@ -137,7 +137,7 @@ impl LumpAbi {
         self.lump_handles
             .try_remove(handle as usize)
             .map(|_| ())
-            .ok_or_else(|| anyhow!("Lump handle {} is invalid", handle))
+            .ok_or_else(|| anyhow!("lump handle {} is invalid", handle))
     }
 }
 
@@ -145,7 +145,7 @@ impl LumpAbi {
     fn get_lump(&self, handle: u32) -> Result<&LocalLump> {
         self.lump_handles
             .get(handle as usize)
-            .ok_or_else(|| anyhow!("Lump handle {} is invalid", handle))
+            .ok_or_else(|| anyhow!("lump handle {} is invalid", handle))
     }
 }
 
@@ -200,7 +200,7 @@ impl MessageAbi {
         self.msg_store
             .try_remove(handle as usize)
             .map(|_| ())
-            .ok_or_else(|| anyhow!("Message handle {} is invalid", handle))
+            .ok_or_else(|| anyhow!("message handle {} is invalid", handle))
     }
 }
 
@@ -215,7 +215,7 @@ impl MessageAbi {
     fn get_msg(&self, handle: u32) -> Result<&Message> {
         self.msg_store
             .get(handle as usize)
-            .ok_or_else(|| anyhow!("Message handle {} is invalid", handle))
+            .with_context(|| format!("message handle {} is invalid", handle))
     }
 }
 
@@ -238,7 +238,7 @@ impl ProcessAbi {
     }
 
     async fn kill(&self, _pid: u64) -> Result<()> {
-        Err(anyhow!("Killing other processes is unimplemented"))
+        Err(anyhow!("killing other processes is unimplemented"))
     }
 }
 
@@ -266,7 +266,7 @@ impl ServiceAbi {
 
         let ctx = self.ctx.lock().await;
         if peer != ctx.get_pid().split().0 .0 {
-            bail!("Registry operations on remote peers are unimplemented");
+            bail!("registry operations on remote peers are unimplemented");
         }
 
         let services = ctx
@@ -274,12 +274,12 @@ impl ServiceAbi {
             .follow_service_list()
             .await?
             .take_initial()
-            .context("Could not take initial service list")?;
+            .context("could not take initial service list")?;
 
         services
             .get(&name)
-            .ok_or_else(|| anyhow!("Could not lookup service {:?}", name))
             .map(|pid| ProcessId::from_peer_process(PeerId(peer), *pid).0)
+            .with_context(|| format!("could not lookup service {:?}", name))
     }
 
     async fn register(
@@ -294,7 +294,7 @@ impl ServiceAbi {
 
         let ctx = self.ctx.lock().await;
         if pid.split().0 != ctx.get_pid().split().0 {
-            bail!("Registry operations on remote peers are unimplemented");
+            bail!("registry operations on remote peers are unimplemented");
         }
 
         ctx.get_process_store()
@@ -315,7 +315,7 @@ impl ServiceAbi {
 
         let ctx = self.ctx.lock().await;
         if peer != ctx.get_pid().split().0 .0 {
-            bail!("Registry operations on remote peers are unimplemented");
+            bail!("registry operations on remote peers are unimplemented");
         }
 
         ctx.get_process_store().deregister_service(name).await?;
@@ -399,10 +399,15 @@ impl Process for WasmProcess {
     }
 
     async fn run(&mut self, ctx: ProcessContext) {
-        match self.run_inner(ctx).await {
+        let pid = ctx.get_pid();
+        match self
+            .run_inner(ctx)
+            .await
+            .with_context(|| format!("error in Wasm process {}", pid))
+        {
             Ok(()) => {}
             Err(err) => {
-                error!("{}", err);
+                error!("{:?}", err);
             }
         }
     }
@@ -417,16 +422,21 @@ impl WasmProcess {
         let instance = self
             .linker
             .instantiate_async(&mut store, &self.module)
-            .await?;
+            .await
+            .context("instantiating Wasm instance")?;
 
         if let Some(entrypoint) = self.entrypoint {
             let cb = instance
                 .get_typed_func::<u32, ()>(&mut store, "_hearth_spawn_by_index")
-                .context("Lookup _hearth_spawn_by_index")?;
-            cb.call_async(&mut store, entrypoint).await?;
+                .context("lookup _hearth_spawn_by_index")?;
+            cb.call_async(&mut store, entrypoint)
+                .await
+                .context("calling Wasm entrypoint")?;
         } else {
             let cb = instance.get_typed_func::<(), ()>(&mut store, "run")?;
-            cb.call_async(&mut store, ()).await?;
+            cb.call_async(&mut store, ())
+                .await
+                .context("calling Wasm run()")?;
         }
 
         Ok(())
@@ -449,7 +459,7 @@ impl Process for WasmProcessSpawner {
         let asset_store = oneshot::channel().1;
         let asset_store = std::mem::replace(&mut self.asset_store, asset_store)
             .await
-            .expect("Asset store sender dropped");
+            .expect("asset store sender dropped");
 
         debug!("Listening to Wasm spawn requests");
         while let Some(message) = ctx.recv().await {
