@@ -20,6 +20,8 @@ use clap::Parser;
 use hearth_rpc::*;
 use hearth_types::PeerId;
 
+use crate::hash_map_to_ordered_vec;
+
 /// Lists proccesses of either a singular peer or all peers in the space.
 #[derive(Debug, Parser)]
 pub struct ListProcesses {
@@ -61,8 +63,14 @@ impl ListProcesses {
             .unwrap();
         match self.peer.unwrap_or(MaybeAllPeerId::One(daemon.peer_id)) {
             MaybeAllPeerId::All => {
-                println!("Peer ID\tPID\tService");
-                for (id, _) in peer_list {
+                println!("{:>5} {:>5} {:<20}", "Peer", "PID", "Service");
+                let mut is_first = true;
+                for (id, _) in hash_map_to_ordered_vec(peer_list) {
+                    if !is_first {
+                        println!();
+                    } else {
+                        is_first = false;
+                    }
                     ListProcesses::display_peer(
                         daemon.peer_provider.find_peer(id).await.unwrap(),
                         Some(id),
@@ -80,6 +88,7 @@ impl ListProcesses {
             }
         }
     }
+
     async fn display_peer(peer: PeerApiClient, peer_id: Option<PeerId>) {
         let process_store = peer.get_process_store().await.unwrap();
         let process_list = process_store
@@ -96,12 +105,12 @@ impl ListProcesses {
             .unwrap();
 
         // process info will need to be updated when fields are added to the struct
-        for (process_id, _) in process_list {
+        for (process_id, _) in hash_map_to_ordered_vec(process_list) {
             if peer_id.is_some() {
-                print!("{}\t", peer_id.unwrap().0);
+                print!("{:>5} ", peer_id.unwrap().0);
             }
 
-            print!("{}\t", process_id.0);
+            print!("{:>5} ", process_id.0);
             let mut is_first = true;
             for (service_name, service_id) in service_list.clone() {
                 if service_id == process_id {
@@ -111,7 +120,7 @@ impl ListProcesses {
                         print!(", ");
                     }
 
-                    print!("{}", service_name);
+                    print!("{:<20}", service_name);
                 }
             }
             println!();

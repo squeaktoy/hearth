@@ -27,7 +27,7 @@ pub mod panels;
 /// WebAssembly process protocols and utilities.
 pub mod wasm;
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct ProcessId(pub u64);
 
 impl Display for ProcessId {
@@ -49,10 +49,10 @@ impl ProcessId {
     }
 }
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct PeerId(pub u32);
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct LocalProcessId(pub u32);
 
 /// Process-local identifiers for loaded assets.
