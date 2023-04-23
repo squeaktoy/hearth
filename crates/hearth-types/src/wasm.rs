@@ -27,4 +27,8 @@ use serde::{Deserialize, Serialize};
 pub struct WasmSpawnInfo {
     /// The [LumpId] of the Wasm module lump source.
     pub lump: LumpId,
+
+    /// The identifier of the entrypoint to execute. If not specified, runs
+    /// the exported "run" function.
+    pub entrypoint: Option<u32>,
 }
