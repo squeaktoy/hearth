@@ -63,7 +63,7 @@ impl ListProcesses {
             .unwrap();
         match self.peer.unwrap_or(MaybeAllPeerId::One(daemon.peer_id)) {
             MaybeAllPeerId::All => {
-                println!("Peer ID\tPID\tService");
+                println!("{:>5} {:>5} {:<20}", "Peer", "PID", "Service");
                 let mut is_first = true;
                 for (id, _) in hash_map_to_ordered_vec(peer_list) {
                     if !is_first {
@@ -107,10 +107,10 @@ impl ListProcesses {
         // process info will need to be updated when fields are added to the struct
         for (process_id, _) in hash_map_to_ordered_vec(process_list) {
             if peer_id.is_some() {
-                print!("{}\t", peer_id.unwrap().0);
+                print!("{:>5} ", peer_id.unwrap().0);
             }
 
-            print!("{}\t", process_id.0);
+            print!("{:>5} ", process_id.0);
             let mut is_first = true;
             for (service_name, service_id) in service_list.clone() {
                 if service_id == process_id {
@@ -120,7 +120,7 @@ impl ListProcesses {
                         print!(", ");
                     }
 
-                    print!("{}", service_name);
+                    print!("{:<20}", service_name);
                 }
             }
             println!();
