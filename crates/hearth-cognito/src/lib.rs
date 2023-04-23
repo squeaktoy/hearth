@@ -222,10 +222,17 @@ impl MessageAbi {
 /// Implements the `hearth::process` ABI module.
 pub struct ProcessAbi {
     pub ctx: Arc<Mutex<ProcessContext>>,
+    pub this_lump: LumpId,
 }
 
 #[impl_wasm_linker(module = "hearth::process")]
 impl ProcessAbi {
+    async fn this_lump(&self, memory: GuestMemory<'_>, ptr: u32) -> Result<()> {
+        let id: &mut LumpId = memory.get_memory_ref(ptr)?;
+        *id = self.this_lump;
+        Ok(())
+    }
+
     async fn this_pid(&self) -> u64 {
         self.ctx.lock().await.get_pid().0
     }
@@ -236,8 +243,8 @@ impl ProcessAbi {
 }
 
 impl ProcessAbi {
-    pub fn new(ctx: Arc<Mutex<ProcessContext>>) -> Self {
-        Self { ctx }
+    pub fn new(ctx: Arc<Mutex<ProcessContext>>, this_lump: LumpId) -> Self {
+        Self { ctx, this_lump }
     }
 }
 
@@ -334,7 +341,7 @@ pub struct ProcessData {
 }
 
 impl ProcessData {
-    pub fn new(ctx: ProcessContext) -> Self {
+    pub fn new(ctx: ProcessContext, this_lump: LumpId) -> Self {
         let ctx = Arc::new(Mutex::new(ctx));
 
         Self {
@@ -342,7 +349,7 @@ impl ProcessData {
             log: LogAbi::new(ctx.to_owned()),
             lump: Default::default(),
             message: MessageAbi::new(ctx.to_owned()),
-            process: ProcessAbi::new(ctx.to_owned()),
+            process: ProcessAbi::new(ctx.to_owned(), this_lump),
             service: ServiceAbi::new(ctx),
         }
     }
@@ -381,6 +388,7 @@ struct WasmProcess {
     engine: Arc<Engine>,
     linker: Arc<Linker<ProcessData>>,
     module: Arc<Module>,
+    this_lump: LumpId,
     entrypoint: Option<u32>,
 }
 
@@ -403,7 +411,7 @@ impl Process for WasmProcess {
 impl WasmProcess {
     async fn run_inner(&mut self, ctx: ProcessContext) -> Result<()> {
         // TODO log using the process log instead of tracing?
-        let data = ProcessData::new(ctx);
+        let data = ProcessData::new(ctx, self.this_lump);
         let mut store = Store::new(&self.engine, data);
         store.epoch_deadline_async_yield_and_update(1);
         let instance = self
@@ -487,6 +495,7 @@ impl Process for WasmProcessSpawner {
                             linker: self.linker.to_owned(),
                             module,
                             entrypoint: message.entrypoint,
+                            this_lump: message.lump,
                         })
                         .await;
 
@@ -560,6 +569,7 @@ impl WasmPlugin {
         let mut config = Config::new();
         config.async_support(true);
         config.epoch_interruption(true);
+        config.memory_init_cow(true);
 
         let engine = Engine::new(&config).unwrap();
 
