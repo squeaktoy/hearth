@@ -381,6 +381,7 @@ struct WasmProcess {
     engine: Arc<Engine>,
     linker: Arc<Linker<ProcessData>>,
     module: Arc<Module>,
+    entrypoint: Option<u32>,
 }
 
 #[async_trait]
@@ -390,33 +391,37 @@ impl Process for WasmProcess {
     }
 
     async fn run(&mut self, ctx: ProcessContext) {
+        match self.run_inner(ctx).await {
+            Ok(()) => {}
+            Err(err) => {
+                error!("{}", err);
+            }
+        }
+    }
+}
+
+impl WasmProcess {
+    async fn run_inner(&mut self, ctx: ProcessContext) -> Result<()> {
         // TODO log using the process log instead of tracing?
         let data = ProcessData::new(ctx);
         let mut store = Store::new(&self.engine, data);
         store.epoch_deadline_async_yield_and_update(1);
-        let instance = match self
+        let instance = self
             .linker
             .instantiate_async(&mut store, &self.module)
-            .await
-        {
-            Ok(instance) => instance,
-            Err(err) => {
-                error!("Failed to instantiate WasmProcess: {:?}", err);
-                return;
-            }
-        };
+            .await?;
 
-        // TODO better wasm invocation?
-        match instance.get_typed_func::<(), ()>(&mut store, "run") {
-            Ok(run) => {
-                if let Err(err) = run.call_async(&mut store, ()).await {
-                    error!("Wasm run error: {:?}", err);
-                }
-            }
-            Err(err) => {
-                error!("Couldn't find run function: {:?}", err);
-            }
+        if let Some(entrypoint) = self.entrypoint {
+            let cb = instance
+                .get_typed_func::<u32, ()>(&mut store, "_hearth_spawn_by_index")
+                .context("Lookup _hearth_spawn_by_index")?;
+            cb.call_async(&mut store, entrypoint).await?;
+        } else {
+            let cb = instance.get_typed_func::<(), ()>(&mut store, "run")?;
+            cb.call_async(&mut store, ()).await?;
         }
+
+        Ok(())
     }
 }
 
@@ -481,6 +486,7 @@ impl Process for WasmProcessSpawner {
                             engine: self.engine.to_owned(),
                             linker: self.linker.to_owned(),
                             module,
+                            entrypoint: message.entrypoint,
                         })
                         .await;
 
