@@ -37,6 +37,21 @@ impl Display for ProcessId {
     }
 }
 
+impl std::str::FromStr for ProcessId {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (peer_id, local_pid) = s
+            .split_once('.')
+            .ok_or("Input string does not contain a period")?;
+
+        let peer_id = PeerId(peer_id.parse::<u32>().map_err(|x| x.to_string())?);
+        let local_pid = LocalProcessId(local_pid.parse::<u32>().map_err(|x| x.to_string())?);
+
+        Ok(ProcessId::from_peer_process(peer_id, local_pid))
+    }
+}
+
 impl ProcessId {
     pub fn split(self) -> (PeerId, LocalProcessId) {
         let peer = (self.0 >> 32) as u32;
