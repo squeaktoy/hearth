@@ -35,17 +35,8 @@ fn spawn(spawner: ProcessId, cb: fn()) -> ProcessId {
 #[no_mangle]
 pub extern "C" fn run() {
     let spawner = get_spawner();
-    let input: Vec<u64> = (0..1000000).into_iter().rev().collect();
-
-    for _ in 0..100 {
-        let child = spawn(spawner, merge_sort_outer);
-        send(
-            child,
-            &Data {
-                inner: input.clone(),
-            },
-        );
-    }
+    let input: Vec<u64> = (0..100000).into_iter().rev().collect();
+    merge_sort(spawner, input);
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
