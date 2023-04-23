@@ -271,3 +271,9 @@ mod abi {
         }
     }
 }
+
+#[no_mangle]
+extern "C" fn _hearth_spawn_by_index(function: u32) {
+    let function: fn() = unsafe { std::mem::transmute(function as usize) };
+    function();
+}
