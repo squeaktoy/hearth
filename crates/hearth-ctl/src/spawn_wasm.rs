@@ -59,7 +59,11 @@ impl SpawnWasm {
             )
             .await
             .unwrap();
-        let wasm_spawn_info = WasmSpawnInfo { lump: lump_id };
+
+        let wasm_spawn_info = WasmSpawnInfo {
+            lump: lump_id,
+            entrypoint: None,
+        };
 
         process
             .outgoing

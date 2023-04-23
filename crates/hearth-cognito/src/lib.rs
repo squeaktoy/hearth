@@ -62,7 +62,7 @@ impl LogAbi {
         self.ctx.lock().await.log(ProcessLogEvent {
             level: level
                 .try_into()
-                .map_err(|_| anyhow!("Invalid log level constant {}", level))?,
+                .map_err(|_| anyhow!("invalid log level constant {}", level))?,
             module: memory.get_str(module_ptr, module_len)?.to_string(),
             content: memory.get_str(content_ptr, content_len)?.to_string(),
         });
@@ -99,7 +99,7 @@ impl LumpAbi {
             .lump_store
             .get_lump(&id)
             .await
-            .ok_or_else(|| anyhow!("Couldn't find {:?} in lump store", id))?;
+            .ok_or_else(|| anyhow!("couldn't find {:?} in lump store", id))?;
         Ok(self.lump_handles.insert(LocalLump { id, bytes }) as u32)
     }
 
@@ -137,7 +137,7 @@ impl LumpAbi {
         self.lump_handles
             .try_remove(handle as usize)
             .map(|_| ())
-            .ok_or_else(|| anyhow!("Lump handle {} is invalid", handle))
+            .ok_or_else(|| anyhow!("lump handle {} is invalid", handle))
     }
 }
 
@@ -145,7 +145,7 @@ impl LumpAbi {
     fn get_lump(&self, handle: u32) -> Result<&LocalLump> {
         self.lump_handles
             .get(handle as usize)
-            .ok_or_else(|| anyhow!("Lump handle {} is invalid", handle))
+            .ok_or_else(|| anyhow!("lump handle {} is invalid", handle))
     }
 }
 
@@ -200,7 +200,7 @@ impl MessageAbi {
         self.msg_store
             .try_remove(handle as usize)
             .map(|_| ())
-            .ok_or_else(|| anyhow!("Message handle {} is invalid", handle))
+            .ok_or_else(|| anyhow!("message handle {} is invalid", handle))
     }
 }
 
@@ -215,29 +215,36 @@ impl MessageAbi {
     fn get_msg(&self, handle: u32) -> Result<&Message> {
         self.msg_store
             .get(handle as usize)
-            .ok_or_else(|| anyhow!("Message handle {} is invalid", handle))
+            .with_context(|| format!("message handle {} is invalid", handle))
     }
 }
 
 /// Implements the `hearth::process` ABI module.
 pub struct ProcessAbi {
     pub ctx: Arc<Mutex<ProcessContext>>,
+    pub this_lump: LumpId,
 }
 
 #[impl_wasm_linker(module = "hearth::process")]
 impl ProcessAbi {
+    async fn this_lump(&self, memory: GuestMemory<'_>, ptr: u32) -> Result<()> {
+        let id: &mut LumpId = memory.get_memory_ref(ptr)?;
+        *id = self.this_lump;
+        Ok(())
+    }
+
     async fn this_pid(&self) -> u64 {
         self.ctx.lock().await.get_pid().0
     }
 
     async fn kill(&self, _pid: u64) -> Result<()> {
-        Err(anyhow!("Killing other processes is unimplemented"))
+        Err(anyhow!("killing other processes is unimplemented"))
     }
 }
 
 impl ProcessAbi {
-    pub fn new(ctx: Arc<Mutex<ProcessContext>>) -> Self {
-        Self { ctx }
+    pub fn new(ctx: Arc<Mutex<ProcessContext>>, this_lump: LumpId) -> Self {
+        Self { ctx, this_lump }
     }
 }
 
@@ -259,7 +266,7 @@ impl ServiceAbi {
 
         let ctx = self.ctx.lock().await;
         if peer != ctx.get_pid().split().0 .0 {
-            bail!("Registry operations on remote peers are unimplemented");
+            bail!("registry operations on remote peers are unimplemented");
         }
 
         let services = ctx
@@ -267,12 +274,12 @@ impl ServiceAbi {
             .follow_service_list()
             .await?
             .take_initial()
-            .context("Could not take initial service list")?;
+            .context("could not take initial service list")?;
 
         services
             .get(&name)
-            .ok_or_else(|| anyhow!("Could not lookup service {:?}", name))
             .map(|pid| ProcessId::from_peer_process(PeerId(peer), *pid).0)
+            .with_context(|| format!("could not lookup service {:?}", name))
     }
 
     async fn register(
@@ -287,7 +294,7 @@ impl ServiceAbi {
 
         let ctx = self.ctx.lock().await;
         if pid.split().0 != ctx.get_pid().split().0 {
-            bail!("Registry operations on remote peers are unimplemented");
+            bail!("registry operations on remote peers are unimplemented");
         }
 
         ctx.get_process_store()
@@ -308,7 +315,7 @@ impl ServiceAbi {
 
         let ctx = self.ctx.lock().await;
         if peer != ctx.get_pid().split().0 .0 {
-            bail!("Registry operations on remote peers are unimplemented");
+            bail!("registry operations on remote peers are unimplemented");
         }
 
         ctx.get_process_store().deregister_service(name).await?;
@@ -334,7 +341,7 @@ pub struct ProcessData {
 }
 
 impl ProcessData {
-    pub fn new(ctx: ProcessContext) -> Self {
+    pub fn new(ctx: ProcessContext, this_lump: LumpId) -> Self {
         let ctx = Arc::new(Mutex::new(ctx));
 
         Self {
@@ -342,7 +349,7 @@ impl ProcessData {
             log: LogAbi::new(ctx.to_owned()),
             lump: Default::default(),
             message: MessageAbi::new(ctx.to_owned()),
-            process: ProcessAbi::new(ctx.to_owned()),
+            process: ProcessAbi::new(ctx.to_owned(), this_lump),
             service: ServiceAbi::new(ctx),
         }
     }
@@ -381,6 +388,8 @@ struct WasmProcess {
     engine: Arc<Engine>,
     linker: Arc<Linker<ProcessData>>,
     module: Arc<Module>,
+    this_lump: LumpId,
+    entrypoint: Option<u32>,
 }
 
 #[async_trait]
@@ -390,33 +399,47 @@ impl Process for WasmProcess {
     }
 
     async fn run(&mut self, ctx: ProcessContext) {
+        let pid = ctx.get_pid();
+        match self
+            .run_inner(ctx)
+            .await
+            .with_context(|| format!("error in Wasm process {}", pid))
+        {
+            Ok(()) => {}
+            Err(err) => {
+                error!("{:?}", err);
+            }
+        }
+    }
+}
+
+impl WasmProcess {
+    async fn run_inner(&mut self, ctx: ProcessContext) -> Result<()> {
         // TODO log using the process log instead of tracing?
-        let data = ProcessData::new(ctx);
+        let data = ProcessData::new(ctx, self.this_lump);
         let mut store = Store::new(&self.engine, data);
         store.epoch_deadline_async_yield_and_update(1);
-        let instance = match self
+        let instance = self
             .linker
             .instantiate_async(&mut store, &self.module)
             .await
-        {
-            Ok(instance) => instance,
-            Err(err) => {
-                error!("Failed to instantiate WasmProcess: {:?}", err);
-                return;
-            }
-        };
+            .context("instantiating Wasm instance")?;
 
-        // TODO better wasm invocation?
-        match instance.get_typed_func::<(), ()>(&mut store, "run") {
-            Ok(run) => {
-                if let Err(err) = run.call_async(&mut store, ()).await {
-                    error!("Wasm run error: {:?}", err);
-                }
-            }
-            Err(err) => {
-                error!("Couldn't find run function: {:?}", err);
-            }
+        if let Some(entrypoint) = self.entrypoint {
+            let cb = instance
+                .get_typed_func::<u32, ()>(&mut store, "_hearth_spawn_by_index")
+                .context("lookup _hearth_spawn_by_index")?;
+            cb.call_async(&mut store, entrypoint)
+                .await
+                .context("calling Wasm entrypoint")?;
+        } else {
+            let cb = instance.get_typed_func::<(), ()>(&mut store, "run")?;
+            cb.call_async(&mut store, ())
+                .await
+                .context("calling Wasm run()")?;
         }
+
+        Ok(())
     }
 }
 
@@ -436,7 +459,7 @@ impl Process for WasmProcessSpawner {
         let asset_store = oneshot::channel().1;
         let asset_store = std::mem::replace(&mut self.asset_store, asset_store)
             .await
-            .expect("Asset store sender dropped");
+            .expect("asset store sender dropped");
 
         debug!("Listening to Wasm spawn requests");
         while let Some(message) = ctx.recv().await {
@@ -481,6 +504,8 @@ impl Process for WasmProcessSpawner {
                             engine: self.engine.to_owned(),
                             linker: self.linker.to_owned(),
                             module,
+                            entrypoint: message.entrypoint,
+                            this_lump: message.lump,
                         })
                         .await;
 
@@ -554,6 +579,7 @@ impl WasmPlugin {
         let mut config = Config::new();
         config.async_support(true);
         config.epoch_interruption(true);
+        config.memory_init_cow(true);
 
         let engine = Engine::new(&config).unwrap();
 
