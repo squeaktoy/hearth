@@ -20,13 +20,13 @@ use clap::Parser;
 use hearth_rpc::*;
 use yacexits::*;
 
-use crate::{CommandError, MaybeLocalPID, ToCommandError};
+use crate::{CommandError, MaybeLocalPid, ToCommandError};
 
 /// Kill a process
 #[derive(Debug, Parser)]
 pub struct Kill {
     /// Take either a global or local process id
-    pub process: MaybeLocalPID,
+    pub process: MaybeLocalPid,
 }
 
 impl Kill {

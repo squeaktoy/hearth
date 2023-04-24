@@ -65,28 +65,28 @@ impl<T> ToCommandError<T, ()> for Option<T> {
 }
 
 #[derive(Clone, Debug)]
-pub enum MaybeLocalPID {
+pub enum MaybeLocalPid {
     Global(ProcessId),
     Local(LocalProcessId),
 }
 
-impl std::str::FromStr for MaybeLocalPID {
+impl std::str::FromStr for MaybeLocalPid {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.parse::<ProcessId>() {
-            Ok(pid) => Ok(MaybeLocalPID::Global(pid)),
+            Ok(pid) => Ok(MaybeLocalPid::Global(pid)),
             Err(_) => match s.parse::<u32>() {
-                Ok(local_pid) => Ok(MaybeLocalPID::Local(LocalProcessId(local_pid))),
+                Ok(local_pid) => Ok(MaybeLocalPid::Local(LocalProcessId(local_pid))),
                 Err(_) => Err("Failed to parse LocalPID or GlobalPID".into()),
             },
         }
     }
 }
 
-impl MaybeLocalPID {
+impl MaybeLocalPid {
     fn to_global_pid(&self, peer: PeerId) -> ProcessId {
         match self {
-            MaybeLocalPID::Global(global_pid) => *global_pid,
+            MaybeLocalPid::Global(global_pid) => *global_pid,
             Self::Local(local_pid) => ProcessId::from_peer_process(peer, *local_pid),
         }
     }
@@ -135,7 +135,7 @@ async fn main() {
 async fn get_daemon() -> Result<DaemonOffer, CommandError> {
     hearth_ipc::connect()
         .await
-        .to_command_error("connecting to Hearth daemon", yacexits::EX_UNAVAILABLE)
+        .to_command_error("connecting to hearth daemon", yacexits::EX_UNAVAILABLE)
 }
 
 fn hash_map_to_ordered_vec<K: Copy + Ord, V>(map: HashMap<K, V>) -> Vec<(K, V)> {
