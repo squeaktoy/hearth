@@ -52,6 +52,18 @@ where
     }
 }
 
+impl<T> ToCommandError<T, ()> for Option<T> {
+    fn to_command_error<C: Display>(self, context: C, exit_code: u32) -> Result<T, CommandError> {
+        match self {
+            Some(val) => Ok(val),
+            None => Err(CommandError {
+                message: context.to_string(),
+                exit_code,
+            }),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum MaybeLocalPID {
     Global(ProcessId),
@@ -97,7 +109,7 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub async fn run(self) -> Result<(), CommandError>{
+    pub async fn run(self) -> Result<(), CommandError> {
         match self {
             Commands::ListPeers(args) => args.run(get_daemon().await).await,
             Commands::ListProcesses(args) => args.run(get_daemon().await).await,
