@@ -19,12 +19,41 @@
 use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
-use hearth_rpc::DaemonOffer;
+use hearth_rpc::{hearth_types::*, DaemonOffer};
 
+mod kill;
 mod list_peers;
 mod list_processes;
 mod run_mock_runtime;
 mod spawn_wasm;
+
+#[derive(Clone, Debug)]
+pub enum MaybeLocalPID {
+    Global(ProcessId),
+    Local(LocalProcessId),
+}
+
+impl std::str::FromStr for MaybeLocalPID {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse::<ProcessId>() {
+            Ok(pid) => Ok(MaybeLocalPID::Global(pid)),
+            Err(_) => match s.parse::<u32>() {
+                Ok(local_pid) => Ok(MaybeLocalPID::Local(LocalProcessId(local_pid))),
+                Err(_) => Err("Failed to parse LocalPID or GlobalPID".into()),
+            },
+        }
+    }
+}
+
+impl MaybeLocalPID {
+    fn to_global_pid(self, peer: PeerId) -> ProcessId {
+        match self {
+            MaybeLocalPID::Global(global_pid) => global_pid,
+            Self::Local(local_pid) => ProcessId::from_peer_process(peer, local_pid),
+        }
+    }
+}
 
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
 #[derive(Debug, Parser)]
@@ -39,6 +68,7 @@ pub enum Commands {
     ListProcesses(list_processes::ListProcesses),
     RunMockRuntime(run_mock_runtime::RunMockRuntime),
     SpawnWasm(spawn_wasm::SpawnWasm),
+    Kill(kill::Kill),
 }
 
 impl Commands {
@@ -48,6 +78,7 @@ impl Commands {
             Commands::ListProcesses(args) => args.run(get_daemon().await).await,
             Commands::SpawnWasm(args) => args.run(get_daemon().await).await,
             Commands::RunMockRuntime(args) => args.run().await,
+            Commands::Kill(args) => args.run(get_daemon().await).await,
         }
     }
 }
