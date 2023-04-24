@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use clap::{Parser, Subcommand};
 use hearth_rpc::{hearth_types::*, DaemonOffer};
@@ -26,6 +26,30 @@ mod list_peers;
 mod list_processes;
 mod run_mock_runtime;
 mod spawn_wasm;
+
+pub struct CommandError {
+    message: String,
+    exit_code: u32,
+}
+
+trait ToCommandError<T, E> {
+    fn to_command_error<C: Display>(self, context: C, exit_code: u32) -> Result<T, CommandError>;
+}
+
+impl<T, E> ToCommandError<T, E> for Result<T, E>
+where
+    E: Display,
+{
+    fn to_command_error<C: Display>(self, context: C, exit_code: u32) -> Result<T, CommandError> {
+        match self {
+            Ok(ok) => Ok(ok),
+            Err(e) => Err(CommandError {
+                message: format!("{}: {}", context, e),
+                exit_code,
+            }),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum MaybeLocalPID {
