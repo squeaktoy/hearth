@@ -47,10 +47,10 @@ impl std::str::FromStr for MaybeLocalPID {
 }
 
 impl MaybeLocalPID {
-    fn to_global_pid(self, peer: PeerId) -> ProcessId {
+    fn to_global_pid(&self, peer: PeerId) -> ProcessId {
         match self {
-            MaybeLocalPID::Global(global_pid) => global_pid,
-            Self::Local(local_pid) => ProcessId::from_peer_process(peer, local_pid),
+            MaybeLocalPID::Global(global_pid) => *global_pid,
+            Self::Local(local_pid) => ProcessId::from_peer_process(peer, *local_pid),
         }
     }
 }
