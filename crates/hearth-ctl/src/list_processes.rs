@@ -20,7 +20,7 @@ use clap::Parser;
 use hearth_rpc::*;
 use hearth_types::PeerId;
 
-use crate::{hash_map_to_ordered_vec, CommandError};
+use crate::{hash_map_to_ordered_vec, CommandError, ToCommandError};
 
 /// Lists proccesses of either a singular peer or all peers in the space.
 #[derive(Debug, Parser)]
@@ -58,9 +58,10 @@ impl ListProcesses {
             .peer_provider
             .follow_peer_list()
             .await
-            .unwrap()
+            .to_command_error("following peer list", yacexits::EX_UNAVAILABLE)?
             .take_initial()
-            .unwrap();
+            .to_command_error("getting peer list", yacexits::EX_UNAVAILABLE)?;
+
         match self.peer.unwrap_or(MaybeAllPeerId::One(daemon.peer_id)) {
             MaybeAllPeerId::All => {
                 println!("{:>5} {:>5} {:<20}", "Peer", "PID", "Service");
@@ -72,38 +73,52 @@ impl ListProcesses {
                         is_first = false;
                     }
                     ListProcesses::display_peer(
-                        daemon.peer_provider.find_peer(id).await.unwrap(),
+                        daemon
+                            .peer_provider
+                            .find_peer(id)
+                            .await
+                            .to_command_error("finding peer", yacexits::EX_UNAVAILABLE)?,
                         Some(id),
                     )
-                    .await;
+                    .await?;
                 }
             }
             MaybeAllPeerId::One(id) => {
                 println!("PID\tService");
                 ListProcesses::display_peer(
-                    daemon.peer_provider.find_peer(id).await.unwrap(),
+                    daemon
+                        .peer_provider
+                        .find_peer(id)
+                        .await
+                        .to_command_error("finding peer", yacexits::EX_UNAVAILABLE)?,
                     None,
                 )
-                .await;
+                .await?;
             }
         }
         Ok(())
     }
 
-    async fn display_peer(peer: PeerApiClient, peer_id: Option<PeerId>) {
-        let process_store = peer.get_process_store().await.unwrap();
+    async fn display_peer(
+        peer: PeerApiClient,
+        peer_id: Option<PeerId>,
+    ) -> Result<(), CommandError> {
+        let process_store = peer
+            .get_process_store()
+            .await
+            .to_command_error("retrieving process store", yacexits::EX_UNAVAILABLE)?;
         let process_list = process_store
             .follow_process_list()
             .await
-            .unwrap()
+            .to_command_error("following process list", yacexits::EX_UNAVAILABLE)?
             .take_initial()
-            .unwrap();
+            .to_command_error("getting process list", yacexits::EX_UNAVAILABLE)?;
         let service_list = process_store
             .follow_service_list()
             .await
-            .unwrap()
+            .to_command_error("following service list", yacexits::EX_UNAVAILABLE)?
             .take_initial()
-            .unwrap();
+            .to_command_error("getting service list", yacexits::EX_UNAVAILABLE)?;
 
         // process info will need to be updated when fields are added to the struct
         for (process_id, _) in hash_map_to_ordered_vec(process_list) {
@@ -126,5 +141,6 @@ impl ListProcesses {
             }
             println!();
         }
+        Ok(())
     }
 }

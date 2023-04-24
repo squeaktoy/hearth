@@ -18,8 +18,9 @@
 
 use clap::Parser;
 use hearth_rpc::*;
+use yacexits::*;
 
-use crate::{CommandError, MaybeLocalPID};
+use crate::{CommandError, MaybeLocalPID, ToCommandError};
 
 /// Kill a process
 #[derive(Debug, Parser)]
@@ -36,16 +37,15 @@ impl Kill {
             .peer_provider
             .find_peer(peer)
             .await
-            .expect("Peer not found")
+            .to_command_error("finding peer", EX_UNAVAILABLE)?
             .get_process_store()
             .await
-            .expect("Peer does not have a process store")
+            .to_command_error("retrieving process store", EX_UNAVAILABLE)?
             .find_process(local_pid)
             .await
-            .expect("Could not find process")
+            .to_command_error("finding process", EX_UNAVAILABLE)?
             .kill()
             .await
-            .unwrap();
-        Ok(())
+            .to_command_error("killing process", EX_UNAVAILABLE)
     }
 }

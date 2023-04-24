@@ -111,11 +111,11 @@ pub enum Commands {
 impl Commands {
     pub async fn run(self) -> Result<(), CommandError> {
         match self {
-            Commands::ListPeers(args) => args.run(get_daemon().await).await,
-            Commands::ListProcesses(args) => args.run(get_daemon().await).await,
-            Commands::SpawnWasm(args) => args.run(get_daemon().await).await,
+            Commands::ListPeers(args) => args.run(get_daemon().await?).await,
+            Commands::ListProcesses(args) => args.run(get_daemon().await?).await,
+            Commands::SpawnWasm(args) => args.run(get_daemon().await?).await,
             Commands::RunMockRuntime(args) => args.run().await,
-            Commands::Kill(args) => args.run(get_daemon().await).await,
+            Commands::Kill(args) => args.run(get_daemon().await?).await,
         }
     }
 }
@@ -132,10 +132,10 @@ async fn main() {
     }
 }
 
-async fn get_daemon() -> DaemonOffer {
+async fn get_daemon() -> Result<DaemonOffer, CommandError> {
     hearth_ipc::connect()
         .await
-        .expect("Failed to connect to Hearth daemon")
+        .to_command_error("connecting to Hearth daemon", yacexits::EX_UNAVAILABLE)
 }
 
 fn hash_map_to_ordered_vec<K: Copy + Ord, V>(map: HashMap<K, V>) -> Vec<(K, V)> {

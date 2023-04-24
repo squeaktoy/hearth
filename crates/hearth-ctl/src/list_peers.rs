@@ -19,7 +19,7 @@
 use clap::Parser;
 use hearth_rpc::*;
 
-use crate::{hash_map_to_ordered_vec, CommandError};
+use crate::{hash_map_to_ordered_vec, CommandError, ToCommandError};
 
 /// Lists all peers currently participating in the space.
 #[derive(Debug, Parser)]
@@ -31,9 +31,9 @@ impl ListPeers {
             .peer_provider
             .follow_peer_list()
             .await
-            .unwrap()
+            .to_command_error("following peer list", yacexits::EX_UNAVAILABLE)?
             .take_initial()
-            .unwrap();
+            .to_command_error("getting peer list", yacexits::EX_UNAVAILABLE)?;
 
         //must be updated as time goes on when more peer info is added
         println!("{:>5} {:<10}", "Peer", "Nickname");
