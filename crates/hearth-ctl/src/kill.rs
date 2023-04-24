@@ -19,7 +19,7 @@
 use clap::Parser;
 use hearth_rpc::*;
 
-use crate::MaybeLocalPID;
+use crate::{CommandError, MaybeLocalPID};
 
 /// Kill a process
 #[derive(Debug, Parser)]
@@ -29,7 +29,7 @@ pub struct Kill {
 }
 
 impl Kill {
-    pub async fn run(self, daemon: DaemonOffer) {
+    pub async fn run(self, daemon: DaemonOffer) -> Result<(), CommandError> {
         let (peer, local_pid) = self.process.to_global_pid(daemon.peer_id).split();
 
         daemon
@@ -46,5 +46,6 @@ impl Kill {
             .kill()
             .await
             .unwrap();
+        Ok(())
     }
 }

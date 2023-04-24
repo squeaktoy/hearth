@@ -19,14 +19,14 @@
 use clap::Parser;
 use hearth_rpc::*;
 
-use crate::hash_map_to_ordered_vec;
+use crate::{hash_map_to_ordered_vec, CommandError};
 
 /// Lists all peers currently participating in the space.
 #[derive(Debug, Parser)]
 pub struct ListPeers {}
 
 impl ListPeers {
-    pub async fn run(self, daemon: DaemonOffer) {
+    pub async fn run(self, daemon: DaemonOffer) -> Result<(), CommandError> {
         let peer_map = daemon
             .peer_provider
             .follow_peer_list()
@@ -44,5 +44,6 @@ impl ListPeers {
                 peer_info.nickname.unwrap_or(String::from("None"))
             );
         }
+        Ok(())
     }
 }

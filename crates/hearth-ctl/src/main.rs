@@ -20,6 +20,7 @@ use std::{collections::HashMap, fmt::Display};
 
 use clap::{Parser, Subcommand};
 use hearth_rpc::{hearth_types::*, DaemonOffer};
+use std::process::exit;
 
 mod kill;
 mod list_peers;
@@ -96,7 +97,7 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub async fn run(self) {
+    pub async fn run(self) -> Result<(), CommandError>{
         match self {
             Commands::ListPeers(args) => args.run(get_daemon().await).await,
             Commands::ListProcesses(args) => args.run(get_daemon().await).await,
@@ -110,7 +111,13 @@ impl Commands {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let args = Args::parse();
-    args.command.run().await;
+    match args.command.run().await {
+        Ok(_) => exit(0),
+        Err(e) => {
+            eprintln!("{}", e.message);
+            exit(e.exit_code as i32)
+        }
+    }
 }
 
 async fn get_daemon() -> DaemonOffer {

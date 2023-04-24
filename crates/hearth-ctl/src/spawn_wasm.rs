@@ -25,6 +25,8 @@ use hearth_types::*;
 use std::fs::read;
 use std::path::Path;
 
+use crate::CommandError;
+
 /// Spawns a Web Assembly module on a specific peer
 #[derive(Debug, Parser)]
 pub struct SpawnWasm {
@@ -34,7 +36,7 @@ pub struct SpawnWasm {
 }
 
 impl SpawnWasm {
-    pub async fn run(self, daemon: DaemonOffer) {
+    pub async fn run(self, daemon: DaemonOffer) -> Result<(), CommandError> {
         let peer = self.peer.map(|x| PeerId(x)).unwrap_or(daemon.peer_id);
         let peer_api = daemon.peer_provider.find_peer(peer).await.unwrap();
         let process_store = peer_api.get_process_store().await.unwrap();
@@ -76,5 +78,6 @@ impl SpawnWasm {
 
         // necessary to flush the message send; remove when waiting for the returned PID
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        Ok(())
     }
 }

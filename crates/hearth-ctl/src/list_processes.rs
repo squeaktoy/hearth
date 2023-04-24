@@ -20,7 +20,7 @@ use clap::Parser;
 use hearth_rpc::*;
 use hearth_types::PeerId;
 
-use crate::hash_map_to_ordered_vec;
+use crate::{hash_map_to_ordered_vec, CommandError};
 
 /// Lists proccesses of either a singular peer or all peers in the space.
 #[derive(Debug, Parser)]
@@ -53,7 +53,7 @@ impl std::str::FromStr for MaybeAllPeerId {
 }
 
 impl ListProcesses {
-    pub async fn run(self, daemon: DaemonOffer) {
+    pub async fn run(self, daemon: DaemonOffer) -> Result<(), CommandError> {
         let peer_list = daemon
             .peer_provider
             .follow_peer_list()
@@ -87,6 +87,7 @@ impl ListProcesses {
                 .await;
             }
         }
+        Ok(())
     }
 
     async fn display_peer(peer: PeerApiClient, peer_id: Option<PeerId>) {

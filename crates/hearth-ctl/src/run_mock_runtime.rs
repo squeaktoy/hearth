@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use clap::Parser;
+use clap::{Parser, Result};
 use hearth_rpc::{
     mocks::*,
     remoc::rtc::{LocalRwLock, ServerSharedMut},
@@ -25,17 +25,19 @@ use hearth_rpc::{
 use hearth_types::PeerId;
 use std::sync::Arc;
 
+use crate::CommandError;
+
 /// Runs a mock daemon on a dedicated IPC socket. Only useful for testing purposes.
 #[derive(Debug, Parser)]
 pub struct RunMockRuntime {}
 
 impl RunMockRuntime {
-    pub async fn run(self) {
+    pub async fn run(self) -> Result<(), CommandError> {
         let daemon_listener = match hearth_ipc::Listener::new().await {
             Ok(l) => l,
             Err(err) => {
                 eprint!("{err}");
-                return;
+                return Ok(());
             }
         };
 
@@ -71,6 +73,7 @@ impl RunMockRuntime {
         match tokio::signal::ctrl_c().await {
             Ok(()) => eprintln!("Interrupt signal received"),
             Err(err) => eprintln!("Interrupt await error: {:?}", err),
-        }
+        };
+        Ok(())
     }
 }
