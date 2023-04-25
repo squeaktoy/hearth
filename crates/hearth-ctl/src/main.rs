@@ -138,7 +138,7 @@ async fn main() {
 async fn get_daemon() -> CommandResult<DaemonOffer> {
     hearth_ipc::connect()
         .await
-        .to_command_error("connecting to hearth daemon", EX_PROTOCOL)
+        .to_command_error("connecting to Hearth daemon", EX_PROTOCOL)
 }
 
 fn hash_map_to_ordered_vec<K: Copy + Ord, V>(map: HashMap<K, V>) -> Vec<(K, V)> {

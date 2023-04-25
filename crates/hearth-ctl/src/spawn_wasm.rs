@@ -56,7 +56,7 @@ impl SpawnWasm {
             .take_initial()
             .to_command_error("getting service list", EX_PROTOCOL)?
             .get("hearth.cognito.WasmProcessSpawner")
-            .to_command_error("retreiving WasmProcessSpawner", EX_UNAVAILABLE)?
+            .to_command_error("retrieving WasmProcessSpawner", EX_UNAVAILABLE)?
             .clone();
         let process = RemoteProcess::new(&daemon, ProcessInfo {}).await.unwrap();
         let lump_id = peer_api
