@@ -31,27 +31,64 @@ pub struct Registry<Store: ProcessStoreTrait> {
 impl<Store: ProcessStoreTrait> Drop for Registry<Store> {
     fn drop(&mut self) {
         for (_name, cap) in self.services.lock().drain() {
-            self.store.dec_ref(cap.handle);
+            cap.free(self.store.as_ref());
         }
     }
 }
 
 impl<Store: ProcessStoreTrait> Registry<Store> {
+    pub fn new(store: Arc<Store>) -> Self {
+        Self {
+            store,
+            services: Default::default(),
+        }
+    }
+
     pub fn get(&self, service: impl AsRef<str>) -> Option<Capability> {
-        let cap = *self.services.lock().get(service.as_ref())?;
-        self.store.inc_ref(cap.handle);
+        let cap = self
+            .services
+            .lock()
+            .get(service.as_ref())?
+            .clone(self.store.as_ref());
+
         Some(cap)
     }
 
-    #[must_use = "capabilities must be cleaned up from store before drop"]
+    #[must_use = "capabilities must be freed before drop"]
     pub fn insert(&self, service: impl ToString, cap: &Capability) -> Option<Capability> {
-        let mut services = self.services.lock();
-        self.store.inc_ref(cap.handle);
-        services.insert(service.to_string(), *cap)
+        let cap = cap.clone(self.store.as_ref());
+        self.services.lock().insert(service.to_string(), cap)
     }
 
-    #[must_use = "capabilities must be cleaned up from store before drop"]
+    #[must_use = "capabilities must be freed before drop"]
     pub fn remove(&self, service: impl AsRef<str>) -> Option<Capability> {
         self.services.lock().remove(service.as_ref())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::process::{
+        store::{tests::*, ProcessStore},
+        Flags,
+    };
+
+    fn make_registry() -> Registry<ProcessStore<MockProcessEntry>> {
+        let store = make_store();
+        Registry::new(Arc::new(store))
+    }
+
+    #[test]
+    fn create_registry() {
+        let _reg = make_registry();
+    }
+
+    #[test]
+    fn insert() {
+        let reg = make_registry();
+        let handle = reg.store.insert_mock();
+        let cap = Capability::new(handle, Flags);
     }
 }

@@ -27,8 +27,7 @@ use tracing::info;
 use super::factory::ProcessFactory;
 use super::local::LocalProcess;
 use super::registry::Registry;
-use super::store::{Capability, ProcessStoreTrait};
-use super::Flags;
+use super::store::ProcessStoreTrait;
 
 pub struct ProcessStoreImpl<Store: ProcessStoreTrait> {
     store: Arc<Store>,
@@ -52,18 +51,13 @@ where
     }
 
     async fn register_service(&self, pid: LocalProcessId, name: String) -> ResourceResult<()> {
-        let handle = self
+        let cap = self
             .factory
-            .get_pid_handle(pid)
+            .get_pid_cap(pid)
             .ok_or(hearth_rpc::ResourceError::Unavailable)?;
 
-        let cap = Capability {
-            handle,
-            flags: Flags,
-        };
-
         if let Some(old) = self.registry.insert(name, &cap) {
-            self.store.dec_ref(old.handle);
+            old.free(self.store.as_ref());
         }
 
         Ok(())
@@ -71,7 +65,7 @@ where
 
     async fn deregister_service(&self, name: String) -> ResourceResult<()> {
         if let Some(old) = self.registry.remove(name) {
-            self.store.dec_ref(old.handle);
+            old.free(self.store.as_ref());
             Ok(())
         } else {
             Err(ResourceError::Unavailable)

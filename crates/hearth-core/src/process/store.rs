@@ -180,7 +180,7 @@ pub trait ProcessEntry {
 /// A message sent to a process.
 ///
 /// All handles are scoped within a process store.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Message {
     /// Sent when a linked process has been unlinked.
     Unlink {
@@ -201,16 +201,70 @@ pub enum Message {
     },
 }
 
+impl Message {
+    /// Duplicates this messages and increments its reference counts.
+    pub fn clone(&self, store: &impl ProcessStoreTrait) -> Self {
+        use Message::*;
+        match self {
+            Unlink { subject } => {
+                let subject = *subject;
+                store.inc_ref(subject);
+                Unlink { subject }
+            }
+            Data { data, caps } => Data {
+                data: data.to_owned(),
+                caps: caps.iter().map(|cap| cap.clone(store)).collect(),
+            },
+        }
+    }
+}
+
 /// A capability within a process store.
 ///
 /// This capability is non-owning.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Capability {
     /// The handle of the target process within the process store.
-    pub handle: usize,
+    handle: usize,
 
     /// The permission flags associated with this capability.
-    pub flags: Flags,
+    flags: Flags,
+}
+
+impl Drop for Capability {
+    fn drop(&mut self) {
+        panic!("capability was dropped without freeing");
+    }
+}
+
+impl Capability {
+    /// Crate-internal constructor for capabilities.
+    ///
+    /// The given handle is assumed to already have a counted reference, so
+    /// passing a store is unnecessary.
+    pub(crate) fn new(handle: usize, flags: Flags) -> Self {
+        Self { handle, flags }
+    }
+
+    /// Retrieves the handle to the process entry within the store.
+    pub fn get_handle(&self) -> usize {
+        self.handle
+    }
+
+    /// Duplicates this capability and increments its reference count in the store.
+    pub fn clone(&self, store: &impl ProcessStoreTrait) -> Self {
+        store.inc_ref(self.handle);
+
+        Self {
+            handle: self.handle,
+            flags: self.flags,
+        }
+    }
+
+    /// Frees this capability and decrements its reference count in the store.
+    pub fn free(self, store: &impl ProcessStoreTrait) {
+        store.dec_ref(self.handle);
+    }
 }
 
 pub struct AnyProcessData {
@@ -251,12 +305,12 @@ impl ProcessEntry for AnyProcess {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
     use std::sync::mpsc::{channel, Receiver, Sender};
 
-    struct MockProcessEntry {
+    pub struct MockProcessEntry {
         mailbox_tx: Sender<Message>,
     }
 
@@ -283,18 +337,18 @@ mod tests {
 
     impl ProcessStore<MockProcessEntry> {
         /// Internal utility function for testing if a handle is valid.
-        fn contains(&self, handle: usize) -> bool {
+        pub fn contains(&self, handle: usize) -> bool {
             self.entries.contains(handle)
         }
 
         /// Helper function to insert a mock process entry into a store.
-        fn insert_mock(&self) -> usize {
+        pub fn insert_mock(&self) -> usize {
             let (mailbox_tx, _mailbox) = channel();
             self.insert(MockProcessEntry { mailbox_tx })
         }
 
         /// Helper function to insert a mock process that forwards messages.
-        fn insert_forward(&self) -> (Receiver<Message>, usize) {
+        pub fn insert_forward(&self) -> (Receiver<Message>, usize) {
             let (mailbox_tx, mailbox) = channel();
             let handle = self.insert(MockProcessEntry { mailbox_tx });
             (mailbox, handle)
@@ -302,7 +356,7 @@ mod tests {
     }
 
     /// Helper function to create an empty mock process store.
-    fn make_store() -> ProcessStore<MockProcessEntry> {
+    pub fn make_store() -> ProcessStore<MockProcessEntry> {
         ProcessStore::new(())
     }
 
@@ -321,7 +375,7 @@ mod tests {
             caps: vec![],
         };
 
-        store.send(handle, message.clone());
+        store.send(handle, message.clone(&store));
         assert_eq!(mailbox.try_recv(), Ok(message));
     }
 

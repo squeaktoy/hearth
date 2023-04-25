@@ -82,7 +82,7 @@ impl<Store: ProcessStoreTrait> Drop for ProcessContext<Store> {
     fn drop(&mut self) {
         let caps = std::mem::replace(&mut self.caps, Default::default());
         for (_idx, cap) in caps {
-            self.store.dec_ref(cap.handle);
+            cap.free(self.store.as_ref());
         }
     }
 }
@@ -125,7 +125,7 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
                     let handles = self
                         .caps
                         .iter()
-                        .filter(|(_idx, cap)| cap.handle == subject)
+                        .filter(|(_idx, cap)| cap.get_handle() == subject)
                         .map(|(idx, _cap)| idx);
 
                     self.unlink_queue.extend(handles);
@@ -166,12 +166,11 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
             let store_cap = self
                 .get_cap(cap)
                 .with_context(|| format!("sending mapped message capability (index #{})", idx))?;
-            // TODO is this right? messages should keep refs to their caps, but does this keep the refcount correct?
-            self.store.inc_ref(store_cap.handle);
-            caps.push(*store_cap);
+            caps.push(store_cap.clone(self.store.as_ref()));
         }
 
-        self.store.send(dst.handle, Message::Data { data, caps });
+        self.store
+            .send(dst.get_handle(), Message::Data { data, caps });
 
         Ok(())
     }
@@ -184,7 +183,7 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
         // TODO check for permissions here
 
         // TODO removing vs killing
-        self.store.kill(target.handle);
+        self.store.kill(target.get_handle());
 
         Ok(())
     }
@@ -197,10 +196,8 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
 
         // TODO calculate subset of flags
 
-        // TODO ProcessEntry::on_new_capability()?
-
-        self.store.inc_ref(original.handle);
-        Ok(self.caps.insert(*original))
+        let cap = original.clone(self.store.as_ref());
+        Ok(self.caps.insert(cap))
     }
 
     /// Deletes a capability from this context.
@@ -210,7 +207,7 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
             .try_remove(handle)
             .with_context(|| format!("invalid handle {}", handle))?;
 
-        self.store.dec_ref(cap.handle);
+        cap.free(self.store.as_ref());
 
         // remove all unlink messages targeting this handle
         self.unlink_queue.retain(|c| *c != handle);

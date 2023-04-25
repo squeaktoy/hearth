@@ -35,7 +35,7 @@ use super::Flags;
 
 struct ProcessWrapper {
     info: ProcessInfo,
-    handle: usize,
+    cap: Capability,
     log_distributor: ObservableListDistributor<ProcessLogEvent>,
 }
 
@@ -60,10 +60,11 @@ where
         let (warning_num_tx, warning_num) = watch::channel(0);
         let (error_num_tx, error_num) = watch::channel(0);
         let (log_num_tx, log_num) = watch::channel(0);
+        let self_cap = Capability::new(handle, flags);
 
         let pid = LocalProcessId(self.processes.write().insert(ProcessWrapper {
             info: info.clone(),
-            handle, // TODO refcounting on process factory entries?
+            cap: self_cap.clone(self.store.as_ref()),
             log_distributor: log.distributor(),
         }) as u32);
 
@@ -77,7 +78,6 @@ where
             },
         );
 
-        let self_cap = Capability { handle, flags };
         let ctx = ProcessContext::new(self.store.to_owned(), self_cap, mailbox);
 
         Process {
@@ -90,8 +90,11 @@ where
         }
     }
 
-    pub(crate) fn get_pid_handle(&self, pid: LocalProcessId) -> Option<usize> {
-        self.processes.read().get(pid.0 as usize).map(|w| w.handle)
+    pub(crate) fn get_pid_cap(&self, pid: LocalProcessId) -> Option<Capability> {
+        self.processes
+            .read()
+            .get(pid.0 as usize)
+            .map(|w| w.cap.clone(self.store.as_ref()))
     }
 }
 
