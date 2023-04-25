@@ -24,7 +24,7 @@ use hearth_rpc::*;
 use hearth_types::*;
 use std::fs::read;
 use std::path::Path;
-use yacexits::{EX_UNAVAILABLE, EX_NOINPUT, EX_PROTOCOL};
+use yacexits::{EX_NOINPUT, EX_PROTOCOL, EX_UNAVAILABLE};
 
 use crate::{CommandError, ToCommandError};
 
