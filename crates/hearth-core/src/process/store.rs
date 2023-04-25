@@ -467,4 +467,18 @@ pub mod tests {
         assert_eq!(mailbox.try_recv(), Ok(Message::Unlink { subject }));
         assert!(mailbox.try_recv().is_err());
     }
+
+    #[test]
+    fn safe_message_drop() {
+        let store = make_store();
+        let handle = store.insert_mock();
+
+        let message = Message::Data {
+            data: vec![],
+            caps: vec![Capability::new(handle, Flags)],
+        };
+
+        store.send(handle, message);
+        assert!(!store.contains(handle));
+    }
 }
