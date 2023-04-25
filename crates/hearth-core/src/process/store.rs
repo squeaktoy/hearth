@@ -382,6 +382,14 @@ mod tests {
     }
 
     #[test]
+    fn double_kill() {
+        let store = make_store();
+        let handle = store.insert_mock();
+        store.kill(handle);
+        store.kill(handle);
+    }
+
+    #[test]
     fn cyclic_linking_deref() {
         let store = make_store();
         let a = store.insert_mock();
