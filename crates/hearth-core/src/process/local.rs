@@ -80,8 +80,7 @@ pub struct ProcessContext<Store: ProcessStoreTrait> {
 
 impl<Store: ProcessStoreTrait> Drop for ProcessContext<Store> {
     fn drop(&mut self) {
-        let caps = std::mem::replace(&mut self.caps, Default::default());
-        for (_idx, cap) in caps {
+        for cap in self.caps.drain() {
             cap.free(self.store.as_ref());
         }
     }
@@ -133,11 +132,7 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
                 Message::Data { data, caps } => {
                     return Some(ContextMessage::Data {
                         data,
-                        caps: caps
-                            .into_iter()
-                            // no inc_ref() necessary because messages already hold their refs
-                            .map(|cap| self.caps.insert(cap))
-                            .collect(),
+                        caps: caps.into_iter().map(|cap| self.caps.insert(cap)).collect(),
                     });
                 }
             }
@@ -219,5 +214,32 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
         self.caps
             .get(handle)
             .with_context(|| format!("invalid handle {}", handle))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::process::store::{tests::*, ProcessStore};
+
+    fn make_ctx() -> ProcessContext<ProcessStore<MockProcessEntry>> {
+        let store = Arc::new(make_store());
+        let (sync_mailbox, handle) = store.insert_forward();
+        let (mailbox_tx, mailbox) = tokio::sync::mpsc::unbounded_channel();
+
+        tokio::task::spawn(async move {
+            while let Ok(message) = sync_mailbox.recv() {
+                let _ = mailbox_tx.send(message);
+            }
+        });
+
+        let self_cap = Capability::new(handle, Flags);
+        ProcessContext::new(store, self_cap, mailbox)
+    }
+
+    #[tokio::test]
+    async fn new() {
+        let _ctx = make_ctx();
     }
 }
