@@ -21,7 +21,7 @@ use hearth_rpc::*;
 use hearth_types::PeerId;
 use yacexits::EX_PROTOCOL;
 
-use crate::{hash_map_to_ordered_vec, CommandError, ToCommandError};
+use crate::{hash_map_to_ordered_vec, CommandResult, ToCommandError};
 
 /// Lists proccesses of either a singular peer or all peers in the space.
 #[derive(Debug, Parser)]
@@ -54,7 +54,7 @@ impl std::str::FromStr for MaybeAllPeerId {
 }
 
 impl ListProcesses {
-    pub async fn run(self, daemon: DaemonOffer) -> Result<(), CommandError> {
+    pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
         let peer_list = daemon
             .peer_provider
             .follow_peer_list()
@@ -100,10 +100,7 @@ impl ListProcesses {
         Ok(())
     }
 
-    async fn display_peer(
-        peer: PeerApiClient,
-        peer_id: Option<PeerId>,
-    ) -> Result<(), CommandError> {
+    async fn display_peer(peer: PeerApiClient, peer_id: Option<PeerId>) -> CommandResult<()> {
         let process_store = peer
             .get_process_store()
             .await

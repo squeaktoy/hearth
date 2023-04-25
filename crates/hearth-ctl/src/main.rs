@@ -27,6 +27,7 @@ mod list_peers;
 mod list_processes;
 mod run_mock_runtime;
 mod spawn_wasm;
+use yacexits::EX_PROTOCOL;
 
 pub struct CommandError {
     message: String,
@@ -63,6 +64,8 @@ impl<T> ToCommandError<T, ()> for Option<T> {
         }
     }
 }
+
+pub type CommandResult<T> = Result<T, CommandError>;
 
 #[derive(Clone, Debug)]
 pub enum MaybeLocalPid {
@@ -109,7 +112,7 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub async fn run(self) -> Result<(), CommandError> {
+    pub async fn run(self) -> CommandResult<()> {
         match self {
             Commands::ListPeers(args) => args.run(get_daemon().await?).await,
             Commands::ListProcesses(args) => args.run(get_daemon().await?).await,
@@ -132,10 +135,10 @@ async fn main() {
     }
 }
 
-async fn get_daemon() -> Result<DaemonOffer, CommandError> {
+async fn get_daemon() -> CommandResult<DaemonOffer> {
     hearth_ipc::connect()
         .await
-        .to_command_error("connecting to hearth daemon", yacexits::EX_UNAVAILABLE)
+        .to_command_error("connecting to hearth daemon", EX_PROTOCOL)
 }
 
 fn hash_map_to_ordered_vec<K: Copy + Ord, V>(map: HashMap<K, V>) -> Vec<(K, V)> {

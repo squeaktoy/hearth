@@ -26,7 +26,7 @@ use std::fs::read;
 use std::path::Path;
 use yacexits::{EX_NOINPUT, EX_PROTOCOL, EX_UNAVAILABLE};
 
-use crate::{CommandError, ToCommandError};
+use crate::{CommandResult, ToCommandError};
 
 /// Spawns a Web Assembly module on a specific peer
 #[derive(Debug, Parser)]
@@ -37,7 +37,7 @@ pub struct SpawnWasm {
 }
 
 impl SpawnWasm {
-    pub async fn run(self, daemon: DaemonOffer) -> Result<(), CommandError> {
+    pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
         let peer = self.peer.map(|x| PeerId(x)).unwrap_or(daemon.peer_id);
         let peer_api = daemon
             .peer_provider
