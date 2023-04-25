@@ -36,10 +36,10 @@ pub mod lump;
 pub mod process;
 
 /// Publish-subscribe utility struct for making pub-sub services.
-pub mod pubsub;
+// pub mod pubsub;
 
 /// Peer runtime building and execution.
-pub mod runtime;
+// pub mod runtime;
 
 /// Helper function to set up console logging with reasonable defaults.
 pub fn init_logging() {

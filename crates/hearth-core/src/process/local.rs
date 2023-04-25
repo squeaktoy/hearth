@@ -16,11 +16,27 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-pub mod context;
-pub mod factory;
-pub mod local;
-pub mod registry;
-pub mod store;
+use tokio::sync::mpsc::UnboundedSender;
 
-#[derive(Copy, Clone, Debug)]
-pub struct Flags;
+use super::store::{Message, ProcessEntry};
+
+pub struct LocalProcess {
+    pub mailbox_tx: UnboundedSender<Message>,
+}
+
+impl ProcessEntry for LocalProcess {
+    type Data = ();
+
+    fn on_insert(&self, _data: &Self::Data, _handle: usize) {}
+
+    fn on_send(&self, _data: &Self::Data, message: Message) {
+        // TODO send errors
+        let _ = self.mailbox_tx.send(message);
+    }
+
+    fn on_kill(&self, _data: &Self::Data) {
+        // TODO kill without remove?
+    }
+
+    fn on_remove(&self, _data: &Self::Data) {}
+}
