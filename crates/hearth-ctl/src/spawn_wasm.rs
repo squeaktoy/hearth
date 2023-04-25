@@ -64,9 +64,14 @@ impl SpawnWasm {
             .to_command_error("retrieving lump store", yacexits::EX_UNAVAILABLE)?
             .upload_lump(
                 None,
-                LazyBlob::new(read(path).to_command_error("reading wasm file", yacexits::EX_NOINPUT)?.into()),
+                LazyBlob::new(
+                    read(path)
+                        .to_command_error("reading wasm file", yacexits::EX_NOINPUT)?
+                        .into(),
+                ),
             )
-            .await.to_command_error("uploading lump", yacexits::EX_UNAVAILABLE)?;
+            .await
+            .to_command_error("uploading lump", yacexits::EX_UNAVAILABLE)?;
 
         let wasm_spawn_info = WasmSpawnInfo {
             lump: lump_id,
