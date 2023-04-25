@@ -233,7 +233,7 @@ pub struct Capability {
 
 impl Drop for Capability {
     fn drop(&mut self) {
-        panic!("capability was dropped without freeing");
+        panic!("capability {} was dropped without freeing", self.handle);
     }
 }
 
@@ -264,6 +264,7 @@ impl Capability {
     /// Frees this capability and decrements its reference count in the store.
     pub fn free(self, store: &impl ProcessStoreTrait) {
         store.dec_ref(self.handle);
+        std::mem::forget(self);
     }
 }
 
