@@ -8,7 +8,6 @@ members = [
   "crates/hearth-core",
   "crates/hearth-ipc",
   "crates/hearth-macros",
-  "crates/hearth-panels",
   "crates/hearth-network",
   "crates/hearth-rend3",
   "crates/hearth-rpc",

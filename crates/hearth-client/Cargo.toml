@@ -11,7 +11,6 @@ hearth-cognito = { workspace = true }
 hearth-core = { workspace = true }
 hearth-ipc = { workspace = true }
 hearth-network = { workspace = true }
-hearth-panels = { path = "../hearth-panels" }
 hearth-rend3 = { workspace = true }
 hearth-rpc = { workspace = true }
 remoc = { workspace = true, features = ["full"] }

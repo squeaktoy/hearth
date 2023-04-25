@@ -172,7 +172,6 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
         // move into block to make this async fn Send
         let mut builder = RuntimeBuilder::new(config_file);
         builder.add_plugin(hearth_cognito::WasmPlugin::new());
-        builder.add_plugin(hearth_panels::PanelsPlugin::new());
         builder.add_plugin(rend3_plugin);
         builder.run(config)
     };
