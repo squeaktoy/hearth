@@ -157,7 +157,3 @@ impl<Store: ProcessStoreTrait> Process<Store> {
         self.log.push(event);
     }
 }
-
-pub mod rpc {
-    use super::*;
-}

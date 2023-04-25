@@ -18,17 +18,17 @@
 
 use std::sync::Arc;
 
-use hearth_rpc::*;
 use hearth_rpc::hearth_types::LocalProcessId;
+use hearth_rpc::*;
 use remoc::robs::hash_map::HashMapSubscription;
 use remoc::rtc::async_trait;
 use tracing::info;
 
-use super::Flags;
 use super::factory::ProcessFactory;
 use super::local::LocalProcess;
 use super::registry::Registry;
 use super::store::{Capability, ProcessStoreTrait};
+use super::Flags;
 
 pub struct ProcessStoreImpl<Store: ProcessStoreTrait> {
     store: Arc<Store>,
@@ -57,15 +57,12 @@ where
             .get_pid_handle(pid)
             .ok_or(hearth_rpc::ResourceError::Unavailable)?;
 
-        let old = self.registry.insert(
-            name,
-            &Capability {
-                handle,
-                flags: Flags,
-            },
-        );
+        let cap = Capability {
+            handle,
+            flags: Flags,
+        };
 
-        if let Some(old) = old {
+        if let Some(old) = self.registry.insert(name, &cap) {
             self.store.dec_ref(old.handle);
         }
 
