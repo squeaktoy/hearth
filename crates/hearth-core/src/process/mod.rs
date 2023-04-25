@@ -22,5 +22,5 @@ pub mod local;
 pub mod registry;
 pub mod store;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Flags;

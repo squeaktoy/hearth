@@ -136,14 +136,17 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
 }
 
 impl<T: ProcessEntry> ProcessStore<T> {
+    /// Creates a new, empty process store with the given entry data.
+    pub fn new(data: T::Data) -> Self {
+        Self {
+            entries: ShardedSlab::new(),
+            entries_data: data,
+        }
+    }
+
     /// Internal utility function for retrieving a valid handle. Panics if the handle is invalid.
     fn get(&self, handle: usize) -> impl std::ops::Deref<Target = ProcessWrapper<T>> + '_ {
         self.entries.get(handle).expect("invalid handle")
-    }
-
-    /// Internal utility function for testing if a handle is valid.
-    fn contains(&self, handle: usize) -> bool {
-        self.entries.contains(handle)
     }
 }
 
@@ -177,7 +180,7 @@ pub trait ProcessEntry {
 /// A message sent to a process.
 ///
 /// All handles are scoped within a process store.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Message {
     /// Sent when a linked process has been unlinked.
     Unlink {
@@ -201,7 +204,7 @@ pub enum Message {
 /// A capability within a process store.
 ///
 /// This capability is non-owning.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Capability {
     /// The handle of the target process within the process store.
     pub handle: usize,
@@ -244,5 +247,162 @@ impl ProcessEntry for AnyProcess {
         match self {
             AnyProcess::Local(local) => local.on_remove(&data.local),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::sync::mpsc::{channel, Receiver, Sender};
+
+    struct MockProcessEntry {
+        mailbox_tx: Sender<Message>,
+    }
+
+    impl ProcessEntry for MockProcessEntry {
+        type Data = ();
+
+        fn on_insert(&self, _data: &Self::Data, handle: usize) {
+            eprintln!("on_insert(handle = {})", handle);
+        }
+
+        fn on_send(&self, _data: &Self::Data, message: Message) {
+            eprintln!("on_send(message = {:?})", message);
+            let _ = self.mailbox_tx.send(message);
+        }
+
+        fn on_kill(&self, _data: &Self::Data) {
+            eprintln!("on_kill()");
+        }
+
+        fn on_remove(&self, _data: &Self::Data) {
+            eprintln!("on_remove()");
+        }
+    }
+
+    impl ProcessStore<MockProcessEntry> {
+        /// Internal utility function for testing if a handle is valid.
+        fn contains(&self, handle: usize) -> bool {
+            self.entries.contains(handle)
+        }
+
+        /// Helper function to insert a mock process entry into a store.
+        fn insert_mock(&self) -> usize {
+            let (mailbox_tx, _mailbox) = channel();
+            self.insert(MockProcessEntry { mailbox_tx })
+        }
+
+        /// Helper function to insert a mock process that forwards messages.
+        fn insert_forward(&self) -> (Receiver<Message>, usize) {
+            let (mailbox_tx, mailbox) = channel();
+            let handle = self.insert(MockProcessEntry { mailbox_tx });
+            (mailbox, handle)
+        }
+    }
+
+    /// Helper function to create an empty mock process store.
+    fn make_store() -> ProcessStore<MockProcessEntry> {
+        ProcessStore::new(())
+    }
+
+    #[test]
+    fn create_store() {
+        let _store = make_store();
+    }
+
+    #[test]
+    fn send() {
+        let store = make_store();
+        let (mailbox, handle) = store.insert_forward();
+
+        let message = Message::Data {
+            data: b"Hello, world!".to_vec(),
+            caps: vec![],
+        };
+
+        store.send(handle, message.clone());
+        assert_eq!(mailbox.try_recv(), Ok(message));
+    }
+
+    #[test]
+    fn send_dead() {
+        let store = make_store();
+        let (mailbox, handle) = store.insert_forward();
+
+        store.kill(handle);
+
+        store.send(
+            handle,
+            Message::Data {
+                data: vec![],
+                caps: vec![],
+            },
+        );
+
+        assert!(mailbox.try_recv().is_err());
+    }
+
+    #[test]
+    fn link() {
+        let store = make_store();
+        let subject = store.insert_mock();
+        let (mailbox, object) = store.insert_forward();
+        store.link(subject, object);
+        store.kill(subject);
+        assert_eq!(mailbox.try_recv(), Ok(Message::Unlink { subject }));
+    }
+
+    #[test]
+    fn link_dead() {
+        let store = make_store();
+        let subject = store.insert_mock();
+        let (mailbox, object) = store.insert_forward();
+        store.kill(subject);
+        store.link(subject, object);
+        assert_eq!(mailbox.try_recv(), Ok(Message::Unlink { subject }));
+    }
+
+    #[test]
+    fn ref_counting() {
+        let store = make_store();
+        let handle = store.insert_mock();
+        assert!(store.contains(handle));
+        store.dec_ref(handle);
+        assert!(!store.contains(handle));
+    }
+
+    #[test]
+    fn kill() {
+        let store = make_store();
+        let handle = store.insert_mock();
+        assert!(store.is_alive(handle));
+        store.kill(handle);
+        assert!(!store.is_alive(handle));
+    }
+
+    #[test]
+    fn cyclic_linking_deref() {
+        let store = make_store();
+        let a = store.insert_mock();
+        let b = store.insert_mock();
+        store.link(a, b);
+        store.link(b, a);
+        store.dec_ref(a);
+        store.dec_ref(b);
+        assert!(!store.contains(a));
+        assert!(!store.contains(b));
+    }
+
+    #[test]
+    fn no_double_linking() {
+        let store = make_store();
+        let subject = store.insert_mock();
+        let (mailbox, object) = store.insert_forward();
+        store.link(subject, object);
+        store.link(subject, object);
+        store.kill(subject);
+        assert_eq!(mailbox.try_recv(), Ok(Message::Unlink { subject }));
+        assert!(mailbox.try_recv().is_err());
     }
 }
