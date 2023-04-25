@@ -18,6 +18,7 @@
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+use parking_lot::Mutex;
 use sharded_slab::Slab as ShardedSlab;
 
 use super::local::LocalProcess;
@@ -36,9 +37,15 @@ pub trait ProcessStoreTrait {
     /// This is always assumed to work, so all calls to [Self::is_alive] will
     /// return false after this.
     ///
-    /// Killing a process with the same handle twice is defined behavior and
+    /// Killing a process with the same handle twice is defined behavior but
     /// does nothing.
     fn kill(&self, handle: usize);
+
+    /// Links the subject process to the object process.
+    ///
+    /// When the subject process dies, the store will send a [Message::Unlink]
+    /// message to the object process.
+    fn link(&self, subject: usize, object: usize);
 
     fn is_alive(&self, handle: usize) -> bool;
 
@@ -50,6 +57,7 @@ pub trait ProcessStoreTrait {
 struct ProcessWrapper<Process> {
     inner: Process,
     is_alive: AtomicBool,
+    linked: Mutex<Vec<usize>>,
     ref_count: AtomicUsize,
 }
 
@@ -76,6 +84,7 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
         entry.insert(ProcessWrapper {
             inner: process,
             is_alive: AtomicBool::new(true),
+            linked: Default::default(),
             ref_count: AtomicUsize::new(1),
         });
 
@@ -87,7 +96,21 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
     }
 
     fn kill(&self, handle: usize) {
-        self.get(handle).inner.on_kill(&self.entries_data);
+        let entry = self.get(handle);
+        if entry.is_alive.swap(false, Ordering::SeqCst) {
+            entry.inner.on_kill(&self.entries_data);
+
+            for link in entry.linked.lock().drain(..) {
+                self.send(link, Message::Unlink { subject: handle });
+            }
+        }
+    }
+
+    fn link(&self, subject: usize, object: usize) {
+        let entry = self.get(subject);
+        let mut linked = entry.linked.lock();
+        self.inc_ref(object);
+        linked.push(object);
     }
 
     fn is_alive(&self, handle: usize) -> bool {
@@ -102,6 +125,11 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
         let process = self.get(handle);
         if process.ref_count.fetch_sub(1, Ordering::SeqCst) == 1 {
             process.inner.on_remove(&self.entries_data);
+
+            for link in process.linked.lock().iter() {
+                self.dec_ref(*link);
+            }
+
             self.entries.remove(handle);
         }
     }
@@ -111,6 +139,11 @@ impl<T: ProcessEntry> ProcessStore<T> {
     /// Internal utility function for retrieving a valid handle. Panics if the handle is invalid.
     fn get(&self, handle: usize) -> impl std::ops::Deref<Target = ProcessWrapper<T>> + '_ {
         self.entries.get(handle).expect("invalid handle")
+    }
+
+    /// Internal utility function for testing if a handle is valid.
+    fn contains(&self, handle: usize) -> bool {
+        self.entries.contains(handle)
     }
 }
 
@@ -176,8 +209,6 @@ pub struct Capability {
     /// The permission flags associated with this capability.
     pub flags: Flags,
 }
-
-impl !Drop for Capability {}
 
 pub struct AnyProcessData {
     pub local: <LocalProcess as ProcessEntry>::Data,
