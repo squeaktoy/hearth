@@ -29,8 +29,7 @@ use remoc::robs::list::ObservableList;
 use slab::Slab;
 use tokio::sync::mpsc::unbounded_channel;
 
-use super::context::ProcessContext;
-use super::local::LocalProcess;
+use super::local::{LocalProcess, ProcessContext};
 use super::store::{Capability, ProcessStoreTrait};
 use super::Flags;
 
