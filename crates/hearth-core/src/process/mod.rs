@@ -19,6 +19,7 @@
 pub mod factory;
 pub mod local;
 pub mod registry;
+pub mod rpc;
 pub mod store;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

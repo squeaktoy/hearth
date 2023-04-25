@@ -43,7 +43,7 @@ pub struct ProcessFactory<Store> {
     store: Arc<Store>,
     peer: PeerId,
     processes: RwLock<Slab<ProcessWrapper>>,
-    statuses: RwLock<ObservableHashMap<LocalProcessId, ProcessStatus>>,
+    pub(crate) statuses: RwLock<ObservableHashMap<LocalProcessId, ProcessStatus>>,
 }
 
 impl<Store> ProcessFactory<Store>
@@ -90,8 +90,7 @@ where
         }
     }
 
-    // TODO figure out visibility for this
-    fn get_pid_handle(&self, pid: LocalProcessId) -> Option<usize> {
+    pub(crate) fn get_pid_handle(&self, pid: LocalProcessId) -> Option<usize> {
         self.processes.read().get(pid.0 as usize).map(|w| w.handle)
     }
 }
@@ -161,70 +160,4 @@ impl<Store: ProcessStoreTrait> Process<Store> {
 
 pub mod rpc {
     use super::*;
-
-    use hearth_rpc::{CallResult, ProcessApiClient, ResourceError, ResourceResult};
-    use remoc::robs::hash_map::HashMapSubscription;
-    use remoc::rtc::async_trait;
-    use tracing::info;
-
-    use crate::process::registry::Registry;
-
-    pub struct ProcessStoreImpl<Store: ProcessStoreTrait> {
-        factory: ProcessFactory<Store>,
-        registry: Registry<Store>,
-    }
-
-    #[async_trait]
-    impl<Store> hearth_rpc::ProcessStore for ProcessStoreImpl<Store>
-    where
-        Store: ProcessStoreTrait + Send + Sync,
-        Store::Entry: From<LocalProcess>,
-    {
-        async fn print_hello_world(&self) -> CallResult<()> {
-            info!("Hello, world!");
-            Ok(())
-        }
-
-        async fn find_process(&self, _pid: LocalProcessId) -> ResourceResult<ProcessApiClient> {
-            Err(hearth_rpc::ResourceError::Unavailable)
-        }
-
-        async fn register_service(&self, pid: LocalProcessId, name: String) -> ResourceResult<()> {
-            let handle = self
-                .factory
-                .get_pid_handle(pid)
-                .ok_or(hearth_rpc::ResourceError::Unavailable)?;
-
-            self.registry.insert(
-                name,
-                &Capability {
-                    handle,
-                    flags: Flags,
-                },
-            );
-
-            Ok(())
-        }
-
-        async fn deregister_service(&self, name: String) -> ResourceResult<()> {
-            if let Some(old) = self.registry.remove(name) {
-                self.factory.store.dec_ref(old.handle);
-                Ok(())
-            } else {
-                Err(ResourceError::Unavailable)
-            }
-        }
-
-        async fn follow_process_list(
-            &self,
-        ) -> CallResult<HashMapSubscription<LocalProcessId, ProcessStatus>> {
-            Ok(self.factory.statuses.read().subscribe(1024))
-        }
-
-        async fn follow_service_list(
-            &self,
-        ) -> CallResult<HashMapSubscription<String, LocalProcessId>> {
-            Err(remoc::rtc::CallError::RemoteForward)
-        }
-    }
 }
