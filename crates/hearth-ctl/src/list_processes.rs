@@ -19,6 +19,7 @@
 use clap::Parser;
 use hearth_rpc::*;
 use hearth_types::PeerId;
+use yacexits::EX_PROTOCOL;
 
 use crate::{hash_map_to_ordered_vec, CommandError, ToCommandError};
 
@@ -58,9 +59,9 @@ impl ListProcesses {
             .peer_provider
             .follow_peer_list()
             .await
-            .to_command_error("following peer list", yacexits::EX_UNAVAILABLE)?
+            .to_command_error("following peer list", EX_PROTOCOL)?
             .take_initial()
-            .to_command_error("getting peer list", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("getting peer list", EX_PROTOCOL)?;
 
         match self.peer.unwrap_or(MaybeAllPeerId::One(daemon.peer_id)) {
             MaybeAllPeerId::All => {
@@ -77,7 +78,7 @@ impl ListProcesses {
                             .peer_provider
                             .find_peer(id)
                             .await
-                            .to_command_error("finding peer", yacexits::EX_UNAVAILABLE)?,
+                            .to_command_error("finding peer", EX_PROTOCOL)?,
                         Some(id),
                     )
                     .await?;
@@ -90,7 +91,7 @@ impl ListProcesses {
                         .peer_provider
                         .find_peer(id)
                         .await
-                        .to_command_error("finding peer", yacexits::EX_UNAVAILABLE)?,
+                        .to_command_error("finding peer", EX_PROTOCOL)?,
                     None,
                 )
                 .await?;
@@ -106,19 +107,19 @@ impl ListProcesses {
         let process_store = peer
             .get_process_store()
             .await
-            .to_command_error("retrieving process store", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("retrieving process store", EX_PROTOCOL)?;
         let process_list = process_store
             .follow_process_list()
             .await
-            .to_command_error("following process list", yacexits::EX_UNAVAILABLE)?
+            .to_command_error("following process list", EX_PROTOCOL)?
             .take_initial()
-            .to_command_error("getting process list", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("getting process list", EX_PROTOCOL)?;
         let service_list = process_store
             .follow_service_list()
             .await
-            .to_command_error("following service list", yacexits::EX_UNAVAILABLE)?
+            .to_command_error("following service list", EX_PROTOCOL)?
             .take_initial()
-            .to_command_error("getting service list", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("getting service list", EX_PROTOCOL)?;
 
         // process info will need to be updated when fields are added to the struct
         for (process_id, _) in hash_map_to_ordered_vec(process_list) {

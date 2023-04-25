@@ -24,6 +24,7 @@ use hearth_rpc::*;
 use hearth_types::*;
 use std::fs::read;
 use std::path::Path;
+use yacexits::{EX_UNAVAILABLE, EX_NOINPUT, EX_PROTOCOL};
 
 use crate::{CommandError, ToCommandError};
 
@@ -42,36 +43,36 @@ impl SpawnWasm {
             .peer_provider
             .find_peer(peer)
             .await
-            .to_command_error("finding peer", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("finding peer", EX_PROTOCOL)?;
         let process_store = peer_api
             .get_process_store()
             .await
-            .to_command_error("retrieving process store", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("retrieving process store", EX_PROTOCOL)?;
         let path = Path::new(&self.file);
         let pid = process_store
             .follow_service_list()
             .await
-            .to_command_error("following service list", yacexits::EX_UNAVAILABLE)?
+            .to_command_error("following service list", EX_PROTOCOL)?
             .take_initial()
-            .to_command_error("getting service list", yacexits::EX_UNAVAILABLE)?
+            .to_command_error("getting service list", EX_PROTOCOL)?
             .get("hearth.cognito.WasmProcessSpawner")
-            .to_command_error("retrieving WasmProcessSpawner", yacexits::EX_UNAVAILABLE)?
+            .to_command_error("retreiving WasmProcessSpawner", EX_UNAVAILABLE)?
             .clone();
         let process = RemoteProcess::new(&daemon, ProcessInfo {}).await.unwrap();
         let lump_id = peer_api
             .get_lump_store()
             .await
-            .to_command_error("retrieving lump store", yacexits::EX_UNAVAILABLE)?
+            .to_command_error("retrieving lump store", EX_PROTOCOL)?
             .upload_lump(
                 None,
                 LazyBlob::new(
                     read(path)
-                        .to_command_error("reading wasm file", yacexits::EX_NOINPUT)?
+                        .to_command_error("reading wasm file", EX_NOINPUT)?
                         .into(),
                 ),
             )
             .await
-            .to_command_error("uploading lump", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("uploading lump", EX_PROTOCOL)?;
 
         let wasm_spawn_info = WasmSpawnInfo {
             lump: lump_id,
@@ -85,7 +86,7 @@ impl SpawnWasm {
                 data: serde_json::to_vec(&wasm_spawn_info).unwrap(),
             })
             .await
-            .to_command_error("sending message", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("sending message", EX_PROTOCOL)?;
 
         // necessary to flush the message send; remove when waiting for the returned PID
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;

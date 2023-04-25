@@ -24,6 +24,7 @@ use hearth_rpc::{
 };
 use hearth_types::PeerId;
 use std::sync::Arc;
+use yacexits::EX_PROTOCOL;
 
 use crate::{CommandError, ToCommandError};
 
@@ -35,7 +36,7 @@ impl RunMockRuntime {
     pub async fn run(self) -> Result<(), CommandError> {
         let daemon_listener = hearth_ipc::Listener::new()
             .await
-            .to_command_error("creating ipc listener", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("creating ipc listener", EX_PROTOCOL)?;
 
         let (peer_provider_server, peer_provider) =
             PeerProviderServerSharedMut::<_, remoc::codec::Default>::new(
@@ -68,7 +69,7 @@ impl RunMockRuntime {
         eprintln!("Waiting for interrupt signal");
         tokio::signal::ctrl_c()
             .await
-            .to_command_error("interrupt await error", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("interrupt await error", EX_PROTOCOL)?;
         eprintln!("interrupt signal received");
         Ok(())
     }

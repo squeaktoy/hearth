@@ -18,6 +18,7 @@
 
 use clap::Parser;
 use hearth_rpc::*;
+use yacexits::EX_PROTOCOL;
 
 use crate::{hash_map_to_ordered_vec, CommandError, ToCommandError};
 
@@ -31,9 +32,9 @@ impl ListPeers {
             .peer_provider
             .follow_peer_list()
             .await
-            .to_command_error("following peer list", yacexits::EX_UNAVAILABLE)?
+            .to_command_error("following peer list", EX_PROTOCOL)?
             .take_initial()
-            .to_command_error("getting peer list", yacexits::EX_UNAVAILABLE)?;
+            .to_command_error("getting peer list", EX_PROTOCOL)?;
 
         //must be updated as time goes on when more peer info is added
         println!("{:>5} {:<10}", "Peer", "Nickname");
