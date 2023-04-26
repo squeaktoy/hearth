@@ -39,6 +39,7 @@ impl std::str::FromStr for MaybeAllPeerId {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_lowercase();
         match s.parse::<u32>() {
             Err(_) => {
                 if s == "all" {
