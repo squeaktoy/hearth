@@ -186,7 +186,6 @@ impl<'a> PeerContext<'a> {
             .take_initial()
             .to_command_error("getting service list", EX_PROTOCOL)
     }
-
 }
 
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
