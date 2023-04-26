@@ -445,6 +445,30 @@ pub mod tests {
     }
 
     #[test]
+    fn link_object_holds_reference() {
+        let store = make_store();
+        let subject = store.insert_mock();
+        let object = store.insert_mock();
+        store.link(subject, object);
+        store.dec_ref(subject);
+        assert!(store.contains(subject));
+        store.dec_ref(object);
+        assert!(!store.contains(subject));
+    }
+
+    #[test]
+    fn link_subject_holds_reference() {
+        let store = make_store();
+        let subject = store.insert_mock();
+        let object = store.insert_mock();
+        store.link(subject, object);
+        store.dec_ref(object);
+        assert!(store.contains(object));
+        store.dec_ref(subject);
+        assert!(!store.contains(subject));
+    }
+
+    #[test]
     fn cyclic_linking_deref() {
         let store = make_store();
         let a = store.insert_mock();
