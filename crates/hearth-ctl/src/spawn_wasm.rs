@@ -24,6 +24,9 @@ use hearth_rpc::*;
 use hearth_types::*;
 use std::fs::read;
 use std::path::Path;
+use yacexits::{EX_NOINPUT, EX_PROTOCOL, EX_UNAVAILABLE};
+
+use crate::*;
 
 /// Spawns a Web Assembly module on a specific peer
 #[derive(Debug, Parser)]
@@ -34,31 +37,31 @@ pub struct SpawnWasm {
 }
 
 impl SpawnWasm {
-    pub async fn run(self, daemon: DaemonOffer) {
-        let peer = self.peer.map(|x| PeerId(x)).unwrap_or(daemon.peer_id);
-        let peer_api = daemon.peer_provider.find_peer(peer).await.unwrap();
-        let process_store = peer_api.get_process_store().await.unwrap();
+    pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
+        let peer_id = self.peer.map(|x| PeerId(x)).unwrap_or(daemon.peer_id);
+        let mut ctx = PeerContext::new(&daemon, peer_id);
         let path = Path::new(&self.file);
-        let pid = process_store
-            .follow_service_list()
-            .await
-            .unwrap()
-            .take_initial()
-            .unwrap()
+
+        let pid = ctx
+            .get_service_list()
+            .await?
             .get("hearth.cognito.WasmProcessSpawner")
-            .expect("Peer is not running WebAssembly")
+            .to_command_error("WasmProcessSpawner not found", EX_UNAVAILABLE)?
             .clone();
         let process = RemoteProcess::new(&daemon, ProcessInfo {}).await.unwrap();
-        let lump_id = peer_api
+        let lump_id = ctx
             .get_lump_store()
-            .await
-            .unwrap()
+            .await?
             .upload_lump(
                 None,
-                LazyBlob::new(read(path).expect("No file at path").into()),
+                LazyBlob::new(
+                    read(path)
+                        .to_command_error("reading wasm file", EX_NOINPUT)?
+                        .into(),
+                ),
             )
             .await
-            .unwrap();
+            .to_command_error("uploading lump", EX_PROTOCOL)?;
 
         let wasm_spawn_info = WasmSpawnInfo {
             lump: lump_id,
@@ -68,13 +71,14 @@ impl SpawnWasm {
         process
             .outgoing
             .send(Message {
-                pid: ProcessId::from_peer_process(peer, pid),
+                pid: ProcessId::from_peer_process(peer_id, pid),
                 data: serde_json::to_vec(&wasm_spawn_info).unwrap(),
             })
             .await
-            .unwrap();
+            .to_command_error("sending message", EX_PROTOCOL)?;
 
         // necessary to flush the message send; remove when waiting for the returned PID
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        Ok(())
     }
 }

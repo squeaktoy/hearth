@@ -24,20 +24,19 @@ use hearth_rpc::{
 };
 use hearth_types::PeerId;
 use std::sync::Arc;
+use yacexits::EX_PROTOCOL;
+
+use crate::{CommandResult, ToCommandError};
 
 /// Runs a mock daemon on a dedicated IPC socket. Only useful for testing purposes.
 #[derive(Debug, Parser)]
 pub struct RunMockRuntime {}
 
 impl RunMockRuntime {
-    pub async fn run(self) {
-        let daemon_listener = match hearth_ipc::Listener::new().await {
-            Ok(l) => l,
-            Err(err) => {
-                eprint!("{err}");
-                return;
-            }
-        };
+    pub async fn run(self) -> CommandResult<()> {
+        let daemon_listener = hearth_ipc::Listener::new()
+            .await
+            .to_command_error("creating ipc listener", EX_PROTOCOL)?;
 
         let (peer_provider_server, peer_provider) =
             PeerProviderServerSharedMut::<_, remoc::codec::Default>::new(
@@ -68,9 +67,10 @@ impl RunMockRuntime {
         hearth_ipc::listen(daemon_listener, daemon_offer);
 
         eprintln!("Waiting for interrupt signal");
-        match tokio::signal::ctrl_c().await {
-            Ok(()) => eprintln!("Interrupt signal received"),
-            Err(err) => eprintln!("Interrupt await error: {:?}", err),
-        }
+        tokio::signal::ctrl_c()
+            .await
+            .to_command_error("interrupt await error", EX_PROTOCOL)?;
+        eprintln!("interrupt signal received");
+        Ok(())
     }
 }
