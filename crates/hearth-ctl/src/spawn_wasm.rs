@@ -26,7 +26,7 @@ use std::fs::read;
 use std::path::Path;
 use yacexits::{EX_NOINPUT, EX_PROTOCOL, EX_UNAVAILABLE};
 
-use crate::{CommandResult, ToCommandError};
+use crate::*;
 
 /// Spawns a Web Assembly module on a specific peer
 #[derive(Debug, Parser)]
@@ -38,31 +38,20 @@ pub struct SpawnWasm {
 
 impl SpawnWasm {
     pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
-        let peer = self.peer.map(|x| PeerId(x)).unwrap_or(daemon.peer_id);
-        let peer_api = daemon
-            .peer_provider
-            .find_peer(peer)
-            .await
-            .to_command_error("finding peer", EX_PROTOCOL)?;
-        let process_store = peer_api
-            .get_process_store()
-            .await
-            .to_command_error("retrieving process store", EX_PROTOCOL)?;
+        let peer_id = self.peer.map(|x| PeerId(x)).unwrap_or(daemon.peer_id);
+        let mut context = PeerContext::new(&daemon, peer_id);
         let path = Path::new(&self.file);
-        let pid = process_store
-            .follow_service_list()
-            .await
-            .to_command_error("following service list", EX_PROTOCOL)?
-            .take_initial()
-            .to_command_error("getting service list", EX_PROTOCOL)?
+
+        let pid = context
+            .get_service_list()
+            .await?
             .get("hearth.cognito.WasmProcessSpawner")
-            .to_command_error("retrieving WasmProcessSpawner", EX_UNAVAILABLE)?
+            .to_command_error("WasmProcessSpawner not found", EX_UNAVAILABLE)?
             .clone();
         let process = RemoteProcess::new(&daemon, ProcessInfo {}).await.unwrap();
-        let lump_id = peer_api
+        let lump_id = context
             .get_lump_store()
-            .await
-            .to_command_error("retrieving lump store", EX_PROTOCOL)?
+            .await?
             .upload_lump(
                 None,
                 LazyBlob::new(
@@ -82,7 +71,7 @@ impl SpawnWasm {
         process
             .outgoing
             .send(Message {
-                pid: ProcessId::from_peer_process(peer, pid),
+                pid: ProcessId::from_peer_process(peer_id, pid),
                 data: serde_json::to_vec(&wasm_spawn_info).unwrap(),
             })
             .await

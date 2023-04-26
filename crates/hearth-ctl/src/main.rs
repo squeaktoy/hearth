@@ -19,7 +19,7 @@
 use std::{collections::HashMap, fmt::Display};
 
 use clap::{Parser, Subcommand};
-use hearth_rpc::{hearth_types::*, DaemonOffer};
+use hearth_rpc::{hearth_types::*, *};
 use std::process::exit;
 
 mod kill;
@@ -27,7 +27,7 @@ mod list_peers;
 mod list_processes;
 mod run_mock_runtime;
 mod spawn_wasm;
-use yacexits::EX_PROTOCOL;
+use yacexits::{EX_OK, EX_PROTOCOL};
 
 pub struct CommandError {
     message: String,
@@ -95,6 +95,100 @@ impl MaybeLocalPid {
     }
 }
 
+pub struct PeerContext<'a> {
+    offer: &'a DaemonOffer,
+    peer_id: PeerId,
+    peer_api: Option<PeerApiClient>,
+    process_store: Option<ProcessStoreClient>,
+    lump_store: Option<LumpStoreClient>,
+}
+
+impl<'a> PeerContext<'a> {
+    pub fn new(offer: &'a DaemonOffer, peer_id: PeerId) -> Self {
+        Self {
+            offer,
+            peer_id,
+            peer_api: None,
+            process_store: None,
+            lump_store: None,
+        }
+    }
+
+    async fn get_peer_api(&mut self) -> CommandResult<PeerApiClient> {
+        if let Some(api) = self.peer_api.clone() {
+            Ok(api)
+        } else {
+            let api = self
+                .offer
+                .peer_provider
+                .find_peer(self.peer_id)
+                .await
+                .to_command_error("finding peer", EX_PROTOCOL)?;
+
+            Ok(self.peer_api.insert(api).clone())
+        }
+    }
+
+    async fn get_process_store(&mut self) -> CommandResult<ProcessStoreClient> {
+        if let Some(store) = self.process_store.clone() {
+            Ok(store)
+        } else {
+            let store = self
+                .get_peer_api()
+                .await?
+                .get_process_store()
+                .await
+                .to_command_error("retrieving process store", EX_PROTOCOL)?;
+
+            Ok(self.process_store.insert(store).clone())
+        }
+    }
+
+    async fn get_process_list(&mut self) -> CommandResult<HashMap<LocalProcessId, ProcessStatus>> {
+        self.get_process_store()
+            .await?
+            .follow_process_list()
+            .await
+            .to_command_error("following process list", EX_PROTOCOL)?
+            .take_initial()
+            .to_command_error("getting process list", EX_PROTOCOL)
+    }
+
+    async fn find_process(&mut self, local_pid: LocalProcessId) -> CommandResult<ProcessApiClient> {
+        self.get_process_store()
+            .await?
+            .find_process(local_pid)
+            .await
+            .to_command_error("finding process", EX_PROTOCOL)
+    }
+
+    async fn get_lump_store(&mut self) -> CommandResult<LumpStoreClient> {
+        if let Some(store) = self.lump_store.clone() {
+            Ok(store)
+        } else {
+            let store = self
+                .get_peer_api()
+                .await?
+                .get_lump_store()
+                .await
+                .to_command_error("retrieving lump store", EX_PROTOCOL)?;
+
+            Ok(self.lump_store.insert(store).clone())
+        }
+    }
+
+    async fn get_service_list(&mut self) -> CommandResult<HashMap<String, LocalProcessId>> {
+        self.get_process_store()
+            .await?
+            .follow_service_list()
+            .await
+            .to_command_error("following service list", EX_PROTOCOL)?
+            .take_initial()
+            .to_command_error("getting service list", EX_PROTOCOL)
+    }
+
+}
+
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -127,9 +221,9 @@ impl Commands {
 async fn main() {
     let args = Args::parse();
     match args.command.run().await {
-        Ok(_) => exit(0),
+        Ok(_) => exit(EX_OK as i32),
         Err(e) => {
-            eprintln!("{}", e.message);
+            eprintln!("ERROR: {}", e.message);
             exit(e.exit_code as i32)
         }
     }
@@ -145,4 +239,14 @@ fn hash_map_to_ordered_vec<K: Copy + Ord, V>(map: HashMap<K, V>) -> Vec<(K, V)> 
     let mut vec = map.into_iter().collect::<Vec<(K, V)>>();
     vec.sort_by_cached_key(|k| k.0);
     vec
+}
+
+async fn get_peer_list(daemon: &DaemonOffer) -> CommandResult<HashMap<PeerId, PeerInfo>> {
+    daemon
+        .peer_provider
+        .follow_peer_list()
+        .await
+        .to_command_error("following peer lsit", EX_PROTOCOL)?
+        .take_initial()
+        .to_command_error("getting peer list", EX_PROTOCOL)
 }

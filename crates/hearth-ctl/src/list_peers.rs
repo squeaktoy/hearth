@@ -18,9 +18,8 @@
 
 use clap::Parser;
 use hearth_rpc::*;
-use yacexits::EX_PROTOCOL;
 
-use crate::{hash_map_to_ordered_vec, CommandResult, ToCommandError};
+use crate::{get_peer_list, hash_map_to_ordered_vec, CommandResult};
 
 /// Lists all peers currently participating in the space.
 #[derive(Debug, Parser)]
@@ -28,17 +27,11 @@ pub struct ListPeers {}
 
 impl ListPeers {
     pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
-        let peer_map = daemon
-            .peer_provider
-            .follow_peer_list()
-            .await
-            .to_command_error("following peer list", EX_PROTOCOL)?
-            .take_initial()
-            .to_command_error("getting peer list", EX_PROTOCOL)?;
+        let peer_list = get_peer_list(&daemon).await?;
 
         //must be updated as time goes on when more peer info is added
         println!("{:>5} {:<10}", "Peer", "Nickname");
-        for (peer_id, peer_info) in hash_map_to_ordered_vec(peer_map) {
+        for (peer_id, peer_info) in hash_map_to_ordered_vec(peer_list) {
             println!(
                 "{:>5} {:<10}",
                 peer_id.0,

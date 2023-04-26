@@ -19,9 +19,8 @@
 use clap::Parser;
 use hearth_rpc::*;
 use hearth_types::PeerId;
-use yacexits::EX_PROTOCOL;
 
-use crate::{hash_map_to_ordered_vec, CommandResult, ToCommandError};
+use crate::{get_peer_list, hash_map_to_ordered_vec, CommandResult, PeerContext};
 
 /// Lists proccesses of either a singular peer or all peers in the space.
 #[derive(Debug, Parser)]
@@ -55,13 +54,7 @@ impl std::str::FromStr for MaybeAllPeerId {
 
 impl ListProcesses {
     pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
-        let peer_list = daemon
-            .peer_provider
-            .follow_peer_list()
-            .await
-            .to_command_error("following peer list", EX_PROTOCOL)?
-            .take_initial()
-            .to_command_error("getting peer list", EX_PROTOCOL)?;
+        let peer_list = get_peer_list(&daemon).await?;
 
         match self.peer.unwrap_or(MaybeAllPeerId::One(daemon.peer_id)) {
             MaybeAllPeerId::All => {
@@ -73,56 +66,24 @@ impl ListProcesses {
                     } else {
                         is_first = false;
                     }
-                    ListProcesses::display_peer(
-                        daemon
-                            .peer_provider
-                            .find_peer(id)
-                            .await
-                            .to_command_error("finding peer", EX_PROTOCOL)?,
-                        Some(id),
-                    )
-                    .await?;
+                    Self::display_peer(PeerContext::new(&daemon, id)).await?;
                 }
             }
             MaybeAllPeerId::One(id) => {
-                println!("PID\tService");
-                ListProcesses::display_peer(
-                    daemon
-                        .peer_provider
-                        .find_peer(id)
-                        .await
-                        .to_command_error("finding peer", EX_PROTOCOL)?,
-                    None,
-                )
-                .await?;
+                println!("{:>5} {:>5} {:<20}", "Peer", "PID", "Service");
+                Self::display_peer(PeerContext::new(&daemon, id)).await?;
             }
         }
         Ok(())
     }
 
-    async fn display_peer(peer: PeerApiClient, peer_id: Option<PeerId>) -> CommandResult<()> {
-        let process_store = peer
-            .get_process_store()
-            .await
-            .to_command_error("retrieving process store", EX_PROTOCOL)?;
-        let process_list = process_store
-            .follow_process_list()
-            .await
-            .to_command_error("following process list", EX_PROTOCOL)?
-            .take_initial()
-            .to_command_error("getting process list", EX_PROTOCOL)?;
-        let service_list = process_store
-            .follow_service_list()
-            .await
-            .to_command_error("following service list", EX_PROTOCOL)?
-            .take_initial()
-            .to_command_error("getting service list", EX_PROTOCOL)?;
+    async fn display_peer(mut ctx: PeerContext<'_>) -> CommandResult<()> {
+        let process_list = ctx.get_process_list().await?;
+        let service_list = ctx.get_service_list().await?;
 
         // process info will need to be updated when fields are added to the struct
         for (process_id, _) in hash_map_to_ordered_vec(process_list) {
-            if peer_id.is_some() {
-                print!("{:>5} ", peer_id.unwrap().0);
-            }
+            print!("{:>5} ", ctx.peer_id.0);
 
             print!("{:>5} ", process_id.0);
             let mut is_first = true;

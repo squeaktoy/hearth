@@ -20,7 +20,7 @@ use clap::Parser;
 use hearth_rpc::*;
 use yacexits::EX_PROTOCOL;
 
-use crate::{CommandResult, MaybeLocalPid, ToCommandError};
+use crate::*;
 
 /// Kill a process
 #[derive(Debug, Parser)]
@@ -31,19 +31,11 @@ pub struct Kill {
 
 impl Kill {
     pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
-        let (peer, local_pid) = self.process.to_global_pid(daemon.peer_id).split();
+        let (peer_id, local_pid) = self.process.to_global_pid(daemon.peer_id).split();
+        let mut ctx = PeerContext::new(&daemon, peer_id);
 
-        daemon
-            .peer_provider
-            .find_peer(peer)
-            .await
-            .to_command_error("finding peer", EX_PROTOCOL)?
-            .get_process_store()
-            .await
-            .to_command_error("retrieving process store", EX_PROTOCOL)?
-            .find_process(local_pid)
-            .await
-            .to_command_error("finding process", EX_PROTOCOL)?
+        ctx.find_process(local_pid)
+            .await?
             .kill()
             .await
             .to_command_error("killing process", EX_PROTOCOL)
