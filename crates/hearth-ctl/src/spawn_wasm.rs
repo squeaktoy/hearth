@@ -39,17 +39,17 @@ pub struct SpawnWasm {
 impl SpawnWasm {
     pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
         let peer_id = self.peer.map(|x| PeerId(x)).unwrap_or(daemon.peer_id);
-        let mut context = PeerContext::new(&daemon, peer_id);
+        let mut ctx = PeerContext::new(&daemon, peer_id);
         let path = Path::new(&self.file);
 
-        let pid = context
+        let pid = ctx
             .get_service_list()
             .await?
             .get("hearth.cognito.WasmProcessSpawner")
             .to_command_error("WasmProcessSpawner not found", EX_UNAVAILABLE)?
             .clone();
         let process = RemoteProcess::new(&daemon, ProcessInfo {}).await.unwrap();
-        let lump_id = context
+        let lump_id = ctx
             .get_lump_store()
             .await?
             .upload_lump(
