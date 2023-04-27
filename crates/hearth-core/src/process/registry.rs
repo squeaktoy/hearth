@@ -55,8 +55,7 @@ impl<Store: ProcessStoreTrait> Registry<Store> {
     }
 
     #[must_use = "capabilities must be freed before drop"]
-    pub fn insert(&self, service: impl ToString, cap: &Capability) -> Option<Capability> {
-        let cap = cap.clone(self.store.as_ref());
+    pub fn insert(&self, service: impl ToString, cap: Capability) -> Option<Capability> {
         self.services.lock().insert(service.to_string(), cap)
     }
 

@@ -56,7 +56,7 @@ where
             .get_pid_cap(pid)
             .ok_or(hearth_rpc::ResourceError::Unavailable)?;
 
-        if let Some(old) = self.registry.insert(name, &cap) {
+        if let Some(old) = self.registry.insert(name, cap) {
             old.free(self.store.as_ref());
         }
 
