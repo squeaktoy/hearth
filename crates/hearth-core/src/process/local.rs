@@ -26,7 +26,13 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use super::store::{Capability, Message, ProcessEntry, ProcessStoreTrait};
 use super::Flags;
 
+/// A local process entry in a process store.
+///
+/// This simply forwards messages through an async channel, to be used by other
+/// asynchronous tasks.
 pub struct LocalProcess {
+    /// The mailbox channel sender. Sends all incoming messages to this
+    /// process.
     pub mailbox_tx: UnboundedSender<Message>,
 }
 
@@ -50,7 +56,7 @@ impl ProcessEntry for LocalProcess {
 /// A message sent to a process, contextualized in a [ProcessContext].
 ///
 /// All process handles are indices into the context's capability store.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContextMessage {
     /// Sent when a linked process has been unlinked.
     Unlink { subject: usize },
@@ -221,25 +227,129 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
 mod tests {
     use super::*;
 
-    use crate::process::store::{tests::*, ProcessStore};
+    use crate::process::store;
+    use store::tests::MockProcessEntry;
+    use store::ProcessStore;
 
-    fn make_ctx() -> ProcessContext<ProcessStore<MockProcessEntry>> {
-        let store = Arc::new(make_store());
+    impl<Store: ProcessStoreTrait> ProcessContext<Store> {
+        /// Utility struct to directly insert a capability into this context.
+        fn insert_cap(&mut self, cap: Capability) -> usize {
+            self.caps.insert(cap)
+        }
+    }
+
+    fn make_store() -> Arc<ProcessStore<MockProcessEntry>> {
+        Arc::new(store::tests::make_store())
+    }
+
+    fn make_ctx_cap(
+        store: &Arc<ProcessStore<MockProcessEntry>>,
+    ) -> (ProcessContext<ProcessStore<MockProcessEntry>>, Capability) {
         let (sync_mailbox, handle) = store.insert_forward();
         let (mailbox_tx, mailbox) = tokio::sync::mpsc::unbounded_channel();
 
-        tokio::task::spawn(async move {
+        std::thread::spawn(move || {
             while let Ok(message) = sync_mailbox.recv() {
                 let _ = mailbox_tx.send(message);
             }
         });
 
-        let self_cap = Capability::new(handle, Flags);
-        ProcessContext::new(store, self_cap, mailbox)
+        let cap = Capability::new(handle, Flags);
+        let self_cap = cap.clone(store.as_ref());
+        let ctx = ProcessContext::new(store.to_owned(), self_cap, mailbox);
+        (ctx, cap)
+    }
+
+    fn make_ctx(
+        store: &Arc<ProcessStore<MockProcessEntry>>,
+    ) -> ProcessContext<ProcessStore<MockProcessEntry>> {
+        let (ctx, cap) = make_ctx_cap(&store);
+        cap.free(store.as_ref());
+        ctx
     }
 
     #[tokio::test]
     async fn new() {
-        let _ctx = make_ctx();
+        let store = make_store();
+        let _ctx = make_ctx(&store);
+    }
+
+    #[tokio::test]
+    async fn new_two() {
+        let store = make_store();
+        let _a = make_ctx(&store);
+        let _b = make_ctx(&store);
+    }
+
+    #[tokio::test]
+    async fn recv() {
+        let store = make_store();
+        let (mut ctx, cap) = make_ctx_cap(&store);
+
+        let msg = Message::Data {
+            data: b"Hello, world!".to_vec(),
+            caps: vec![],
+        };
+
+        store.send(cap.get_handle(), msg);
+        cap.free(store.as_ref());
+
+        assert_eq!(
+            ctx.recv().await.unwrap(),
+            ContextMessage::Data {
+                data: b"Hello, world!".to_vec(),
+                caps: vec![]
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn send() {
+        let store = make_store();
+        let (mut a_ctx, a_cap) = make_ctx_cap(&store);
+        let mut b_ctx = make_ctx(&store);
+        let a_handle = b_ctx.insert_cap(a_cap);
+
+        let msg = ContextMessage::Data {
+            data: vec![],
+            caps: vec![],
+        };
+
+        b_ctx.send(a_handle, msg.clone()).unwrap();
+        assert_eq!(a_ctx.recv().await, Some(msg));
+    }
+
+    #[tokio::test]
+    async fn send_caps() {
+        let store = make_store();
+        let (mut a_ctx, a_cap) = make_ctx_cap(&store);
+        let mut b_ctx = make_ctx(&store);
+        let a_handle = b_ctx.insert_cap(a_cap);
+
+        let msg = ContextMessage::Data {
+            data: vec![],
+            caps: vec![0], // send self handle
+        };
+
+        b_ctx.send(a_handle, msg).unwrap();
+
+        assert_eq!(
+            a_ctx.recv().await,
+            Some(ContextMessage::Data {
+                data: vec![],
+                caps: vec![1], // "a" capability gets loaded at cap index 1
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_self_cap() {
+        let store = make_store();
+        let (mut ctx, cap) = make_ctx_cap(&store);
+        let handle = cap.get_handle();
+        ctx.delete_capability(0).unwrap();
+        assert!(store.contains(handle));
+        cap.free(store.as_ref());
+        assert!(store.contains(handle));
     }
 }
