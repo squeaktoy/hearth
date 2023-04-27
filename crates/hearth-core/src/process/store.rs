@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+//! Low-level process storage.
+
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use parking_lot::Mutex;
@@ -24,12 +26,46 @@ use sharded_slab::Slab as ShardedSlab;
 use super::local::LocalProcess;
 use super::Flags;
 
-/// An interface trait for implementations of a process store. See the module-level docs for more info.
+/// An interface trait implemented by all process stores.
+///
+/// Process stores contain all of the processes accessible on a local peer.
+/// There is not a strict 1-to-1 correlation between process entries in this
+/// store and a single instance of a process. For example, a remote process may
+/// have multiple entries in this store because the remote peer has offered the
+/// local peer multiple capabilities to the same remote process.
+///
+/// Process entries are referenced by their handle, which is a
+/// non-human-readable `usize`. Process entries in the local store are
+/// reference-counted. This ensures that all references to a process stay valid
+/// as long as they are needed, even if a process is killed or forcefully
+/// revoked by a remote peer. All process entries are valid until all
+/// references have been dropped. The reference count is manually modified by
+/// two methods: [ProcessStoreTrait::inc_ref] and [ProcessStoreTrait::dec_ref],
+/// which respectively increment and decrement the reference count of a handle.
+/// Once the reference count of a handle is
+/// decremented to 0, the process entry is destroyed, and the handle becomes
+/// invalid. All methods panic if given an invalid handle.
+///
+/// Each process entry can be either alive or dead. Dead processes do not
+/// receive any messages sent to them. Please note that even if a process entry
+/// is dead, its handle is still valid as long as it still has a non-zero
+/// reference count. Every process entry can be killed using its handle with
+/// this trait, because the mechanism of killing processes lives in the process
+/// store but the policy of when processes die and who kills them is determined
+/// elsewhere.
 pub trait ProcessStoreTrait {
     type Entry: ProcessEntry;
 
+    /// Inserts a process entry into the store and returns a new handle to it.
+    ///
+    /// The reference count starts at 1, so this handle is owning. After
+    /// calling this, you probably want to turn the handle into a capability
+    /// with [Capability::new].
     fn insert(&self, process: Self::Entry) -> usize;
 
+    /// Sends a message to this process.
+    ///
+    /// Does nothing if the process is dead.
     fn send(&self, handle: usize, message: Message);
 
     /// Kills a process by its handle.
@@ -44,13 +80,22 @@ pub trait ProcessStoreTrait {
     /// Links the subject process to the object process.
     ///
     /// When the subject process dies, the store will send a [Message::Unlink]
-    /// message to the object process.
+    /// message to the object process. The message is sent immediately if the
+    /// link subject is already dead.
     fn link(&self, subject: usize, object: usize);
 
+    /// Tests if a process is alive or not.
+    ///
+    /// Like the other methods, still panics if given an invalid handle.
     fn is_alive(&self, handle: usize) -> bool;
 
+    /// Increments the reference count to a handle.
     fn inc_ref(&self, handle: usize);
 
+    /// Decrements the reference count to a handle.
+    ///
+    /// When the reference count is decremented to 0, the handle becomes
+    /// and the associated entry gets removed from the store.
     fn dec_ref(&self, handle: usize);
 }
 
@@ -61,6 +106,9 @@ struct ProcessWrapper<Process> {
     ref_count: AtomicUsize,
 }
 
+/// The canonical [ProcessStoreTrait] implementation.
+///
+/// This struct implements [ProcessStoreTrait] for any generic [ProcessEntry].
 pub struct ProcessStore<Entry: ProcessEntry> {
     /// A sharded slab of the process entries in this store.
     entries: ShardedSlab<ProcessWrapper<Entry>>,
@@ -219,9 +267,22 @@ impl Message {
     }
 }
 
-/// A capability within a process store.
+/// A capability within a process store, storing both a handle and its
+/// permission flags.
 ///
-/// This capability is non-owning.
+/// This capability is reference-counted but does not own a reference to the
+/// store the handle is from. When done using a capability, you need to call
+/// [Capability::free] to remove this capability's reference from its store.
+/// Capabilities can be duplicated using [Capability::clone], which creates an
+/// identical capability and increments the underlying handle's reference
+/// count.
+///
+/// To help write safe and secure capability code, capabilities cannot be
+/// dropped without calling [Capability::free]. Rust does not provide a way to
+/// make a type un-droppable, so instead [Capability] simply panics in its
+/// [Drop] implementation. Unfreed, dropped capabilities will be caught in our
+/// unit tests, so we can discover handle leaks without needing to scrutinize
+/// every possible capability duplication or change of ownership.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Capability {
     /// The handle of the target process within the process store.
