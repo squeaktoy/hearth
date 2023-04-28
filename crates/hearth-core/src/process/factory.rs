@@ -33,10 +33,10 @@ use super::context::{Capability, Flags, ProcessContext};
 use super::local::LocalProcess;
 use super::store::ProcessStoreTrait;
 
-struct ProcessWrapper {
-    info: ProcessInfo,
-    cap: Capability,
-    log_distributor: ObservableListDistributor<ProcessLogEvent>,
+pub(crate) struct ProcessWrapper {
+    pub info: ProcessInfo,
+    pub cap: Capability,
+    pub log_distributor: ObservableListDistributor<ProcessLogEvent>,
 }
 
 pub struct ProcessFactory<Store> {
@@ -90,11 +90,15 @@ where
         }
     }
 
-    pub(crate) fn get_pid_cap(&self, pid: LocalProcessId) -> Option<Capability> {
+    pub(crate) fn get_pid_wrapper(&self, pid: LocalProcessId) -> Option<ProcessWrapper> {
         self.processes
             .read()
             .get(pid.0 as usize)
-            .map(|w| w.cap.clone(self.store.as_ref()))
+            .map(|wrapper| ProcessWrapper {
+                info: wrapper.info.clone(),
+                cap: wrapper.cap.clone(self.store.as_ref()),
+                log_distributor: wrapper.log_distributor.clone(),
+            })
     }
 }
 
