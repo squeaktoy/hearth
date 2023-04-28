@@ -21,7 +21,8 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use super::store::{Capability, ProcessStoreTrait};
+use super::context::Capability;
+use super::store::ProcessStoreTrait;
 
 pub struct Registry<Store: ProcessStoreTrait> {
     store: Arc<Store>,
@@ -70,8 +71,8 @@ mod tests {
     use super::*;
 
     use crate::process::{
+        context::Flags,
         store::{tests::*, ProcessStore},
-        Flags,
     };
 
     fn make_registry() -> Registry<ProcessStore<MockProcessEntry>> {

@@ -23,8 +23,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use parking_lot::Mutex;
 use sharded_slab::Slab as ShardedSlab;
 
+use super::context::Capability;
 use super::local::LocalProcess;
-use super::Flags;
 
 /// An interface trait implemented by all process stores.
 ///
@@ -267,68 +267,6 @@ impl Message {
     }
 }
 
-/// A capability within a process store, storing both a handle and its
-/// permission flags.
-///
-/// This capability is reference-counted but does not own a reference to the
-/// store the handle is from. When done using a capability, you need to call
-/// [Capability::free] to remove this capability's reference from its store.
-/// Capabilities can be duplicated using [Capability::clone], which creates an
-/// identical capability and increments the underlying handle's reference
-/// count.
-///
-/// To help write safe and secure capability code, capabilities cannot be
-/// dropped without calling [Capability::free]. Rust does not provide a way to
-/// make a type un-droppable, so instead [Capability] simply panics in its
-/// [Drop] implementation. Unfreed, dropped capabilities will be caught in our
-/// unit tests, so we can discover handle leaks without needing to scrutinize
-/// every possible capability duplication or change of ownership.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Capability {
-    /// The handle of the target process within the process store.
-    handle: usize,
-
-    /// The permission flags associated with this capability.
-    flags: Flags,
-}
-
-impl Drop for Capability {
-    fn drop(&mut self) {
-        panic!("capability {} was dropped without freeing", self.handle);
-    }
-}
-
-impl Capability {
-    /// Crate-internal constructor for capabilities.
-    ///
-    /// The given handle is assumed to already have a counted reference, so
-    /// passing a store is unnecessary.
-    pub(crate) fn new(handle: usize, flags: Flags) -> Self {
-        Self { handle, flags }
-    }
-
-    /// Retrieves the handle to the process entry within the store.
-    pub fn get_handle(&self) -> usize {
-        self.handle
-    }
-
-    /// Duplicates this capability and increments its reference count in the store.
-    pub fn clone(&self, store: &impl ProcessStoreTrait) -> Self {
-        store.inc_ref(self.handle);
-
-        Self {
-            handle: self.handle,
-            flags: self.flags,
-        }
-    }
-
-    /// Frees this capability and decrements its reference count in the store.
-    pub fn free(self, store: &impl ProcessStoreTrait) {
-        store.dec_ref(self.handle);
-        std::mem::forget(self);
-    }
-}
-
 pub struct AnyProcessData {
     pub local: <LocalProcess as ProcessEntry>::Data,
 }
@@ -371,6 +309,8 @@ pub mod tests {
     use super::*;
 
     use std::sync::mpsc::{channel, Receiver, Sender};
+
+    use crate::process::context::Flags;
 
     pub struct MockProcessEntry {
         mailbox_tx: Sender<Message>,

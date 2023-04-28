@@ -16,11 +16,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+pub mod context;
 pub mod factory;
 pub mod local;
 pub mod registry;
 pub mod rpc;
 pub mod store;
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Flags;

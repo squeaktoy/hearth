@@ -29,9 +29,9 @@ use remoc::robs::list::ObservableList;
 use slab::Slab;
 use tokio::sync::mpsc::unbounded_channel;
 
-use super::local::{LocalProcess, ProcessContext};
-use super::store::{Capability, ProcessStoreTrait};
-use super::Flags;
+use super::context::{Capability, Flags, ProcessContext};
+use super::local::LocalProcess;
+use super::store::ProcessStoreTrait;
 
 struct ProcessWrapper {
     info: ProcessInfo,
