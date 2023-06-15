@@ -272,6 +272,11 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
             .map(|cap| cap.flags)
     }
 
+    /// Inserts a capability and returns its handle.
+    pub(crate) fn insert_cap(&mut self, cap: Capability) -> usize {
+        self.caps.insert(cap)
+    }
+
     /// Retrieves a capability by handle.
     pub(crate) fn get_cap(&self, handle: usize) -> anyhow::Result<&Capability> {
         self.caps
@@ -287,13 +292,6 @@ mod tests {
     use crate::process::store;
     use store::tests::MockProcessEntry;
     use store::ProcessStore;
-
-    impl<Store: ProcessStoreTrait> ProcessContext<Store> {
-        /// Utility struct to directly insert a capability into this context.
-        fn insert_cap(&mut self, cap: Capability) -> usize {
-            self.caps.insert(cap)
-        }
-    }
 
     fn make_store() -> Arc<ProcessStore<MockProcessEntry>> {
         Arc::new(store::tests::make_store())
