@@ -89,6 +89,17 @@ impl Display for LumpId {
     }
 }
 
+bitflags::bitflags! {
+    /// The permission flags of a capability.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct Flags: u32 {
+        const SEND = 1 << 0;
+        const KILL = 1 << 1;
+        const REGISTER = 1 << 2;
+        const TRUSTED = 1 << 3;
+    }
+}
+
 /// The severity level for a log message emitted by a process.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ProcessLogLevel {
