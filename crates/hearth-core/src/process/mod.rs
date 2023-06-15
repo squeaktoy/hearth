@@ -16,6 +16,18 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+/// The default [store::ProcessStoreTrait] implementation.
+pub type ProcessStore = store::ProcessStore<store::AnyProcess>;
+
+/// The default process registry using [ProcessStore].
+pub type Registry = registry::Registry<ProcessStore>;
+
+/// The default process factory using [ProcessStore].
+pub type ProcessFactory = factory::ProcessFactory<ProcessStore>;
+
+/// The default local process using [ProcessStore].
+pub type Process = factory::Process<ProcessStore>;
+
 pub mod context;
 pub mod factory;
 pub mod local;
