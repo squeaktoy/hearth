@@ -119,6 +119,18 @@ pub struct ProcessStore<Entry: ProcessEntry> {
     entries_data: Entry::Data,
 }
 
+impl<Entry: ProcessEntry> Default for ProcessStore<Entry>
+where
+    Entry::Data: Default,
+{
+    fn default() -> Self {
+        Self {
+            entries: ShardedSlab::new(),
+            entries_data: Default::default(),
+        }
+    }
+}
+
 impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
     type Entry = Entry;
 
@@ -267,6 +279,7 @@ impl Message {
     }
 }
 
+#[derive(Default)]
 pub struct AnyProcessData {
     pub local: <LocalProcess as ProcessEntry>::Data,
 }
