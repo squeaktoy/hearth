@@ -228,9 +228,12 @@ impl RuntimeBuilder {
         use crate::process::*;
 
         let process_store = Arc::new(ProcessStore::default());
-        let process_factory =
-            Arc::new(ProcessFactory::new(process_store.clone(), config.this_peer));
         let process_registry = Arc::new(Registry::new(process_store.clone()));
+        let process_factory = Arc::new(ProcessFactory::new(
+            process_store.clone(),
+            process_registry.clone(),
+            config.this_peer,
+        ));
 
         debug!("Spawning lum store server");
         let lump_store = self.lump_store;
@@ -266,8 +269,8 @@ impl RuntimeBuilder {
             lump_store,
             lump_store_client,
             process_store,
-            process_factory,
             process_registry,
+            process_factory,
             process_store_client,
             process_factory_client,
             config,
@@ -329,11 +332,11 @@ pub struct Runtime {
     /// This runtime's process store.
     pub process_store: Arc<crate::process::ProcessStore>,
 
-    /// This runtime's process factory.
-    pub process_factory: Arc<crate::process::ProcessFactory>,
-
     /// This runtime's process registry.
     pub process_registry: Arc<crate::process::Registry>,
+
+    /// This runtime's process factory.
+    pub process_factory: Arc<crate::process::ProcessFactory>,
 
     /// A clone-able client to this runtime's process store.
     pub process_store_client: ProcessStoreClient,

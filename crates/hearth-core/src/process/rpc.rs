@@ -141,7 +141,7 @@ where
     }
 }
 
-pub struct ProcessFactoryImpl<Store> {
+pub struct ProcessFactoryImpl<Store: ProcessStoreTrait> {
     factory: Arc<ProcessFactory<Store>>,
 }
 

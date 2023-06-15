@@ -31,6 +31,7 @@ use tokio::sync::mpsc::unbounded_channel;
 
 use super::context::{Capability, Flags, ProcessContext};
 use super::local::LocalProcess;
+use super::registry::Registry;
 use super::store::ProcessStoreTrait;
 
 pub(crate) struct ProcessWrapper {
@@ -39,8 +40,9 @@ pub(crate) struct ProcessWrapper {
     pub log_distributor: ObservableListDistributor<ProcessLogEvent>,
 }
 
-pub struct ProcessFactory<Store> {
+pub struct ProcessFactory<Store: ProcessStoreTrait> {
     store: Arc<Store>,
+    registry: Arc<Registry<Store>>,
     peer: PeerId,
     processes: RwLock<Slab<ProcessWrapper>>,
     pub(crate) statuses: RwLock<ObservableHashMap<LocalProcessId, ProcessStatus>>,
@@ -52,9 +54,10 @@ where
     Store::Entry: From<LocalProcess>,
 {
     /// Creates a new process factory.
-    pub fn new(store: Arc<Store>, peer: PeerId) -> Self {
+    pub fn new(store: Arc<Store>, registry: Arc<Registry<Store>>, peer: PeerId) -> Self {
         Self {
             store,
+            registry,
             peer,
             processes: Default::default(),
             statuses: Default::default(),
@@ -93,6 +96,7 @@ where
         Process {
             pid: ProcessId::from_peer_process(self.peer, pid),
             ctx,
+            registry: self.registry.clone(),
             log,
             warning_num_tx,
             error_num_tx,
@@ -119,6 +123,9 @@ pub struct Process<Store: ProcessStoreTrait> {
 
     /// The context for this process.
     ctx: ProcessContext<Store>,
+
+    /// The registry for this process.
+    registry: Arc<Registry<Store>>,
 
     /// Observable log for this process's log events.
     log: ObservableList<ProcessLogEvent>,
@@ -172,5 +179,10 @@ impl<Store: ProcessStoreTrait> Process<Store> {
 
         // actually push the log event
         self.log.push(event);
+    }
+
+    /// Retrieves a service capability from the registry.
+    pub fn get_service(&mut self, name: impl AsRef<str>) -> Option<usize> {
+        self.registry.get(name).map(|cap| self.ctx.insert_cap(cap))
     }
 }
