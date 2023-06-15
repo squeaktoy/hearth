@@ -51,6 +51,16 @@ where
     Store: ProcessStoreTrait,
     Store::Entry: From<LocalProcess>,
 {
+    /// Creates a new process factory.
+    pub fn new(store: Arc<Store>, peer: PeerId) -> Self {
+        Self {
+            store,
+            peer,
+            processes: Default::default(),
+            statuses: Default::default(),
+        }
+    }
+
     /// Spawns a process.
     pub fn spawn(&self, info: ProcessInfo, flags: Flags) -> Process<Store> {
         let log = ObservableList::new();
