@@ -155,17 +155,13 @@ impl RuntimeBuilder {
     ///
     /// Behind the scenes this creates a runner that spawns the process and
     /// registers it as a service.
-    pub fn add_service<F, R>(
+    pub fn add_service(
         &mut self,
         name: String,
         info: ProcessInfo,
         flags: Flags,
-        cb: F,
-    ) -> &mut Self
-    where
-        F: FnOnce(Arc<Runtime>, crate::process::Process) -> R + Send + Sync + 'static,
-        R: Future<Output = ()> + Send,
-    {
+        cb: impl FnOnce(Arc<Runtime>, crate::process::Process) + Send + 'static,
+    ) -> &mut Self {
         if self.services.contains(&name) {
             error!("Service name {} is taken", name);
             return self;
@@ -185,7 +181,7 @@ impl RuntimeBuilder {
                     old_cap.free(runtime.process_store.as_ref());
                 }
 
-                cb(runtime, process).await;
+                cb(runtime, process);
             })
         }));
 
