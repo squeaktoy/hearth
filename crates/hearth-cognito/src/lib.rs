@@ -22,13 +22,14 @@ use anyhow::{anyhow, Result};
 use hearth_core::anyhow::{self, bail, Context};
 use hearth_core::asset::{AssetLoader, AssetStore};
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
-use hearth_core::process::{Message, Process, ProcessContext};
+use hearth_core::process::context::{ContextMessage, Flags};
+use hearth_core::process::Process;
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_core::tokio;
 use hearth_macros::impl_wasm_linker;
 use hearth_rpc::hearth_types::wasm::WasmSpawnInfo;
-use hearth_rpc::hearth_types::{LumpId, PeerId, ProcessId, ProcessLogLevel};
-use hearth_rpc::{remoc, ProcessInfo, ProcessLogEvent, ProcessStore};
+use hearth_rpc::hearth_types::{LumpId, ProcessLogLevel};
+use hearth_rpc::{remoc, ProcessInfo, ProcessLogEvent};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use remoc::rtc::async_trait;
 use slab::Slab;
@@ -36,16 +37,9 @@ use tokio::sync::{oneshot, Mutex};
 use tracing::{debug, error, warn};
 use wasmtime::*;
 
-/// Implements the `hearth::asset` ABI module.
-#[derive(Debug, Default)]
-pub struct AssetAbi {}
-
-#[impl_wasm_linker(module = "hearth::asset")]
-impl AssetAbi {}
-
 /// Implements the `hearth::log` ABI module.
 pub struct LogAbi {
-    pub ctx: Arc<Mutex<ProcessContext>>,
+    pub ctx: Arc<Mutex<Process>>,
 }
 
 #[impl_wasm_linker(module = "hearth::log")]
@@ -72,7 +66,7 @@ impl LogAbi {
 }
 
 impl LogAbi {
-    pub fn new(ctx: Arc<Mutex<ProcessContext>>) -> Self {
+    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
         Self { ctx }
     }
 }
@@ -85,14 +79,21 @@ pub struct LocalLump {
 }
 
 /// Implements the `hearth::lump` ABI module.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LumpAbi {
     pub lump_store: Arc<LumpStoreImpl>,
     pub lump_handles: Slab<LocalLump>,
+    pub this_lump: LumpId,
 }
 
 #[impl_wasm_linker(module = "hearth::lump")]
 impl LumpAbi {
+    async fn this_lump(&self, memory: GuestMemory<'_>, ptr: u32) -> Result<()> {
+        let id: &mut LumpId = memory.get_memory_ref(ptr)?;
+        *id = self.this_lump;
+        Ok(())
+    }
+
     async fn from_id(&mut self, memory: GuestMemory<'_>, id_ptr: u32) -> Result<u32> {
         let id: LumpId = *memory.get_memory_ref(id_ptr)?;
         let bytes = self
@@ -104,10 +105,7 @@ impl LumpAbi {
     }
 
     async fn load(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<u32> {
-        let bytes: Bytes = memory
-            .get_slice(ptr as usize, len as usize)?
-            .to_vec()
-            .into();
+        let bytes: Bytes = memory.get_slice(ptr, len)?.to_vec().into();
         let id = self.lump_store.add_lump(bytes.clone()).await;
         let lump = LocalLump { id, bytes };
         let handle = self.lump_handles.insert(lump) as u32;
@@ -127,8 +125,8 @@ impl LumpAbi {
 
     fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
         let lump = self.get_lump(handle)?;
-        let len = lump.bytes.len();
-        let dst = memory.get_slice(ptr as usize, len)?;
+        let len = lump.bytes.len() as u32;
+        let dst = memory.get_slice(ptr, len)?;
         dst.copy_from_slice(&lump.bytes);
         Ok(())
     }
@@ -142,6 +140,14 @@ impl LumpAbi {
 }
 
 impl LumpAbi {
+    pub fn new(runtime: &Runtime, this_lump: LumpId) -> Self {
+        Self {
+            lump_store: runtime.lump_store.clone(),
+            lump_handles: Default::default(),
+            this_lump,
+        }
+    }
+
     fn get_lump(&self, handle: u32) -> Result<&LocalLump> {
         self.lump_handles
             .get(handle as usize)
@@ -151,12 +157,34 @@ impl LumpAbi {
 
 /// Implements the `hearth::message` ABI module.
 pub struct MessageAbi {
-    pub msg_store: Slab<Message>,
-    pub ctx: Arc<Mutex<ProcessContext>>,
+    pub msg_store: Slab<ContextMessage>,
+    pub ctx: Arc<Mutex<Process>>,
 }
 
 #[impl_wasm_linker(module = "hearth::message")]
 impl MessageAbi {
+    async fn send(
+        &mut self,
+        memory: GuestMemory<'_>,
+        dst_cap: u32,
+        data_ptr: u32,
+        data_len: u32,
+        caps_ptr: u32,
+        caps_num: u32,
+    ) -> Result<()> {
+        self.ctx.lock().await.send(
+            dst_cap as usize,
+            ContextMessage::Data {
+                data: memory.get_slice(data_ptr, data_len)?.to_vec(),
+                caps: memory
+                    .get_memory_slice::<u32>(caps_ptr, caps_num)?
+                    .into_iter()
+                    .map(|cap| *cap as usize)
+                    .collect(),
+            },
+        )
+    }
+
     async fn recv(&mut self) -> Result<u32> {
         match self.ctx.lock().await.recv().await {
             None => Err(anyhow!("Process killed")),
@@ -172,31 +200,47 @@ impl MessageAbi {
         }
     }
 
-    async fn send(&mut self, memory: GuestMemory<'_>, pid: u64, ptr: u32, len: u32) -> Result<()> {
-        let data = memory.get_slice(ptr as usize, len as usize)?;
-        let data = data.to_vec();
-        let pid = ProcessId(pid);
-        self.ctx.lock().await.send_message(pid, data).await?;
+    fn get_data_len(&self, handle: u32) -> Result<u32> {
+        Ok(match self.get_msg(handle)? {
+            ContextMessage::Unlink { .. } => 0,
+            ContextMessage::Data { data, .. } => data.len() as u32,
+        })
+    }
+
+    fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
+        match self.get_msg(handle)? {
+            ContextMessage::Unlink { .. } => {
+                bail!("cannot retrieve data of unlink message {}", handle);
+            }
+            ContextMessage::Data { data, .. } => {
+                let len = data.len() as u32;
+                let dst = memory.get_slice(ptr, len)?;
+                dst.copy_from_slice(data.as_slice());
+                Ok(())
+            }
+        }
+    }
+
+    fn get_caps_num(&self, handle: u32) -> Result<u32> {
+        Ok(match self.get_msg(handle)? {
+            ContextMessage::Unlink { .. } => 1,
+            ContextMessage::Data { caps, .. } => caps.len() as u32,
+        })
+    }
+
+    fn get_caps(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
+        let caps = match self.get_msg(handle)? {
+            ContextMessage::Unlink { subject } => vec![*subject as u32],
+            ContextMessage::Data { caps, .. } => caps.iter().map(|cap| *cap as u32).collect(),
+        };
+
+        let len = caps.len() as u32;
+        let dst = memory.get_memory_slice::<u32>(ptr, len)?;
+        dst.copy_from_slice(caps.as_slice());
         Ok(())
     }
 
-    async fn get_sender(&self, handle: u32) -> Result<u64> {
-        self.get_msg(handle).map(|msg| msg.sender.0)
-    }
-
-    async fn get_len(&self, handle: u32) -> Result<u32> {
-        self.get_msg(handle).map(|msg| msg.data.len() as u32)
-    }
-
-    async fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
-        let msg = self.get_msg(handle)?;
-        let len = msg.data.len();
-        let dst = memory.get_slice(ptr as usize, len)?;
-        dst.copy_from_slice(msg.data.as_slice());
-        Ok(())
-    }
-
-    async fn free(&mut self, handle: u32) -> Result<()> {
+    fn free(&mut self, handle: u32) -> Result<()> {
         self.msg_store
             .try_remove(handle as usize)
             .map(|_| ())
@@ -205,14 +249,14 @@ impl MessageAbi {
 }
 
 impl MessageAbi {
-    pub fn new(ctx: Arc<Mutex<ProcessContext>>) -> Self {
+    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
         Self {
             msg_store: Slab::new(),
             ctx,
         }
     }
 
-    fn get_msg(&self, handle: u32) -> Result<&Message> {
+    fn get_msg(&self, handle: u32) -> Result<&ContextMessage> {
         self.msg_store
             .get(handle as usize)
             .with_context(|| format!("message handle {} is invalid", handle))
@@ -221,41 +265,46 @@ impl MessageAbi {
 
 /// Implements the `hearth::process` ABI module.
 pub struct ProcessAbi {
-    pub ctx: Arc<Mutex<ProcessContext>>,
-    pub this_lump: LumpId,
+    pub ctx: Arc<Mutex<Process>>,
 }
 
 #[impl_wasm_linker(module = "hearth::process")]
 impl ProcessAbi {
-    async fn this_lump(&self, memory: GuestMemory<'_>, ptr: u32) -> Result<()> {
-        let id: &mut LumpId = memory.get_memory_ref(ptr)?;
-        *id = self.this_lump;
-        Ok(())
+    async fn get_flags(&self, cap: u32) -> Result<u32> {
+        bail!("capability flags are unimplemented");
     }
 
-    async fn this_pid(&self) -> u64 {
-        self.ctx.lock().await.get_pid().0
+    async fn copy(&self, cap: u32, new_flags: u32) -> Result<u32> {
+        self.ctx
+            .lock()
+            .await
+            .make_capability(cap as usize, Flags)
+            .map(|cap| cap as u32)
     }
 
-    async fn kill(&self, _pid: u64) -> Result<()> {
-        Err(anyhow!("killing other processes is unimplemented"))
+    async fn kill(&self, cap: u32) -> Result<()> {
+        self.ctx.lock().await.kill(cap as usize)
+    }
+
+    async fn free(&self, cap: u32) -> Result<()> {
+        self.ctx.lock().await.delete_capability(cap as usize)
     }
 }
 
 impl ProcessAbi {
-    pub fn new(ctx: Arc<Mutex<ProcessContext>>, this_lump: LumpId) -> Self {
-        Self { ctx, this_lump }
+    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
+        Self { ctx }
     }
 }
 
 /// Implements the `hearth::service` ABI module.
 pub struct ServiceAbi {
-    pub ctx: Arc<Mutex<ProcessContext>>,
+    pub ctx: Arc<Mutex<Process>>,
 }
 
 #[impl_wasm_linker(module = "hearth::service")]
 impl ServiceAbi {
-    async fn lookup(
+    /*async fn lookup(
         &self,
         memory: GuestMemory<'_>,
         peer: u32,
@@ -321,18 +370,17 @@ impl ServiceAbi {
         ctx.get_process_store().deregister_service(name).await?;
 
         Ok(())
-    }
+    }*/
 }
 
 impl ServiceAbi {
-    pub fn new(ctx: Arc<Mutex<ProcessContext>>) -> Self {
+    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
         Self { ctx }
     }
 }
 
 /// This contains all script-accessible process-related stuff.
 pub struct ProcessData {
-    pub asset: AssetAbi,
     pub log: LogAbi,
     pub lump: LumpAbi,
     pub message: MessageAbi,
@@ -341,15 +389,14 @@ pub struct ProcessData {
 }
 
 impl ProcessData {
-    pub fn new(ctx: ProcessContext, this_lump: LumpId) -> Self {
+    pub fn new(runtime: &Runtime, ctx: Process, this_lump: LumpId) -> Self {
         let ctx = Arc::new(Mutex::new(ctx));
 
         Self {
-            asset: Default::default(),
             log: LogAbi::new(ctx.to_owned()),
-            lump: Default::default(),
+            lump: LumpAbi::new(runtime, this_lump),
             message: MessageAbi::new(ctx.to_owned()),
-            process: ProcessAbi::new(ctx.to_owned(), this_lump),
+            process: ProcessAbi::new(ctx.to_owned()),
             service: ServiceAbi::new(ctx),
         }
     }
@@ -365,7 +412,6 @@ macro_rules! impl_asmut {
     };
 }
 
-impl_asmut!(ProcessData, AssetAbi, asset);
 impl_asmut!(ProcessData, LogAbi, log);
 impl_asmut!(ProcessData, LumpAbi, lump);
 impl_asmut!(ProcessData, MessageAbi, message);
@@ -375,7 +421,6 @@ impl_asmut!(ProcessData, ServiceAbi, service);
 impl ProcessData {
     /// Adds all module ABIs to the given linker.
     pub fn add_to_linker(linker: &mut Linker<Self>) {
-        AssetAbi::add_to_linker(linker);
         LogAbi::add_to_linker(linker);
         LumpAbi::add_to_linker(linker);
         MessageAbi::add_to_linker(linker);
@@ -392,16 +437,11 @@ struct WasmProcess {
     entrypoint: Option<u32>,
 }
 
-#[async_trait]
-impl Process for WasmProcess {
-    fn get_info(&self) -> ProcessInfo {
-        ProcessInfo {}
-    }
-
-    async fn run(&mut self, ctx: ProcessContext) {
+impl WasmProcess {
+    async fn run(&mut self, runtime: Arc<Runtime>, ctx: Process) {
         let pid = ctx.get_pid();
         match self
-            .run_inner(ctx)
+            .run_inner(runtime, ctx)
             .await
             .with_context(|| format!("error in Wasm process {}", pid))
         {
@@ -411,12 +451,10 @@ impl Process for WasmProcess {
             }
         }
     }
-}
 
-impl WasmProcess {
-    async fn run_inner(&mut self, ctx: ProcessContext) -> Result<()> {
+    async fn run_inner(&mut self, runtime: Arc<Runtime>, ctx: Process) -> Result<()> {
         // TODO log using the process log instead of tracing?
-        let data = ProcessData::new(ctx, self.this_lump);
+        let data = ProcessData::new(runtime.as_ref(), ctx, self.this_lump);
         let mut store = Store::new(&self.engine, data);
         store.epoch_deadline_async_yield_and_update(1);
         let instance = self
@@ -449,13 +487,8 @@ pub struct WasmProcessSpawner {
     asset_store: oneshot::Receiver<Arc<AssetStore>>,
 }
 
-#[async_trait]
-impl Process for WasmProcessSpawner {
-    fn get_info(&self) -> ProcessInfo {
-        ProcessInfo {}
-    }
-
-    async fn run(&mut self, mut ctx: ProcessContext) {
+impl WasmProcessSpawner {
+    async fn run(mut self, runtime: Arc<Runtime>, mut ctx: Process) {
         let asset_store = oneshot::channel().1;
         let asset_store = std::mem::replace(&mut self.asset_store, asset_store)
             .await
@@ -463,10 +496,12 @@ impl Process for WasmProcessSpawner {
 
         debug!("Listening to Wasm spawn requests");
         while let Some(message) = ctx.recv().await {
-            let sender = message.sender;
-            debug!("Received message from {:?}", sender.split());
+            let ContextMessage::Data { data: msg_data, caps: msg_caps } = message else {
+                warn!("Wasm spawner expected data message but received: {:?}", message);
+                continue;
+            };
 
-            let message: WasmSpawnInfo = match serde_json::from_slice(&message.data) {
+            let message: WasmSpawnInfo = match serde_json::from_slice(&msg_data) {
                 Ok(message) => message,
                 Err(err) => {
                     ctx.log(ProcessLogEvent {
@@ -498,21 +533,23 @@ impl Process for WasmProcessSpawner {
                 }
                 Ok(module) => {
                     debug!("Spawning module {}", message.lump);
-                    let pid = ctx
-                        .get_process_store()
-                        .spawn(WasmProcess {
-                            engine: self.engine.to_owned(),
-                            linker: self.linker.to_owned(),
+                    let process = runtime.process_factory.spawn(ProcessInfo {}, Flags);
+                    let runtime = runtime.to_owned();
+                    let engine = self.engine.to_owned();
+                    let linker = self.linker.to_owned();
+                    tokio::spawn(async move {
+                        WasmProcess {
+                            engine,
+                            linker,
                             module,
                             entrypoint: message.entrypoint,
                             this_lump: message.lump,
-                        })
+                        }
+                        .run(runtime, process)
                         .await;
+                    });
 
-                    debug!("Spawned PID: {:?}", pid);
-                    let _ = ctx
-                        .send_message(sender, format!("{}", pid.0).into_bytes())
-                        .await;
+                    error!("Sending child cap to parent is unimplemented");
                 }
             }
         }
@@ -546,12 +583,20 @@ impl Plugin for WasmPlugin {
         let (asset_store_tx, asset_store) = oneshot::channel();
         self.asset_store_tx.push(asset_store_tx);
 
+        let spawner = WasmProcessSpawner {
+            engine: self.engine.to_owned(),
+            linker: Arc::new(linker),
+            asset_store,
+        };
+
         builder.add_service(
             "hearth.cognito.WasmProcessSpawner".into(),
-            WasmProcessSpawner {
-                engine: self.engine.to_owned(),
-                linker: Arc::new(linker),
-                asset_store,
+            ProcessInfo {},
+            Flags,
+            |runtime, process| {
+                tokio::spawn(async move {
+                    spawner.run(runtime, process).await;
+                });
             },
         );
 
