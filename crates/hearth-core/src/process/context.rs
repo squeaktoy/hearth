@@ -25,8 +25,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::store::{Message, ProcessStoreTrait};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Flags;
+pub use hearth_rpc::hearth_types::Flags;
 
 /// A capability within a process store, storing both a handle and its
 /// permission flags.
@@ -299,7 +298,7 @@ mod tests {
             }
         });
 
-        let cap = Capability::new(handle, Flags);
+        let cap = Capability::new(handle, Flags::empty());
         let self_cap = cap.clone(store.as_ref());
         let ctx = ProcessContext::new(store.to_owned(), self_cap, mailbox);
         (ctx, cap)

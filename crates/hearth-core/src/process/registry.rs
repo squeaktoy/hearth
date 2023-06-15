@@ -89,7 +89,7 @@ mod tests {
     fn insert_then_get() {
         let reg = make_registry();
         let handle = reg.store.insert_mock();
-        let cap = Capability::new(handle, Flags);
+        let cap = Capability::new(handle, Flags::empty());
         assert!(reg.insert("test", cap).is_none());
         reg.get("test").unwrap().free(reg.store.as_ref());
     }
@@ -98,7 +98,7 @@ mod tests {
     fn get_dead() {
         let reg = make_registry();
         let handle = reg.store.insert_mock();
-        let cap = Capability::new(handle, Flags);
+        let cap = Capability::new(handle, Flags::empty());
         assert!(reg.insert("test", cap).is_none());
         reg.store.kill(handle);
         assert!(reg.get("test").is_none());

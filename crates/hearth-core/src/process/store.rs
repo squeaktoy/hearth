@@ -520,7 +520,7 @@ pub mod tests {
 
         let message = Message::Data {
             data: vec![],
-            caps: vec![Capability::new(handle, Flags)],
+            caps: vec![Capability::new(handle, Flags::empty())],
         };
 
         store.send(handle, message);
