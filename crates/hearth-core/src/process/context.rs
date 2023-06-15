@@ -253,7 +253,8 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
         Ok(())
     }
 
-    fn get_cap(&self, handle: usize) -> anyhow::Result<&Capability> {
+    /// Retrieves a capability by handle.
+    pub(crate) fn get_cap(&self, handle: usize) -> anyhow::Result<&Capability> {
         self.caps
             .get(handle)
             .with_context(|| format!("invalid handle {}", handle))
