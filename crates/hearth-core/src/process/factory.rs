@@ -28,6 +28,7 @@ use remoc::rch::watch;
 use remoc::robs::list::ObservableList;
 use slab::Slab;
 use tokio::sync::mpsc::unbounded_channel;
+use tracing::debug;
 
 use super::context::{Capability, Flags, ProcessContext};
 use super::local::LocalProcess;
@@ -171,6 +172,8 @@ impl<Store: ProcessStoreTrait> Process<Store> {
 
     /// Adds a lot event to this process's log.
     pub fn log(&mut self, event: ProcessLogEvent) {
+        debug!("process log: {:?}", event);
+
         // helper function for incrementing watched counter
         let inc_num = |watch: &mut watch::Sender<u32>| {
             watch.send_modify(|i| *i += 1);
