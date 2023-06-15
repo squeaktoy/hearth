@@ -22,6 +22,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use parking_lot::Mutex;
 use sharded_slab::Slab as ShardedSlab;
+use tracing::trace;
 
 use super::context::Capability;
 use super::local::LocalProcess;
@@ -140,6 +141,7 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
             .vacant_entry()
             .expect("process store at capacity");
         let handle = entry.key();
+        trace!("inserting process {}", handle);
         process.on_insert(&self.entries_data, handle);
         entry.insert(ProcessWrapper {
             inner: process,
@@ -152,10 +154,12 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
     }
 
     fn send(&self, handle: usize, message: Message) {
+        trace!("sending to process {}", handle);
         self.get(handle).inner.on_send(&self.entries_data, message);
     }
 
     fn kill(&self, handle: usize) {
+        trace!("killing process {}", handle);
         let entry = self.get(handle);
         if entry.is_alive.swap(false, Ordering::SeqCst) {
             entry.inner.on_kill(&self.entries_data);
@@ -167,6 +171,7 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
     }
 
     fn link(&self, subject: usize, object: usize) {
+        trace!("linking subject {} to object {}", subject, object);
         let entry = self.get(subject);
         let mut linked = entry.linked.lock();
         self.inc_ref(object);
@@ -174,16 +179,20 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
     }
 
     fn is_alive(&self, handle: usize) -> bool {
+        trace!("testing if process {} is alive", handle);
         self.get(handle).is_alive.load(Ordering::Relaxed)
     }
 
     fn inc_ref(&self, handle: usize) {
+        trace!("incrementing process {} refcount", handle);
         self.get(handle).ref_count.fetch_add(1, Ordering::Release);
     }
 
     fn dec_ref(&self, handle: usize) {
+        trace!("decrementing process {} refcount", handle);
         let process = self.get(handle);
         if process.ref_count.fetch_sub(1, Ordering::SeqCst) == 1 {
+            trace!("removing process {}", handle);
             process.inner.on_remove(&self.entries_data);
 
             for link in process.linked.lock().iter() {
