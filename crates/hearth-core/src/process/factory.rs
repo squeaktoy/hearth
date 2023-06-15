@@ -48,6 +48,15 @@ pub struct ProcessFactory<Store: ProcessStoreTrait> {
     pub(crate) statuses: RwLock<ObservableHashMap<LocalProcessId, ProcessStatus>>,
 }
 
+impl<Store: ProcessStoreTrait> Drop for ProcessFactory<Store> {
+    fn drop(&mut self) {
+        let processes = std::mem::replace(&mut self.processes, Default::default()).into_inner();
+        for (_, process) in processes {
+            process.cap.free(self.store.as_ref());
+        }
+    }
+}
+
 impl<Store> ProcessFactory<Store>
 where
     Store: ProcessStoreTrait,
