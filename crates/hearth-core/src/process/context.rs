@@ -23,7 +23,7 @@ use anyhow::{bail, Context};
 use slab::Slab;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use super::store::{ProcessStoreTrait, Message};
+use super::store::{Message, ProcessStoreTrait};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Flags;
@@ -69,7 +69,7 @@ impl Capability {
     }
 
     /// Retrieves the handle to the process entry within the store.
-    pub fn get_handle(&self) -> usize {
+    pub(crate) fn get_handle(&self) -> usize {
         self.handle
     }
 
