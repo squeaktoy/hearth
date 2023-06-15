@@ -301,6 +301,7 @@ mod tests {
 
     fn make_ctx_cap(
         store: &Arc<ProcessStore<MockProcessEntry>>,
+        flags: Flags,
     ) -> (ProcessContext<ProcessStore<MockProcessEntry>>, Capability) {
         let (sync_mailbox, handle) = store.insert_forward();
         let (mailbox_tx, mailbox) = tokio::sync::mpsc::unbounded_channel();
@@ -311,7 +312,7 @@ mod tests {
             }
         });
 
-        let cap = Capability::new(handle, Flags::empty());
+        let cap = Capability::new(handle, flags);
         let self_cap = cap.clone(store.as_ref());
         let ctx = ProcessContext::new(store.to_owned(), self_cap, mailbox);
         (ctx, cap)
@@ -319,8 +320,9 @@ mod tests {
 
     fn make_ctx(
         store: &Arc<ProcessStore<MockProcessEntry>>,
+        flags: Flags,
     ) -> ProcessContext<ProcessStore<MockProcessEntry>> {
-        let (ctx, cap) = make_ctx_cap(&store);
+        let (ctx, cap) = make_ctx_cap(&store, flags);
         cap.free(store.as_ref());
         ctx
     }
@@ -328,20 +330,20 @@ mod tests {
     #[tokio::test]
     async fn new() {
         let store = make_store();
-        let _ctx = make_ctx(&store);
+        let _ctx = make_ctx(&store, Flags::empty());
     }
 
     #[tokio::test]
     async fn new_two() {
         let store = make_store();
-        let _a = make_ctx(&store);
-        let _b = make_ctx(&store);
+        let _a = make_ctx(&store, Flags::empty());
+        let _b = make_ctx(&store, Flags::empty());
     }
 
     #[tokio::test]
     async fn recv() {
         let store = make_store();
-        let (mut ctx, cap) = make_ctx_cap(&store);
+        let (mut ctx, cap) = make_ctx_cap(&store, Flags::SEND);
 
         let msg = Message::Data {
             data: b"Hello, world!".to_vec(),
@@ -363,8 +365,8 @@ mod tests {
     #[tokio::test]
     async fn send() {
         let store = make_store();
-        let (mut a_ctx, a_cap) = make_ctx_cap(&store);
-        let mut b_ctx = make_ctx(&store);
+        let (mut a_ctx, a_cap) = make_ctx_cap(&store, Flags::SEND);
+        let mut b_ctx = make_ctx(&store, Flags::empty());
         let a_handle = b_ctx.insert_cap(a_cap);
 
         let msg = ContextMessage::Data {
@@ -379,8 +381,8 @@ mod tests {
     #[tokio::test]
     async fn send_caps() {
         let store = make_store();
-        let (mut a_ctx, a_cap) = make_ctx_cap(&store);
-        let mut b_ctx = make_ctx(&store);
+        let (mut a_ctx, a_cap) = make_ctx_cap(&store, Flags::SEND);
+        let mut b_ctx = make_ctx(&store, Flags::empty());
         let a_handle = b_ctx.insert_cap(a_cap);
 
         let msg = ContextMessage::Data {
@@ -402,7 +404,7 @@ mod tests {
     #[tokio::test]
     async fn delete_self_cap() {
         let store = make_store();
-        let (mut ctx, cap) = make_ctx_cap(&store);
+        let (mut ctx, cap) = make_ctx_cap(&store, Flags::empty());
         let handle = cap.get_handle();
         ctx.delete_capability(0).unwrap();
         assert!(store.contains(handle));
