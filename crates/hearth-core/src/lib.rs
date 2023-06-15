@@ -39,7 +39,7 @@ pub mod process;
 // pub mod pubsub;
 
 /// Peer runtime building and execution.
-// pub mod runtime;
+pub mod runtime;
 
 /// Helper function to set up console logging with reasonable defaults.
 pub fn init_logging() {

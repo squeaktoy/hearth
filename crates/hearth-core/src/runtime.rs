@@ -36,7 +36,7 @@ use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
-use crate::process::{Process, ProcessFactoryImpl, ProcessStoreImpl};
+use crate::process::context::Flags;
 
 /// Interface trait for plugins to the Hearth runtime.
 ///
@@ -151,12 +151,21 @@ impl RuntimeBuilder {
 
     /// Adds a service.
     ///
-    /// Logs an error and skips adding the service if the service name is
-    /// taken.
+    /// Logs a warning if the new service replaces another one.
     ///
     /// Behind the scenes this creates a runner that spawns the process and
     /// registers it as a service.
-    pub fn add_service(&mut self, name: String, process: impl Process) -> &mut Self {
+    pub fn add_service<F, R>(
+        &mut self,
+        name: String,
+        info: ProcessInfo,
+        flags: Flags,
+        cb: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(Arc<Runtime>, crate::process::Process) -> R + Send + Sync + 'static,
+        R: Future<Output = ()> + Send,
+    {
         if self.services.contains(&name) {
             error!("Service name {} is taken", name);
             return self;
@@ -166,14 +175,17 @@ impl RuntimeBuilder {
         self.runners.push(Box::new(move |runtime| {
             tokio::spawn(async move {
                 debug!("Spawning '{}' service", name);
-                let pid = runtime.process_store.spawn(process).await;
-                let result = runtime.process_store.register_service(pid, name).await;
-                match result {
-                    Ok(_) => {}
-                    Err(err) => {
-                        error!("Service registration error: {:?}", err);
-                    }
+                let process = runtime.process_factory.spawn(info, flags);
+                let self_cap = process
+                    .get_cap(0)
+                    .expect("freshly-spawned process has no self cap")
+                    .clone(runtime.process_store.as_ref());
+                if let Some(old_cap) = runtime.process_registry.insert(name.clone(), self_cap) {
+                    warn!("Service name {:?} was taken; replacing", name);
+                    old_cap.free(runtime.process_store.as_ref());
                 }
+
+                cb(runtime, process).await;
             })
         }));
 
@@ -217,7 +229,14 @@ impl RuntimeBuilder {
     /// This returns a shared pointer to the new runtime, as well as all of the
     /// [JoinHandles][JoinHandle] for the launched runners and plugins.
     pub fn run(self, config: RuntimeConfig) -> (Arc<Runtime>, Vec<JoinHandle<()>>) {
-        debug!("Spawning lump store server");
+        use crate::process::*;
+
+        let process_store = Arc::new(ProcessStore::default());
+        let process_factory =
+            Arc::new(ProcessFactory::new(process_store.clone(), config.this_peer));
+        let process_registry = Arc::new(Registry::new(process_store.clone()));
+
+        debug!("Spawning lum store server");
         let lump_store = self.lump_store;
         let (lump_store_server, lump_store_client) =
             LumpStoreServerShared::new(lump_store.clone(), 1024);
@@ -226,17 +245,22 @@ impl RuntimeBuilder {
         });
 
         debug!("Spawning process store server");
-        let process_store = ProcessStoreImpl::new(config.this_peer);
+        let store_impl = rpc::ProcessStoreImpl::new(
+            process_store.clone(),
+            process_factory.clone(),
+            process_registry.clone(),
+        );
+
         let (process_store_server, process_store_client) =
-            ProcessStoreServerShared::new(process_store.clone(), 1024);
+            ProcessStoreServerShared::new(Arc::new(store_impl), 1024);
         tokio::spawn(async move {
             process_store_server.serve(true).await;
         });
 
         debug!("Spawning process factory server");
-        let process_factory = ProcessFactoryImpl::new(process_store.clone());
+        let factory_impl = rpc::ProcessFactoryImpl::new(process_factory.clone());
         let (process_factory_server, process_factory_client) =
-            ProcessFactoryServerShared::new(Arc::new(process_factory), 1024);
+            ProcessFactoryServerShared::new(Arc::new(factory_impl), 1024);
         tokio::spawn(async move {
             process_factory_server.serve(true).await;
         });
@@ -246,6 +270,8 @@ impl RuntimeBuilder {
             lump_store,
             lump_store_client,
             process_store,
+            process_factory,
+            process_registry,
             process_store_client,
             process_factory_client,
             config,
@@ -305,7 +331,13 @@ pub struct Runtime {
     pub lump_store_client: LumpStoreClient,
 
     /// This runtime's process store.
-    pub process_store: Arc<ProcessStoreImpl>,
+    pub process_store: Arc<crate::process::ProcessStore>,
+
+    /// This runtime's process factory.
+    pub process_factory: Arc<crate::process::ProcessFactory>,
+
+    /// This runtime's process registry.
+    pub process_registry: Arc<crate::process::Registry>,
 
     /// A clone-able client to this runtime's process store.
     pub process_store_client: ProcessStoreClient,
