@@ -276,6 +276,12 @@ pub enum AnyProcess {
     Local(LocalProcess),
 }
 
+impl From<LocalProcess> for AnyProcess {
+    fn from(local: LocalProcess) -> Self {
+        AnyProcess::Local(local)
+    }
+}
+
 impl ProcessEntry for AnyProcess {
     type Data = AnyProcessData;
 
