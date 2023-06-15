@@ -29,94 +29,108 @@ fn abi_string(str: &str) -> (u32, u32) {
 /// Fetches the lump ID of the module used to spawn the current process.
 pub fn this_lump() -> LumpId {
     let mut id = LumpId(Default::default());
-    unsafe { abi::process::this_lump(&mut id as *const LumpId as u32) }
+    unsafe { abi::lump::this_lump(&mut id as *const LumpId as u32) }
     id
 }
 
-/// Fetches the process ID of the current process.
-pub fn this_pid() -> ProcessId {
-    let pid = unsafe { abi::process::this_pid() };
-    ProcessId(pid)
-}
+/// A handle to a process.
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct Process(u32);
 
-/// Looks up the process ID of a peer's service by name.
-pub fn service_lookup(peer: PeerId, name: &str) -> Option<ProcessId> {
-    let (name_ptr, name_len) = abi_string(name);
-    let pid = unsafe { abi::service::lookup(peer.0, name_ptr, name_len) };
-    if pid == u64::MAX {
-        None
-    } else {
-        Some(ProcessId(pid))
+impl Clone for Process {
+    fn clone(&self) -> Self {
+        self.demote(self.get_flags())
     }
 }
 
-/// Registers a process as a service on its peer.
-pub fn service_register(pid: ProcessId, name: &str) {
-    let (name_ptr, name_len) = abi_string(name);
-    unsafe { abi::service::register(pid.0, name_ptr, name_len) }
+impl Drop for Process {
+    fn drop(&mut self) {
+        unsafe { abi::process::free(self.0) }
+    }
 }
 
-/// Deregisters a peer's service.
-pub fn service_deregister(peer: PeerId, name: &str) {
-    let (name_ptr, name_len) = abi_string(name);
-    unsafe { abi::service::deregister(peer.0, name_ptr, name_len) }
-}
+impl Process {
+    /// The process currently executing.
+    pub const SELF: Process = Process(0);
 
-/// Kills a process.
-pub fn kill(pid: ProcessId) {
-    unsafe { abi::process::kill(pid.0) }
-}
+    /// Sends a message to this process.
+    pub fn send(&self, data: &[u8], caps: &[&Process]) {
+        let caps: Vec<u32> = caps.iter().map(|process| process.0).collect();
+        unsafe {
+            abi::message::send(
+                self.0,
+                data.as_ptr() as u32,
+                data.len() as u32,
+                caps.as_ptr() as u32,
+                caps.len() as u32,
+            );
+        }
+    }
 
-/// Sends a message to another process.
-pub fn send(pid: ProcessId, data: &[u8]) {
-    unsafe { abi::message::send(pid.0, data.as_ptr() as u32, data.len() as u32) }
-}
+    /// Kills this process.
+    pub fn kill(&self) {
+        unsafe { abi::process::kill(self.0) }
+    }
 
-/// Blocks until a message has been received.
-pub fn recv() -> Message {
-    let msg = unsafe { abi::message::recv() };
-    Message(msg)
-}
+    /// Demotes this process handle to a handle with fewer flags.
+    pub fn demote(&self, new_flags: Flags) -> Self {
+        Process(unsafe { abi::process::copy(self.0, new_flags.bits()) })
+    }
 
-/// Blocks until a message is received or the given timeout (in microseconds)
-/// expires.
-///
-/// Setting the timeout to 0 skips any blocking and in effect polls the message
-/// queue for a new message.
-pub fn recv_timeout(timeout_us: u64) -> Option<Message> {
-    let msg = unsafe { abi::message::recv_timeout(timeout_us) };
-    if msg == u32::MAX {
-        None
-    } else {
-        Some(Message(msg))
+    /// Gets the flags for this process.
+    pub fn get_flags(&self) -> Flags {
+        Flags::from_bits_retain(unsafe { abi::process::get_flags(self.0) })
     }
 }
 
 /// A message that has been received from another process.
-pub struct Message(u32);
-
-impl Drop for Message {
-    fn drop(&mut self) {
-        unsafe { abi::message::free(self.0) }
-    }
+pub struct Message {
+    pub data: Vec<u8>,
+    pub caps: Vec<Process>,
 }
 
 impl Message {
-    /// Gets the ID of the process that sent this message.
-    pub fn get_sender(&self) -> ProcessId {
-        let pid = unsafe { abi::message::get_sender(self.0) };
-        ProcessId(pid)
+    /// Loads a message by its handle.
+    unsafe fn load_from_handle(handle: u32) -> Self {
+        let data_len = abi::message::get_data_len(handle) as usize;
+        let mut data = Vec::with_capacity(data_len);
+        data.set_len(data_len);
+        abi::message::get_data(handle, data.as_ptr() as u32);
+
+        let caps_num = abi::message::get_caps_num(handle) as usize;
+        let mut caps = Vec::with_capacity(caps_num);
+        caps.set_len(caps_num);
+        abi::message::get_caps(handle, caps.as_ptr() as u32);
+
+        Self { data, caps }
     }
 
-    /// Reads out the message data into an owning byte vector.
-    pub fn get_data(&self) -> Vec<u8> {
-        #[allow(clippy::uninit_vec)]
+    /// Blocks until a message has been received.
+    pub fn recv() -> Self {
         unsafe {
-            let len = abi::message::get_len(self.0) as usize;
-            let mut data = Vec::with_capacity(len);
-            data.set_len(len);
-            abi::message::get_data(self.0, data.as_ptr() as u32);
-            data
+            let handle = abi::message::recv();
+            let msg = Self::load_from_handle(handle);
+            abi::message::free(handle);
+            msg
+        }
+    }
+
+    /// Blocks until a message is received or the given timeout (in microseconds)
+    /// expires.
+    ///
+    /// Setting the timeout to 0 skips any blocking and in effect polls the message
+    /// queue for a new message.
+    pub fn recv_timeout(timeout_us: u64) -> Option<Self> {
+        unsafe {
+            let handle = abi::message::recv_timeout(timeout_us);
+            if handle == u32::MAX {
+                None
+            } else {
+                let msg = Self::load_from_handle(handle);
+                abi::message::free(handle);
+                Some(msg)
+            }
         }
     }
 }
@@ -172,31 +186,6 @@ impl Lump {
     }
 }
 
-/// A loaded asset.
-pub struct Asset(u32);
-
-impl Drop for Asset {
-    fn drop(&mut self) {
-        unsafe { abi::asset::free(self.0) }
-    }
-}
-
-impl Asset {
-    /// Loads an asset from a lump.
-    pub fn load(lump: &Lump, class: &str) -> Self {
-        unsafe {
-            let (class_ptr, class_len) = abi_string(class);
-            let handle = abi::asset::load(lump.0, class_ptr, class_len);
-            Self(handle)
-        }
-    }
-
-    /// Returns the internal handle ID of this asset.
-    pub fn get_id(&self) -> u32 {
-        self.0
-    }
-}
-
 /// Log a message.
 pub fn log(level: ProcessLogLevel, module: &str, content: &str) {
     let level = level.into();
@@ -207,14 +196,6 @@ pub fn log(level: ProcessLogLevel, module: &str, content: &str) {
 
 #[allow(clashing_extern_declarations)]
 mod abi {
-    pub mod asset {
-        #[link(wasm_import_module = "hearth::asset")]
-        extern "C" {
-            pub fn load(lump_handle: u32, class_ptr: u32, class_len: u32) -> u32;
-            pub fn free(lump_handle: u32);
-        }
-    }
-
     pub mod log {
         #[link(wasm_import_module = "hearth::log")]
         extern "C" {
@@ -231,6 +212,7 @@ mod abi {
     pub mod lump {
         #[link(wasm_import_module = "hearth::lump")]
         extern "C" {
+            pub fn this_lump(ptr: u32);
             pub fn from_id(id_ptr: u32) -> u32;
             pub fn load(ptr: u32, len: u32) -> u32;
             pub fn get_id(handle: u32, id_ptr: u32);
@@ -243,12 +225,13 @@ mod abi {
     pub mod message {
         #[link(wasm_import_module = "hearth::message")]
         extern "C" {
+            pub fn send(dst_cap: u32, data_ptr: u32, data_len: u32, caps_ptr: u32, caps_num: u32);
             pub fn recv() -> u32;
             pub fn recv_timeout(timeout_us: u64) -> u32;
-            pub fn send(pid: u64, ptr: u32, len: u32);
-            pub fn get_sender(msg: u32) -> u64;
-            pub fn get_len(msg: u32) -> u32;
+            pub fn get_data_len(msg: u32) -> u32;
             pub fn get_data(msg: u32, ptr: u32);
+            pub fn get_caps_num(msg: u32) -> u32;
+            pub fn get_caps(msg: u32, ptr: u32);
             pub fn free(msg: u32);
         }
     }
@@ -256,18 +239,10 @@ mod abi {
     pub mod process {
         #[link(wasm_import_module = "hearth::process")]
         extern "C" {
-            pub fn this_lump(ptr: u32);
-            pub fn this_pid() -> u64;
-            pub fn kill(pid: u64);
-        }
-    }
-
-    pub mod service {
-        #[link(wasm_import_module = "hearth::service")]
-        extern "C" {
-            pub fn lookup(peer: u32, name_ptr: u32, name_len: u32) -> u64;
-            pub fn register(pid: u64, name_ptr: u32, name_len: u32);
-            pub fn deregister(peer: u32, name_ptr: u32, name_len: u32);
+            pub fn get_flags(cap: u32) -> u32;
+            pub fn copy(cap: u32, new_flags: u32) -> u32;
+            pub fn kill(cap: u32);
+            pub fn free(cap: u32);
         }
     }
 }
