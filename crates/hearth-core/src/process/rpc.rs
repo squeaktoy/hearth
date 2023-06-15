@@ -103,6 +103,20 @@ where
     }
 }
 
+impl<Store: ProcessStoreTrait> ProcessStoreImpl<Store> {
+    pub fn new(
+        store: Arc<Store>,
+        factory: Arc<ProcessFactory<Store>>,
+        registry: Arc<Registry<Store>>,
+    ) -> Self {
+        Self {
+            store,
+            factory,
+            registry,
+        }
+    }
+}
+
 pub struct ProcessApiImpl<Store: ProcessStoreTrait> {
     store: Arc<Store>,
     wrapper: ProcessWrapper,
@@ -138,5 +152,11 @@ where
 {
     async fn spawn(&self, _process: ProcessBase) -> CallResult<ProcessOffer> {
         Err(remoc::rtc::CallError::RemoteForward)
+    }
+}
+
+impl<Store: ProcessStoreTrait> ProcessFactoryImpl<Store> {
+    pub fn new(factory: Arc<ProcessFactory<Store>>) -> Self {
+        Self { factory }
     }
 }
