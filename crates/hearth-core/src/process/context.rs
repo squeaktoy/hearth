@@ -189,7 +189,10 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
             .get_cap(handle)
             .context("ProcessContext::send() destination")?;
 
-        // TODO check for permissions here
+        // TODO write unit test for this
+        if !dst.flags.contains(Flags::SEND) {
+            bail!("capability does not permit send operation");
+        }
 
         let (data, ctx_caps) = match message {
             ContextMessage::Unlink { .. } => {
@@ -217,23 +220,33 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
             .get_cap(handle)
             .context("ProcessContext::kill() target")?;
 
-        // TODO check for permissions here
+        // TODO write unit test for this
+        if !target.flags.contains(Flags::KILL) {
+            bail!("capability does not permit kill operation");
+        }
 
-        // TODO removing vs killing
         self.store.kill(target.get_handle());
 
         Ok(())
     }
 
     /// Creates a new capability from an existing one, using a subset of the original's flags.
-    pub fn make_capability(&mut self, handle: usize, _flags: Flags) -> anyhow::Result<usize> {
+    pub fn make_capability(&mut self, handle: usize, new_flags: Flags) -> anyhow::Result<usize> {
         let original = self
             .get_cap(handle)
             .context("ProcessContext::make_capability() original")?;
 
-        // TODO calculate subset of flags
+        // TODO write unit test for this
+        if !original.flags.contains(new_flags) {
+            bail!(
+                "capability flags cannot be promoted from {:?} to {:?}",
+                original.flags,
+                new_flags
+            );
+        }
 
-        let cap = original.clone(self.store.as_ref());
+        let mut cap = original.clone(self.store.as_ref());
+        cap.flags = new_flags;
         Ok(self.caps.insert(cap))
     }
 
