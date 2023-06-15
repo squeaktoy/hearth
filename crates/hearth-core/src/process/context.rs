@@ -253,6 +253,13 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
         Ok(())
     }
 
+    /// Retrieves the flags of a capability.
+    pub fn get_capability_flags(&self, handle: usize) -> anyhow::Result<Flags> {
+        self.get_cap(handle)
+            .context("ProcessContext::get_capability_flags() handle")
+            .map(|cap| cap.flags)
+    }
+
     /// Retrieves a capability by handle.
     pub(crate) fn get_cap(&self, handle: usize) -> anyhow::Result<&Capability> {
         self.caps
