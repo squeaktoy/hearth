@@ -41,12 +41,14 @@ impl<'a> GuestMemory<'a> {
     }
 
     pub fn get_str(&self, ptr: u32, len: u32) -> Result<&'a mut str> {
-        let memory = self.get_slice(ptr as usize, len as usize)?;
+        let memory = self.get_slice(ptr, len)?;
         std::str::from_utf8_mut(memory)
             .with_context(|| format!("GuestMemory::get_str({}, {})", ptr, len))
     }
 
-    pub fn get_slice(&self, ptr: usize, len: usize) -> Result<&'a mut [u8]> {
+    pub fn get_slice(&self, ptr: u32, len: u32) -> Result<&'a mut [u8]> {
+        let ptr = ptr as usize;
+        let len = len as usize;
         if ptr + len > self.bytes.len() {
             Err(anyhow!(
                 "GuestMemory::get_slice({}, {}) is out-of-bounds",
@@ -62,8 +64,8 @@ impl<'a> GuestMemory<'a> {
     }
 
     pub fn get_memory_ref<T: bytemuck::Pod>(&self, ptr: u32) -> Result<&'a mut T> {
-        let len = std::mem::size_of::<T>();
-        let bytes = self.get_slice(ptr as usize, len)?;
+        let len = std::mem::size_of::<T>() as u32;
+        let bytes = self.get_slice(ptr, len)?;
         bytemuck::try_from_bytes_mut(bytes).map_err(|err| {
             anyhow!(
                 "GuestMemory::get_memory_ref<{}>({}) failed: {:?}",
@@ -75,8 +77,8 @@ impl<'a> GuestMemory<'a> {
     }
 
     pub fn get_memory_slice<T: bytemuck::Pod>(&self, ptr: u32, num: u32) -> Result<&'a mut [T]> {
-        let len = num as usize * std::mem::size_of::<T>();
-        let bytes = self.get_slice(ptr as usize, len)?;
+        let len = num * std::mem::size_of::<T>() as u32;
+        let bytes = self.get_slice(ptr, len)?;
         bytemuck::try_cast_slice_mut(bytes).map_err(|err| {
             anyhow!(
                 "GuestMemory::get_memory_slice<{}>({}, {}) failed: {:?}",
