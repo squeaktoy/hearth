@@ -271,14 +271,20 @@ pub struct ProcessAbi {
 #[impl_wasm_linker(module = "hearth::process")]
 impl ProcessAbi {
     async fn get_flags(&self, cap: u32) -> Result<u32> {
-        bail!("capability flags are unimplemented");
-    }
-
-    async fn copy(&self, cap: u32, new_flags: u32) -> Result<u32> {
         self.ctx
             .lock()
             .await
-            .make_capability(cap as usize, Flags)
+            .get_capability_flags(cap as usize)
+            .map(|flags| flags.bits())
+    }
+
+    async fn copy(&self, cap: u32, new_flags: u32) -> Result<u32> {
+        let new_flags = Flags::from_bits(new_flags).context("flags have unrecognized bits set")?;
+
+        self.ctx
+            .lock()
+            .await
+            .make_capability(cap as usize, new_flags)
             .map(|cap| cap as u32)
     }
 
@@ -533,7 +539,9 @@ impl WasmProcessSpawner {
                 }
                 Ok(module) => {
                     debug!("Spawning module {}", message.lump);
-                    let process = runtime.process_factory.spawn(ProcessInfo {}, Flags);
+                    let info = ProcessInfo {};
+                    let flags = Flags::SEND | Flags::KILL;
+                    let process = runtime.process_factory.spawn(info, flags);
                     let runtime = runtime.to_owned();
                     let engine = self.engine.to_owned();
                     let linker = self.linker.to_owned();
@@ -592,7 +600,7 @@ impl Plugin for WasmPlugin {
         builder.add_service(
             "hearth.cognito.WasmProcessSpawner".into(),
             ProcessInfo {},
-            Flags,
+            Flags::SEND,
             |runtime, process| {
                 tokio::spawn(async move {
                     spawner.run(runtime, process).await;
