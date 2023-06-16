@@ -277,10 +277,6 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
 
     /// Deletes a capability from this context.
     pub fn delete_capability(&mut self, handle: usize) -> anyhow::Result<()> {
-        if handle == 0 {
-            bail!("cannot delete self-capability");
-        }
-
         let cap = self
             .caps
             .try_remove(handle)
