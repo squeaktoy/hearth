@@ -99,6 +99,7 @@ impl Process {
 }
 
 /// A message that has been received from another process.
+#[derive(Clone, Debug)]
 pub struct Message {
     pub data: Vec<u8>,
     pub caps: Vec<Process>,
