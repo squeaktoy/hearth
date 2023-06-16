@@ -58,7 +58,7 @@ impl Process {
     pub fn send(&self, data: &[u8], caps: &[&Process]) {
         let caps: Vec<u32> = caps.iter().map(|process| process.0).collect();
         unsafe {
-            abi::signal::send(
+            abi::process::send(
                 self.0,
                 data.as_ptr() as u32,
                 data.len() as u32,
@@ -251,6 +251,7 @@ mod abi {
         extern "C" {
             pub fn get_flags(cap: u32) -> u32;
             pub fn copy(cap: u32, new_flags: u32) -> u32;
+            pub fn send(dst_cap: u32, data_ptr: u32, data_len: u32, caps_ptr: u32, caps_num: u32);
             pub fn kill(cap: u32);
             pub fn free(cap: u32);
         }
@@ -266,7 +267,6 @@ mod abi {
     pub mod signal {
         #[link(wasm_import_module = "hearth::signal")]
         extern "C" {
-            pub fn send(dst_cap: u32, data_ptr: u32, data_len: u32, caps_ptr: u32, caps_num: u32);
             pub fn recv() -> u32;
             pub fn recv_timeout(timeout_us: u64) -> u32;
             pub fn get_data_len(msg: u32) -> u32;
