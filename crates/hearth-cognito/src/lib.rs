@@ -439,7 +439,14 @@ impl WasmProcessSpawner {
         debug!("Listening to Wasm spawn requests");
         while let Some(message) = ctx.recv().await {
             let ContextMessage::Data { data: msg_data, caps: msg_caps } = message else {
+                // TODO make this a process log
                 warn!("Wasm spawner expected data message but received: {:?}", message);
+                continue;
+            };
+
+            let Some(parent) = msg_caps.get(0).copied() else {
+                // TODO make this a process log
+                debug!("Spawn request has no return address");
                 continue;
             };
 
@@ -478,7 +485,19 @@ impl WasmProcessSpawner {
                     debug!("Spawning module {}", message.lump);
                     let info = ProcessInfo {};
                     let flags = Flags::SEND | Flags::KILL;
-                    let process = runtime.process_factory.spawn(info, flags);
+                    let child = runtime.process_factory.spawn(info, flags);
+                    let child_cap = ctx.copy_self_capability(&child);
+                    let result = ctx.send(
+                        parent,
+                        ContextMessage::Data {
+                            data: vec![],
+                            caps: vec![child_cap],
+                        },
+                    );
+
+                    // TODO make run_inner to catch errors safely
+                    ctx.delete_capability(child_cap).unwrap();
+
                     let runtime = runtime.to_owned();
                     let engine = self.engine.to_owned();
                     let linker = self.linker.to_owned();
@@ -490,11 +509,14 @@ impl WasmProcessSpawner {
                             entrypoint: message.entrypoint,
                             this_lump: message.lump,
                         }
-                        .run(runtime, process)
+                        .run(runtime, child)
                         .await;
                     });
 
-                    error!("Sending child cap to parent is unimplemented");
+                    match result {
+                        Ok(()) => {}
+                        Err(err) => error!("Replying child cap to parent error: {:?}", err),
+                    }
                 }
             }
         }
