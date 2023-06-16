@@ -33,6 +33,9 @@ pub fn this_lump() -> LumpId {
     id
 }
 
+/// The process currently executing.
+pub static SELF: Process = Process(0);
+
 /// A handle to a process.
 #[repr(transparent)]
 #[derive(Debug)]
@@ -51,9 +54,6 @@ impl Drop for Process {
 }
 
 impl Process {
-    /// The process currently executing.
-    pub const SELF: Process = Process(0);
-
     /// Sends a message to this process.
     pub fn send(&self, data: &[u8], caps: &[&Process]) {
         let caps: Vec<u32> = caps.iter().map(|process| process.0).collect();
