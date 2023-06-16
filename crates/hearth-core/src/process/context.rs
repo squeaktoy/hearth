@@ -123,6 +123,10 @@ pub struct ProcessContext<Store: ProcessStoreTrait> {
 
 impl<Store: ProcessStoreTrait> Drop for ProcessContext<Store> {
     fn drop(&mut self) {
+        while let Ok(message) = self.mailbox.try_recv() {
+            message.free(self.store.as_ref());
+        }
+
         if let Some(self_cap) = self.self_cap.take() {
             self_cap.free(self.store.as_ref());
         }
