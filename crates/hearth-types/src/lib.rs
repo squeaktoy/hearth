@@ -70,10 +70,6 @@ pub struct PeerId(pub u32);
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct LocalProcessId(pub u32);
 
-/// Process-local identifiers for loaded assets.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
-pub struct AssetId(pub u32);
-
 /// Identifier for a lump (digest of BLAKE3 cryptographic hash).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize, Pod, Zeroable)]
