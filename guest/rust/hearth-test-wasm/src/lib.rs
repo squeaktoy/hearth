@@ -1,4 +1,4 @@
-use hearth_guest::{wasm::WasmSpawnInfo, Message, Process};
+use hearth_guest::{wasm::WasmSpawnInfo, Process, Signal};
 
 fn get_spawner() -> Process {
     Process::get_service("hearth.cognito.WasmProcessSpawner")
@@ -11,7 +11,11 @@ fn send<T: serde::Serialize>(dst: &Process, data: &T) {
 }
 
 fn recv<T: for<'a> serde::Deserialize<'a>>() -> (Vec<Process>, T) {
-    let msg = Message::recv();
+    let signal = Signal::recv();
+    let Signal::Message(msg) = signal else {
+        panic!("expected message, received {:?}", signal);
+    };
+
     let data = serde_json::from_slice(&msg.data).unwrap();
     (msg.caps, data)
 }
@@ -25,7 +29,11 @@ fn spawn(spawner: &Process, cb: fn()) -> Process {
         },
     );
 
-    let mut msg = Message::recv();
+    let signal = Signal::recv();
+    let Signal::Message(mut msg) = signal else {
+        panic!("expected message, received {:?}", signal);
+    };
+
     msg.caps.remove(0)
 }
 
