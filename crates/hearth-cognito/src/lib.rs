@@ -432,16 +432,10 @@ impl WasmProcess {
 pub struct WasmProcessSpawner {
     engine: Arc<Engine>,
     linker: Arc<Linker<ProcessData>>,
-    asset_store: oneshot::Receiver<Arc<AssetStore>>,
 }
 
 impl WasmProcessSpawner {
-    async fn run(mut self, runtime: Arc<Runtime>, mut ctx: Process) {
-        let asset_store = oneshot::channel().1;
-        let asset_store = std::mem::replace(&mut self.asset_store, asset_store)
-            .await
-            .expect("asset store sender dropped");
-
+    async fn run(self, runtime: Arc<Runtime>, mut ctx: Process) {
         debug!("Listening to Wasm spawn requests");
         while let Some(message) = ctx.recv().await {
             let ContextMessage::Data { data: msg_data, caps: msg_caps } = message else {
@@ -466,7 +460,8 @@ impl WasmProcessSpawner {
 
             debug!("Spawning Wasm module lump {}", message.lump);
 
-            match asset_store
+            match runtime
+                .asset_store
                 .load_asset::<WasmModuleLoader>(&message.lump)
                 .await
             {
@@ -530,13 +525,9 @@ impl Plugin for WasmPlugin {
         let mut linker = Linker::new(&self.engine);
         ProcessData::add_to_linker(&mut linker);
 
-        let (asset_store_tx, asset_store) = oneshot::channel();
-        self.asset_store_tx.push(asset_store_tx);
-
         let spawner = WasmProcessSpawner {
             engine: self.engine.to_owned(),
             linker: Arc::new(linker),
-            asset_store,
         };
 
         builder.add_service(
