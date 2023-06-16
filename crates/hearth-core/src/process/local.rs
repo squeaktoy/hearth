@@ -18,16 +18,16 @@
 
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::store::{Message, ProcessEntry};
+use super::store::{ProcessEntry, Signal};
 
 /// A local process entry in a process store.
 ///
-/// This simply forwards messages through an async channel, to be used by other
+/// This simply forwards signals through an async channel, to be used by other
 /// asynchronous tasks.
 pub struct LocalProcess {
-    /// The mailbox channel sender. Sends all incoming messages to this
+    /// The mailbox channel sender. Sends all incoming signals to this
     /// process.
-    pub mailbox_tx: UnboundedSender<Message>,
+    pub mailbox_tx: UnboundedSender<Signal>,
 }
 
 impl ProcessEntry for LocalProcess {
@@ -35,12 +35,8 @@ impl ProcessEntry for LocalProcess {
 
     fn on_insert(&self, _data: &Self::Data, _handle: usize) {}
 
-    fn on_send(&self, _data: &Self::Data, message: Message) -> Option<Message> {
-        self.mailbox_tx.send(message).err().map(|err| err.0)
-    }
-
-    fn on_kill(&self, _data: &Self::Data) {
-        // TODO kill without remove?
+    fn on_signal(&self, _data: &Self::Data, signal: Signal) -> Option<Signal> {
+        self.mailbox_tx.send(signal).err().map(|err| err.0)
     }
 
     fn on_remove(&self, _data: &Self::Data) {}

@@ -155,19 +155,17 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
 
     fn send(&self, handle: usize, message: Message) {
         trace!("sending to process {}", handle);
-        if let Some(unsent) = self.get(handle).inner.on_send(&self.entries_data, message) {
-            unsent.free(self);
-        }
+        self.send_signal(handle, Signal::Message(message));
     }
 
     fn kill(&self, handle: usize) {
         trace!("killing process {}", handle);
         let entry = self.get(handle);
         if entry.is_alive.swap(false, Ordering::SeqCst) {
-            entry.inner.on_kill(&self.entries_data);
+            entry.inner.on_signal(&self.entries_data, Signal::Kill);
 
             for link in entry.linked.lock().drain(..) {
-                self.send(link, Message::Unlink { subject: handle });
+                self.send_signal(link, Signal::Unlink { subject: handle });
             }
         }
     }
@@ -219,6 +217,13 @@ impl<T: ProcessEntry> ProcessStore<T> {
     fn get(&self, handle: usize) -> impl std::ops::Deref<Target = ProcessWrapper<T>> + '_ {
         self.entries.get(handle).expect("invalid handle")
     }
+
+    /// Internal utility function to safely send a signal to a process.
+    fn send_signal(&self, handle: usize, signal: Signal) {
+        if let Some(unsent) = self.get(handle).inner.on_signal(&self.entries_data, signal) {
+            unsent.free(self);
+        }
+    }
 }
 
 /// A trait for all processes stored in a process store.
@@ -230,19 +235,16 @@ pub trait ProcessEntry {
     /// Called when this entry is first inserted into the store.
     fn on_insert(&self, data: &Self::Data, handle: usize);
 
-    /// Called when a message is sent to this entry.
+    /// Called when a signal is sent to this entry.
     ///
-    /// All message capabilities are in the scope of the owned store, and all
+    /// All capabilities are in the scope of the owned store, and all
     /// capabilities are already ref-counted with this message, so when the
-    /// message is freed, all references need to freed too.
+    /// signal is freed, all references need to freed too.
     ///
-    /// If the message cannot be sent, this method should return Some(message).
-    /// The message will be safely freed. Otherwise, the message should return
+    /// If the signal cannot be sent, this method should return Some(signal).
+    /// The signal will be safely freed. Otherwise, the message should return
     /// None.
-    fn on_send(&self, data: &Self::Data, message: Message) -> Option<Message>;
-
-    /// Called when this entry is killed.
-    fn on_kill(&self, data: &Self::Data);
+    fn on_signal(&self, data: &Self::Data, signal: Signal) -> Option<Signal>;
 
     /// Called when this entry is removed from the store.
     ///
@@ -252,59 +254,79 @@ pub trait ProcessEntry {
     fn on_remove(&self, data: &Self::Data);
 }
 
-/// A message sent to a process.
+/// A signal sent to a process.
 ///
 /// All handles are scoped within a process store.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Message {
+pub enum Signal {
+    /// Request to kill this process.
+    Kill,
     /// Sent when a linked process has been unlinked.
     Unlink {
         /// The handle to the unlinked process within the process store.
         subject: usize,
     },
     /// A message containing a data payload and transferred capabilities.
-    Data {
-        /// The data payload of this message.
-        data: Vec<u8>,
-
-        /// The list of capabilities transferred with this message.
-        ///
-        /// These capabilities are non-owning. Before this message is dropped,
-        /// all capability refs need to be either cleaned up or stored
-        /// somewhere else.
-        caps: Vec<Capability>,
-    },
+    Message(Message),
 }
 
-impl Message {
-    /// Duplicates this messages and increments its reference counts.
+impl Signal {
+    /// Duplicates this signal and increments its reference counts.
     pub fn clone(&self, store: &impl ProcessStoreTrait) -> Self {
-        use Message::*;
+        use Signal::*;
         match self {
+            Kill => Kill,
             Unlink { subject } => {
                 let subject = *subject;
                 store.inc_ref(subject);
                 Unlink { subject }
             }
-            Data { data, caps } => Data {
-                data: data.to_owned(),
-                caps: caps.iter().map(|cap| cap.clone(store)).collect(),
-            },
+            Message(message) => Message(message.clone(store)),
+        }
+    }
+
+    /// Safely frees this signal and any references within the store.
+    pub fn free(self, store: &impl ProcessStoreTrait) {
+        use Signal::*;
+        match self {
+            Kill => {}
+            Unlink { subject } => {
+                store.inc_ref(subject);
+            }
+            Message(message) => message.free(store),
+        }
+    }
+}
+
+/// A message signal.
+///
+/// All handles are scoped within a process store.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Message {
+    /// The data payload of this message.
+    pub data: Vec<u8>,
+
+    /// The list of capabilities transferred with this message.
+    ///
+    /// These capabilities are non-owning. Before this message is dropped,
+    /// all capability refs need to be either cleaned up or stored
+    /// somewhere else.
+    pub caps: Vec<Capability>,
+}
+
+impl Message {
+    /// Duplicates this messages and increments its reference counts.
+    pub fn clone(&self, store: &impl ProcessStoreTrait) -> Self {
+        Self {
+            data: self.data.to_owned(),
+            caps: self.caps.iter().map(|cap| cap.clone(store)).collect(),
         }
     }
 
     /// Safely frees this message and any references within the store.
     pub fn free(self, store: &impl ProcessStoreTrait) {
-        use Message::*;
-        match self {
-            Unlink { subject } => {
-                store.inc_ref(subject);
-            }
-            Data { caps, .. } => {
-                for cap in caps {
-                    cap.free(store);
-                }
-            }
+        for cap in self.caps {
+            cap.free(store);
         }
     }
 }
@@ -334,15 +356,9 @@ impl ProcessEntry for AnyProcess {
         }
     }
 
-    fn on_send(&self, data: &Self::Data, message: Message) -> Option<Message> {
+    fn on_signal(&self, data: &Self::Data, signal: Signal) -> Option<Signal> {
         match self {
-            AnyProcess::Local(local) => local.on_send(&data.local, message),
-        }
-    }
-
-    fn on_kill(&self, data: &Self::Data) {
-        match self {
-            AnyProcess::Local(local) => local.on_kill(&data.local),
+            AnyProcess::Local(local) => local.on_signal(&data.local, signal),
         }
     }
 
@@ -362,7 +378,7 @@ pub mod tests {
     use crate::process::context::Flags;
 
     pub struct MockProcessEntry {
-        mailbox_tx: Sender<Message>,
+        mailbox_tx: Sender<Signal>,
     }
 
     impl ProcessEntry for MockProcessEntry {
@@ -372,13 +388,9 @@ pub mod tests {
             eprintln!("on_insert(handle = {})", handle);
         }
 
-        fn on_send(&self, _data: &Self::Data, message: Message) -> Option<Message> {
-            eprintln!("on_send(message = {:?})", message);
-            self.mailbox_tx.send(message).err().map(|err| err.0)
-        }
-
-        fn on_kill(&self, _data: &Self::Data) {
-            eprintln!("on_kill()");
+        fn on_signal(&self, _data: &Self::Data, signal: Signal) -> Option<Signal> {
+            eprintln!("on_signal(signal = {:?})", signal);
+            self.mailbox_tx.send(signal).err().map(|err| err.0)
         }
 
         fn on_remove(&self, _data: &Self::Data) {
@@ -399,7 +411,7 @@ pub mod tests {
         }
 
         /// Helper function to insert a mock process that forwards messages.
-        pub fn insert_forward(&self) -> (Receiver<Message>, usize) {
+        pub fn insert_forward(&self) -> (Receiver<Signal>, usize) {
             let (mailbox_tx, mailbox) = channel();
             let handle = self.insert(MockProcessEntry { mailbox_tx });
             (mailbox, handle)
@@ -421,13 +433,13 @@ pub mod tests {
         let store = make_store();
         let (mailbox, handle) = store.insert_forward();
 
-        let message = Message::Data {
+        let message = Message {
             data: b"Hello, world!".to_vec(),
             caps: vec![],
         };
 
         store.send(handle, message.clone(&store));
-        assert_eq!(mailbox.try_recv(), Ok(message));
+        assert_eq!(mailbox.try_recv(), Ok(Signal::Message(message)));
     }
 
     #[test]
@@ -439,7 +451,7 @@ pub mod tests {
 
         store.send(
             handle,
-            Message::Data {
+            Message {
                 data: vec![],
                 caps: vec![],
             },
@@ -455,7 +467,7 @@ pub mod tests {
         let (mailbox, object) = store.insert_forward();
         store.link(subject, object);
         store.kill(subject);
-        assert_eq!(mailbox.try_recv(), Ok(Message::Unlink { subject }));
+        assert_eq!(mailbox.try_recv(), Ok(Signal::Unlink { subject }));
     }
 
     #[test]
@@ -465,7 +477,7 @@ pub mod tests {
         let (mailbox, object) = store.insert_forward();
         store.kill(subject);
         store.link(subject, object);
-        assert_eq!(mailbox.try_recv(), Ok(Message::Unlink { subject }));
+        assert_eq!(mailbox.try_recv(), Ok(Signal::Unlink { subject }));
     }
 
     #[test]
@@ -539,7 +551,7 @@ pub mod tests {
         store.link(subject, object);
         store.link(subject, object);
         store.kill(subject);
-        assert_eq!(mailbox.try_recv(), Ok(Message::Unlink { subject }));
+        assert_eq!(mailbox.try_recv(), Ok(Signal::Unlink { subject }));
         assert!(mailbox.try_recv().is_err());
     }
 
@@ -548,7 +560,7 @@ pub mod tests {
         let store = make_store();
         let handle = store.insert_mock();
 
-        let message = Message::Data {
+        let message = Message {
             data: vec![],
             caps: vec![Capability::new(handle, Flags::empty())],
         };

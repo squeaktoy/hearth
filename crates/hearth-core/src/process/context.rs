@@ -23,7 +23,7 @@ use anyhow::{bail, Context};
 use slab::Slab;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use super::store::{Message, ProcessStoreTrait};
+use super::store::{Message, ProcessStoreTrait, Signal};
 
 pub use hearth_rpc::hearth_types::Flags;
 
@@ -89,23 +89,29 @@ impl Capability {
     }
 }
 
+/// A signal sent to a process, contextualized in a [ProcessContext].
+///
+/// All process handles are indices into the context's capability store.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ContextSignal {
+    /// Sent when a linked process has been unlinked.
+    Unlink { subject: usize },
+    /// A [ContextMessage].
+    Message(ContextMessage),
+}
+
 /// A message sent to a process, contextualized in a [ProcessContext].
 ///
 /// All process handles are indices into the context's capability store.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ContextMessage {
-    /// Sent when a linked process has been unlinked.
-    Unlink { subject: usize },
-    /// A message containing a data payload and transferred capabilities.
-    Data {
-        /// The data payload of this message.
-        data: Vec<u8>,
+pub struct ContextMessage {
+    /// The data payload of this message.
+    pub data: Vec<u8>,
 
-        /// The list of capabilities transferred with this message.
-        ///
-        /// These capabilities are loaded into the context.
-        caps: Vec<usize>,
-    },
+    /// The list of capabilities transferred with this message.
+    ///
+    /// These capabilities are loaded into the context.
+    pub caps: Vec<usize>,
 }
 
 /// Errors in processes are assumed (under Erlang philosophy) to be
@@ -115,7 +121,7 @@ pub struct ProcessContext<Store: ProcessStoreTrait> {
     store: Arc<Store>,
     self_cap: Option<Capability>,
     caps: Slab<Capability>,
-    mailbox: UnboundedReceiver<Message>,
+    mailbox: UnboundedReceiver<Signal>,
 
     /// A list of subjects of unlink messages that have not been received yet.
     unlink_queue: VecDeque<usize>,
@@ -146,7 +152,7 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
     pub(crate) fn new(
         store: Arc<Store>,
         self_cap: Capability,
-        mailbox: UnboundedReceiver<Message>,
+        mailbox: UnboundedReceiver<Signal>,
     ) -> Self {
         let mut caps = Slab::with_capacity(1);
         let self_handle = caps.insert(self_cap.clone(store.as_ref()));
@@ -176,18 +182,19 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
         self.insert_cap(cap.clone(self.store.as_ref()))
     }
 
-    /// Receives the next mailbox sent to this process and maps its
+    /// Receives the next signal sent to this process and maps its
     /// capabilities into this context.
     ///
     /// Returns `None` after killed.
-    pub async fn recv(&mut self) -> Option<ContextMessage> {
+    pub async fn recv(&mut self) -> Option<ContextSignal> {
         loop {
             if let Some(subject) = self.unlink_queue.pop_front() {
-                return Some(ContextMessage::Unlink { subject });
+                return Some(ContextSignal::Unlink { subject });
             }
 
             match self.mailbox.recv().await? {
-                Message::Unlink { subject } => {
+                Signal::Kill => {}
+                Signal::Unlink { subject } => {
                     let handles = self
                         .caps
                         .iter()
@@ -196,19 +203,17 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
 
                     self.unlink_queue.extend(handles);
                 }
-                Message::Data { data, caps } => {
-                    return Some(ContextMessage::Data {
+                Signal::Message(Message { data, caps }) => {
+                    return Some(ContextSignal::Message(ContextMessage {
                         data,
                         caps: caps.into_iter().map(|cap| self.caps.insert(cap)).collect(),
-                    });
+                    }));
                 }
             }
         }
     }
 
-    /// Sends a message to another peer.
-    ///
-    /// Returns an error if this is called with [ContextMessage::Unlink].
+    /// Sends a message to a process.
     pub fn send(&self, handle: usize, message: ContextMessage) -> anyhow::Result<()> {
         let dst = self
             .get_cap(handle)
@@ -219,12 +224,10 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
             bail!("capability does not permit send operation");
         }
 
-        let (data, ctx_caps) = match message {
-            ContextMessage::Unlink { .. } => {
-                bail!("ProcessContext::send() called with ContextMessage::Unlink")
-            }
-            ContextMessage::Data { data, caps } => (data, caps),
-        };
+        let ContextMessage {
+            data,
+            caps: ctx_caps,
+        } = message;
 
         let mut caps = Vec::with_capacity(ctx_caps.len());
         for (idx, cap) in ctx_caps.into_iter().enumerate() {
@@ -234,8 +237,7 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
             caps.push(store_cap.clone(self.store.as_ref()));
         }
 
-        self.store
-            .send(dst.get_handle(), Message::Data { data, caps });
+        self.store.send(dst.get_handle(), Message { data, caps });
 
         Ok(())
     }
@@ -368,7 +370,7 @@ mod tests {
         let store = make_store();
         let (mut ctx, cap) = make_ctx_cap(&store, Flags::SEND);
 
-        let msg = Message::Data {
+        let msg = Message {
             data: b"Hello, world!".to_vec(),
             caps: vec![],
         };
@@ -378,10 +380,10 @@ mod tests {
 
         assert_eq!(
             ctx.recv().await.unwrap(),
-            ContextMessage::Data {
+            ContextSignal::Message(ContextMessage {
                 data: b"Hello, world!".to_vec(),
                 caps: vec![]
-            }
+            })
         );
     }
 
@@ -392,13 +394,13 @@ mod tests {
         let mut b_ctx = make_ctx(&store, Flags::empty());
         let a_handle = b_ctx.insert_cap(a_cap);
 
-        let msg = ContextMessage::Data {
+        let msg = ContextMessage {
             data: vec![],
             caps: vec![],
         };
 
         b_ctx.send(a_handle, msg.clone()).unwrap();
-        assert_eq!(a_ctx.recv().await, Some(msg));
+        assert_eq!(a_ctx.recv().await, Some(ContextSignal::Message(msg)));
     }
 
     #[tokio::test]
@@ -408,7 +410,7 @@ mod tests {
         let mut b_ctx = make_ctx(&store, Flags::empty());
         let a_handle = b_ctx.insert_cap(a_cap);
 
-        let msg = ContextMessage::Data {
+        let msg = ContextMessage {
             data: vec![],
             caps: vec![0], // send self handle
         };
@@ -417,10 +419,10 @@ mod tests {
 
         assert_eq!(
             a_ctx.recv().await,
-            Some(ContextMessage::Data {
+            Some(ContextSignal::Message(ContextMessage {
                 data: vec![],
                 caps: vec![1], // "a" capability gets loaded at cap index 1
-            })
+            }))
         );
     }
 
