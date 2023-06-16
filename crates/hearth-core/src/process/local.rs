@@ -35,9 +35,8 @@ impl ProcessEntry for LocalProcess {
 
     fn on_insert(&self, _data: &Self::Data, _handle: usize) {}
 
-    fn on_send(&self, _data: &Self::Data, message: Message) {
-        // TODO send errors
-        let _ = self.mailbox_tx.send(message);
+    fn on_send(&self, _data: &Self::Data, message: Message) -> Option<Message> {
+        self.mailbox_tx.send(message).err().map(|err| err.0)
     }
 
     fn on_kill(&self, _data: &Self::Data) {

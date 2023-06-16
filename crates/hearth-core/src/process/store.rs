@@ -155,7 +155,9 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
 
     fn send(&self, handle: usize, message: Message) {
         trace!("sending to process {}", handle);
-        self.get(handle).inner.on_send(&self.entries_data, message);
+        if let Some(unsent) = self.get(handle).inner.on_send(&self.entries_data, message) {
+            unsent.free(self);
+        }
     }
 
     fn kill(&self, handle: usize) {
@@ -233,7 +235,11 @@ pub trait ProcessEntry {
     /// All message capabilities are in the scope of the owned store, and all
     /// capabilities are already ref-counted with this message, so when the
     /// message is freed, all references need to freed too.
-    fn on_send(&self, data: &Self::Data, message: Message);
+    ///
+    /// If the message cannot be sent, this method should return Some(message).
+    /// The message will be safely freed. Otherwise, the message should return
+    /// None.
+    fn on_send(&self, data: &Self::Data, message: Message) -> Option<Message>;
 
     /// Called when this entry is killed.
     fn on_kill(&self, data: &Self::Data);
@@ -328,7 +334,7 @@ impl ProcessEntry for AnyProcess {
         }
     }
 
-    fn on_send(&self, data: &Self::Data, message: Message) {
+    fn on_send(&self, data: &Self::Data, message: Message) -> Option<Message> {
         match self {
             AnyProcess::Local(local) => local.on_send(&data.local, message),
         }
@@ -366,9 +372,9 @@ pub mod tests {
             eprintln!("on_insert(handle = {})", handle);
         }
 
-        fn on_send(&self, _data: &Self::Data, message: Message) {
+        fn on_send(&self, _data: &Self::Data, message: Message) -> Option<Message> {
             eprintln!("on_send(message = {:?})", message);
-            let _ = self.mailbox_tx.send(message);
+            self.mailbox_tx.send(message).err().map(|err| err.0)
         }
 
         fn on_kill(&self, _data: &Self::Data) {
