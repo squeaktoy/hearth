@@ -15,15 +15,12 @@ members = [
   "crates/hearth-types",
   "crates/hearth-wasm",
   "crates/rend3-alacritty",
-  "guest/rust/hearth-guest",
-  "guest/rust/hearth-test-wasm",
 ]
 
 [workspace.dependencies]
 bytemuck = "1.13"
 hearth-cognito = { path = "crates/hearth-cognito" }
 hearth-core = { path = "crates/hearth-core" }
-hearth-guest = { path = "guest/rust/hearth-guest" }
 hearth-ipc = { path = "crates/hearth-ipc" }
 hearth-macros = { path = "crates/hearth-macros" }
 hearth-network = { path = "crates/hearth-network" }
