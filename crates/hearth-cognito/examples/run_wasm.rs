@@ -60,7 +60,7 @@ async fn main() {
     parent
         .send(
             wasm_spawner,
-            hearth_core::process::context::ContextMessage::Data {
+            hearth_core::process::context::ContextMessage {
                 data: serde_json::to_vec(&spawn_info).unwrap(),
                 caps: vec![0],
             },

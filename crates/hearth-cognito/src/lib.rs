@@ -22,7 +22,7 @@ use anyhow::{anyhow, Result};
 use hearth_core::anyhow::{self, bail, Context};
 use hearth_core::asset::{AssetLoader, AssetStore};
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
-use hearth_core::process::context::{ContextMessage, Flags};
+use hearth_core::process::context::{ContextMessage, ContextSignal, Flags};
 use hearth_core::process::Process;
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_core::tokio;
@@ -155,114 +155,6 @@ impl LumpAbi {
     }
 }
 
-/// Implements the `hearth::message` ABI module.
-pub struct MessageAbi {
-    pub msg_store: Slab<ContextMessage>,
-    pub ctx: Arc<Mutex<Process>>,
-}
-
-#[impl_wasm_linker(module = "hearth::message")]
-impl MessageAbi {
-    async fn send(
-        &mut self,
-        memory: GuestMemory<'_>,
-        dst_cap: u32,
-        data_ptr: u32,
-        data_len: u32,
-        caps_ptr: u32,
-        caps_num: u32,
-    ) -> Result<()> {
-        self.ctx.lock().await.send(
-            dst_cap as usize,
-            ContextMessage::Data {
-                data: memory.get_slice(data_ptr, data_len)?.to_vec(),
-                caps: memory
-                    .get_memory_slice::<u32>(caps_ptr, caps_num)?
-                    .into_iter()
-                    .map(|cap| *cap as usize)
-                    .collect(),
-            },
-        )
-    }
-
-    async fn recv(&mut self) -> Result<u32> {
-        match self.ctx.lock().await.recv().await {
-            None => Err(anyhow!("Process killed")),
-            Some(msg) => Ok(self.msg_store.insert(msg) as u32),
-        }
-    }
-
-    async fn recv_timeout(&mut self, timeout_us: u64) -> Result<u32> {
-        let duration = std::time::Duration::from_micros(timeout_us);
-        tokio::select! {
-            result = self.recv() => result,
-            _ = tokio::time::sleep(duration) => Ok(u32::MAX),
-        }
-    }
-
-    fn get_data_len(&self, handle: u32) -> Result<u32> {
-        Ok(match self.get_msg(handle)? {
-            ContextMessage::Unlink { .. } => 0,
-            ContextMessage::Data { data, .. } => data.len() as u32,
-        })
-    }
-
-    fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
-        match self.get_msg(handle)? {
-            ContextMessage::Unlink { .. } => {
-                bail!("cannot retrieve data of unlink message {}", handle);
-            }
-            ContextMessage::Data { data, .. } => {
-                let len = data.len() as u32;
-                let dst = memory.get_slice(ptr, len)?;
-                dst.copy_from_slice(data.as_slice());
-                Ok(())
-            }
-        }
-    }
-
-    fn get_caps_num(&self, handle: u32) -> Result<u32> {
-        Ok(match self.get_msg(handle)? {
-            ContextMessage::Unlink { .. } => 1,
-            ContextMessage::Data { caps, .. } => caps.len() as u32,
-        })
-    }
-
-    fn get_caps(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
-        let caps = match self.get_msg(handle)? {
-            ContextMessage::Unlink { subject } => vec![*subject as u32],
-            ContextMessage::Data { caps, .. } => caps.iter().map(|cap| *cap as u32).collect(),
-        };
-
-        let len = caps.len() as u32;
-        let dst = memory.get_memory_slice::<u32>(ptr, len)?;
-        dst.copy_from_slice(caps.as_slice());
-        Ok(())
-    }
-
-    fn free(&mut self, handle: u32) -> Result<()> {
-        self.msg_store
-            .try_remove(handle as usize)
-            .map(|_| ())
-            .ok_or_else(|| anyhow!("message handle {} is invalid", handle))
-    }
-}
-
-impl MessageAbi {
-    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
-        Self {
-            msg_store: Slab::new(),
-            ctx,
-        }
-    }
-
-    fn get_msg(&self, handle: u32) -> Result<&ContextMessage> {
-        self.msg_store
-            .get(handle as usize)
-            .with_context(|| format!("message handle {} is invalid", handle))
-    }
-}
-
 /// Implements the `hearth::process` ABI module.
 pub struct ProcessAbi {
     pub ctx: Arc<Mutex<Process>>,
@@ -327,13 +219,123 @@ impl ServiceAbi {
     }
 }
 
+/// Implements the `hearth::signal` ABI module.
+pub struct SignalAbi {
+    pub signal_store: Slab<ContextSignal>,
+    pub ctx: Arc<Mutex<Process>>,
+}
+
+#[impl_wasm_linker(module = "hearth::signal")]
+impl SignalAbi {
+    async fn send(
+        &mut self,
+        memory: GuestMemory<'_>,
+        dst_cap: u32,
+        data_ptr: u32,
+        data_len: u32,
+        caps_ptr: u32,
+        caps_num: u32,
+    ) -> Result<()> {
+        self.ctx.lock().await.send(
+            dst_cap as usize,
+            ContextMessage {
+                data: memory.get_slice(data_ptr, data_len)?.to_vec(),
+                caps: memory
+                    .get_memory_slice::<u32>(caps_ptr, caps_num)?
+                    .into_iter()
+                    .map(|cap| *cap as usize)
+                    .collect(),
+            },
+        )
+    }
+
+    async fn recv(&mut self) -> Result<u32> {
+        match self.ctx.lock().await.recv().await {
+            None => Err(anyhow!("process killed")),
+            Some(signal) => Ok(self.signal_store.insert(signal) as u32),
+        }
+    }
+
+    async fn recv_timeout(&mut self, timeout_us: u64) -> Result<u32> {
+        let duration = std::time::Duration::from_micros(timeout_us);
+        tokio::select! {
+            result = self.recv() => result,
+            _ = tokio::time::sleep(duration) => Ok(u32::MAX),
+        }
+    }
+
+    fn get_data_len(&self, handle: u32) -> Result<u32> {
+        Ok(match self.get_signal(handle)? {
+            ContextSignal::Unlink { .. } => 0,
+            ContextSignal::Message(ContextMessage { data, .. }) => data.len() as u32,
+        })
+    }
+
+    fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
+        match self.get_signal(handle)? {
+            ContextSignal::Unlink { .. } => {
+                bail!("cannot retrieve data of unlink signal {}", handle);
+            }
+            ContextSignal::Message(ContextMessage { data, .. }) => {
+                let len = data.len() as u32;
+                let dst = memory.get_slice(ptr, len)?;
+                dst.copy_from_slice(data.as_slice());
+                Ok(())
+            }
+        }
+    }
+
+    fn get_caps_num(&self, handle: u32) -> Result<u32> {
+        Ok(match self.get_signal(handle)? {
+            ContextSignal::Unlink { .. } => 1,
+            ContextSignal::Message(ContextMessage { caps, .. }) => caps.len() as u32,
+        })
+    }
+
+    fn get_caps(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
+        let caps = match self.get_signal(handle)? {
+            ContextSignal::Unlink { subject } => vec![*subject as u32],
+            ContextSignal::Message(ContextMessage { caps, .. }) => {
+                caps.iter().map(|cap| *cap as u32).collect()
+            }
+        };
+
+        let len = caps.len() as u32;
+        let dst = memory.get_memory_slice::<u32>(ptr, len)?;
+        dst.copy_from_slice(caps.as_slice());
+        Ok(())
+    }
+
+    fn free(&mut self, handle: u32) -> Result<()> {
+        self.signal_store
+            .try_remove(handle as usize)
+            .map(|_| ())
+            .ok_or_else(|| anyhow!("signal handle {} is invalid", handle))
+    }
+}
+
+impl SignalAbi {
+    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
+        Self {
+            signal_store: Slab::new(),
+            ctx,
+        }
+    }
+
+    fn get_signal(&self, handle: u32) -> Result<&ContextSignal> {
+        self.signal_store
+            .get(handle as usize)
+            .with_context(|| format!("signal handle {} is invalid", handle))
+    }
+}
+
 /// This contains all script-accessible process-related stuff.
 pub struct ProcessData {
     pub log: LogAbi,
     pub lump: LumpAbi,
-    pub message: MessageAbi,
     pub process: ProcessAbi,
     pub service: ServiceAbi,
+    pub signal: SignalAbi,
 }
 
 impl ProcessData {
@@ -343,9 +345,9 @@ impl ProcessData {
         Self {
             log: LogAbi::new(ctx.to_owned()),
             lump: LumpAbi::new(runtime, this_lump),
-            message: MessageAbi::new(ctx.to_owned()),
             process: ProcessAbi::new(ctx.to_owned()),
-            service: ServiceAbi::new(ctx),
+            service: ServiceAbi::new(ctx.to_owned()),
+            signal: SignalAbi::new(ctx),
         }
     }
 }
@@ -362,18 +364,18 @@ macro_rules! impl_asmut {
 
 impl_asmut!(ProcessData, LogAbi, log);
 impl_asmut!(ProcessData, LumpAbi, lump);
-impl_asmut!(ProcessData, MessageAbi, message);
 impl_asmut!(ProcessData, ProcessAbi, process);
 impl_asmut!(ProcessData, ServiceAbi, service);
+impl_asmut!(ProcessData, SignalAbi, signal);
 
 impl ProcessData {
     /// Adds all module ABIs to the given linker.
     pub fn add_to_linker(linker: &mut Linker<Self>) {
         LogAbi::add_to_linker(linker);
         LumpAbi::add_to_linker(linker);
-        MessageAbi::add_to_linker(linker);
         ProcessAbi::add_to_linker(linker);
         ServiceAbi::add_to_linker(linker);
+        SignalAbi::add_to_linker(linker);
     }
 }
 
@@ -437,10 +439,10 @@ pub struct WasmProcessSpawner {
 impl WasmProcessSpawner {
     async fn run(self, runtime: Arc<Runtime>, mut ctx: Process) {
         debug!("Listening to Wasm spawn requests");
-        while let Some(message) = ctx.recv().await {
-            let ContextMessage::Data { data: msg_data, caps: msg_caps } = message else {
+        while let Some(signal) = ctx.recv().await {
+            let ContextSignal::Message(ContextMessage{ data: msg_data, caps: msg_caps }) = signal else {
                 // TODO make this a process log
-                warn!("Wasm spawner expected data message but received: {:?}", message);
+                warn!("Wasm spawner expected message but received: {:?}", signal);
                 continue;
             };
 
@@ -489,7 +491,7 @@ impl WasmProcessSpawner {
                     let child_cap = ctx.copy_self_capability(&child);
                     let result = ctx.send(
                         parent,
-                        ContextMessage::Data {
+                        ContextMessage {
                             data: vec![],
                             caps: vec![child_cap],
                         },
