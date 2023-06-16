@@ -113,6 +113,7 @@ pub enum ContextMessage {
 /// errors aren't recoverable, they are at least human-readable.
 pub struct ProcessContext<Store: ProcessStoreTrait> {
     store: Arc<Store>,
+    self_cap: Option<Capability>,
     caps: Slab<Capability>,
     mailbox: UnboundedReceiver<Message>,
 
@@ -122,6 +123,10 @@ pub struct ProcessContext<Store: ProcessStoreTrait> {
 
 impl<Store: ProcessStoreTrait> Drop for ProcessContext<Store> {
     fn drop(&mut self) {
+        if let Some(self_cap) = self.self_cap.take() {
+            self_cap.free(self.store.as_ref());
+        }
+
         for cap in self.caps.drain() {
             cap.free(self.store.as_ref());
         }
@@ -140,15 +145,31 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
         mailbox: UnboundedReceiver<Message>,
     ) -> Self {
         let mut caps = Slab::with_capacity(1);
-        let self_cap = caps.insert(self_cap);
-        assert_eq!(self_cap, 0, "non-zero self-capability handle");
+        let self_handle = caps.insert(self_cap.clone(store.as_ref()));
+        assert_eq!(self_handle, 0, "non-zero self-capability handle");
 
         Self {
             store,
+            self_cap: Some(self_cap),
             caps,
             mailbox,
             unlink_queue: VecDeque::new(),
         }
+    }
+
+    /// Copies another process context's self-capability into this context.
+    pub fn copy_self_capability(&mut self, other: &Self) -> usize {
+        assert!(
+            Arc::ptr_eq(&self.store, &other.store),
+            "attempt to copy self-capability from a context from another process store"
+        );
+
+        let cap = other
+            .self_cap
+            .as_ref()
+            .expect("self-capability has been deinitialized");
+
+        self.insert_cap(cap.clone(self.store.as_ref()))
     }
 
     /// Receives the next mailbox sent to this process and maps its
@@ -252,6 +273,10 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
 
     /// Deletes a capability from this context.
     pub fn delete_capability(&mut self, handle: usize) -> anyhow::Result<()> {
+        if handle == 0 {
+            bail!("cannot delete self-capability");
+        }
+
         let cap = self
             .caps
             .try_remove(handle)
