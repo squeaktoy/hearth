@@ -180,6 +180,28 @@ impl ProcessAbi {
             .map(|cap| cap as u32)
     }
 
+    async fn send(
+        &mut self,
+        memory: GuestMemory<'_>,
+        dst_cap: u32,
+        data_ptr: u32,
+        data_len: u32,
+        caps_ptr: u32,
+        caps_num: u32,
+    ) -> Result<()> {
+        self.ctx.lock().await.send(
+            dst_cap as usize,
+            ContextMessage {
+                data: memory.get_slice(data_ptr, data_len)?.to_vec(),
+                caps: memory
+                    .get_memory_slice::<u32>(caps_ptr, caps_num)?
+                    .into_iter()
+                    .map(|cap| *cap as usize)
+                    .collect(),
+            },
+        )
+    }
+
     async fn kill(&self, cap: u32) -> Result<()> {
         self.ctx.lock().await.kill(cap as usize)
     }
@@ -227,28 +249,6 @@ pub struct SignalAbi {
 
 #[impl_wasm_linker(module = "hearth::signal")]
 impl SignalAbi {
-    async fn send(
-        &mut self,
-        memory: GuestMemory<'_>,
-        dst_cap: u32,
-        data_ptr: u32,
-        data_len: u32,
-        caps_ptr: u32,
-        caps_num: u32,
-    ) -> Result<()> {
-        self.ctx.lock().await.send(
-            dst_cap as usize,
-            ContextMessage {
-                data: memory.get_slice(data_ptr, data_len)?.to_vec(),
-                caps: memory
-                    .get_memory_slice::<u32>(caps_ptr, caps_num)?
-                    .into_iter()
-                    .map(|cap| *cap as usize)
-                    .collect(),
-            },
-        )
-    }
-
     async fn recv(&mut self) -> Result<u32> {
         match self.ctx.lock().await.recv().await {
             None => Err(anyhow!("process killed")),
