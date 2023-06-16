@@ -58,7 +58,7 @@ impl Process {
     pub fn send(&self, data: &[u8], caps: &[&Process]) {
         let caps: Vec<u32> = caps.iter().map(|process| process.0).collect();
         unsafe {
-            abi::message::send(
+            abi::signal::send(
                 self.0,
                 data.as_ptr() as u32,
                 data.len() as u32,
@@ -98,6 +98,43 @@ impl Process {
     }
 }
 
+/// A signal.
+#[derive(Clone, Debug)]
+pub enum Signal {
+    Unlink { subject: usize },
+    Message(Message),
+}
+
+impl Signal {
+    /// Blocks until a signal has been received.
+    pub fn recv() -> Self {
+        unsafe {
+            let handle = abi::signal::recv();
+            let msg = Message::load_from_handle(handle);
+            abi::signal::free(handle);
+            Signal::Message(msg)
+        }
+    }
+
+    /// Blocks until a signal is received or the given timeout (in microseconds)
+    /// expires.
+    ///
+    /// Setting the timeout to 0 skips any blocking and in effect polls the signal
+    /// queue for a new signal.
+    pub fn recv_timeout(timeout_us: u64) -> Option<Self> {
+        unsafe {
+            let handle = abi::signal::recv_timeout(timeout_us);
+            if handle == u32::MAX {
+                None
+            } else {
+                let msg = Message::load_from_handle(handle);
+                abi::signal::free(handle);
+                Some(Signal::Message(msg))
+            }
+        }
+    }
+}
+
 /// A message that has been received from another process.
 #[derive(Clone, Debug)]
 pub struct Message {
@@ -106,47 +143,19 @@ pub struct Message {
 }
 
 impl Message {
-    /// Loads a message by its handle.
+    /// Loads a message signal by its handle.
     unsafe fn load_from_handle(handle: u32) -> Self {
-        let data_len = abi::message::get_data_len(handle) as usize;
+        let data_len = abi::signal::get_data_len(handle) as usize;
         let mut data = Vec::with_capacity(data_len);
         data.set_len(data_len);
-        abi::message::get_data(handle, data.as_ptr() as u32);
+        abi::signal::get_data(handle, data.as_ptr() as u32);
 
-        let caps_num = abi::message::get_caps_num(handle) as usize;
+        let caps_num = abi::signal::get_caps_num(handle) as usize;
         let mut caps = Vec::with_capacity(caps_num);
         caps.set_len(caps_num);
-        abi::message::get_caps(handle, caps.as_ptr() as u32);
+        abi::signal::get_caps(handle, caps.as_ptr() as u32);
 
         Self { data, caps }
-    }
-
-    /// Blocks until a message has been received.
-    pub fn recv() -> Self {
-        unsafe {
-            let handle = abi::message::recv();
-            let msg = Self::load_from_handle(handle);
-            abi::message::free(handle);
-            msg
-        }
-    }
-
-    /// Blocks until a message is received or the given timeout (in microseconds)
-    /// expires.
-    ///
-    /// Setting the timeout to 0 skips any blocking and in effect polls the message
-    /// queue for a new message.
-    pub fn recv_timeout(timeout_us: u64) -> Option<Self> {
-        unsafe {
-            let handle = abi::message::recv_timeout(timeout_us);
-            if handle == u32::MAX {
-                None
-            } else {
-                let msg = Self::load_from_handle(handle);
-                abi::message::free(handle);
-                Some(msg)
-            }
-        }
     }
 }
 
@@ -237,20 +246,6 @@ mod abi {
         }
     }
 
-    pub mod message {
-        #[link(wasm_import_module = "hearth::message")]
-        extern "C" {
-            pub fn send(dst_cap: u32, data_ptr: u32, data_len: u32, caps_ptr: u32, caps_num: u32);
-            pub fn recv() -> u32;
-            pub fn recv_timeout(timeout_us: u64) -> u32;
-            pub fn get_data_len(msg: u32) -> u32;
-            pub fn get_data(msg: u32, ptr: u32);
-            pub fn get_caps_num(msg: u32) -> u32;
-            pub fn get_caps(msg: u32, ptr: u32);
-            pub fn free(msg: u32);
-        }
-    }
-
     pub mod process {
         #[link(wasm_import_module = "hearth::process")]
         extern "C" {
@@ -265,6 +260,20 @@ mod abi {
         #[link(wasm_import_module = "hearth::service")]
         extern "C" {
             pub fn get(name_ptr: u32, name_len: u32) -> u32;
+        }
+    }
+
+    pub mod signal {
+        #[link(wasm_import_module = "hearth::signal")]
+        extern "C" {
+            pub fn send(dst_cap: u32, data_ptr: u32, data_len: u32, caps_ptr: u32, caps_num: u32);
+            pub fn recv() -> u32;
+            pub fn recv_timeout(timeout_us: u64) -> u32;
+            pub fn get_data_len(msg: u32) -> u32;
+            pub fn get_data(msg: u32, ptr: u32);
+            pub fn get_caps_num(msg: u32) -> u32;
+            pub fn get_caps(msg: u32, ptr: u32);
+            pub fn free(msg: u32);
         }
     }
 }
