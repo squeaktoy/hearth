@@ -286,6 +286,21 @@ impl Message {
             },
         }
     }
+
+    /// Safely frees this message and any references within the store.
+    pub fn free(self, store: &impl ProcessStoreTrait) {
+        use Message::*;
+        match self {
+            Unlink { subject } => {
+                store.inc_ref(subject);
+            }
+            Data { caps, .. } => {
+                for cap in caps {
+                    cap.free(store);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default)]
