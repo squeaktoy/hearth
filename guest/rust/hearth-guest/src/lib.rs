@@ -82,6 +82,20 @@ impl Process {
     pub fn get_flags(&self) -> Flags {
         Flags::from_bits_retain(unsafe { abi::process::get_flags(self.0) })
     }
+
+    /// Looks up a service.
+    // TODO multiple peers support; better API
+    pub fn get_service(name: &str) -> Option<Self> {
+        unsafe {
+            let (ptr, len) = abi_string(name);
+            let handle = abi::service::get(ptr, len);
+            if handle == u32::MAX {
+                None
+            } else {
+                Some(Process(handle))
+            }
+        }
+    }
 }
 
 /// A message that has been received from another process.
@@ -243,6 +257,13 @@ mod abi {
             pub fn copy(cap: u32, new_flags: u32) -> u32;
             pub fn kill(cap: u32);
             pub fn free(cap: u32);
+        }
+    }
+
+    pub mod service {
+        #[link(wasm_import_module = "hearth::service")]
+        extern "C" {
+            pub fn get(name_ptr: u32, name_len: u32) -> u32;
         }
     }
 }
