@@ -151,7 +151,7 @@ pub trait ProcessStore {
     /// Creates a new capability connection with this process store.
     async fn caps_connect(
         &self,
-        receiver: mpsc::Receiver<CapOperation>,
+        remote_tx: mpsc::Sender<CapOperation>,
     ) -> CallResult<mpsc::Sender<CapOperation>>;
 
     /// Placeholder function call for testing.

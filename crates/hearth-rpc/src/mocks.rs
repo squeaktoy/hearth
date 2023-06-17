@@ -37,7 +37,7 @@ pub struct MockProcessStore {
 impl ProcessStore for MockProcessStore {
     async fn caps_connect(
         &self,
-        _caps_rx: mpsc::Receiver<CapOperation>,
+        _caps_tx: mpsc::Sender<CapOperation>,
     ) -> CallResult<mpsc::Sender<CapOperation>> {
         Err(CallError::RemoteForward)
     }
