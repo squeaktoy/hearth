@@ -17,6 +17,10 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 //! Networking code between a remote peer and the local process store.
+//!
+//! This networking code is loosely based on [CapTP](http://www.erights.org/elib/distrib/captp/index.html).
+//! It is highly recommended to read CapTP's documentation to become familiar
+//! with the core concepts of Hearth's capability networking.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -63,29 +67,147 @@ impl ProcessEntry for RemoteProcess {
     fn on_remove(&self, _data: &Self::Data) {}
 }
 
+/// A connection's imports table. Maps capabilities exported by the remote vat
+/// to local [Capability] objects.
+pub struct ImportsTable<Store: ProcessStoreTrait> {
+    store: Arc<Store>,
+    imports: HashMap<u32, Capability>,
+}
+
+impl<Store: ProcessStoreTrait> Drop for ImportsTable<Store> {
+    fn drop(&mut self) {
+        for (_, cap) in self.imports.drain() {
+            cap.free(self.store.as_ref());
+        }
+    }
+}
+
+impl<Store: ProcessStoreTrait> ImportsTable<Store> {
+    /// Creates an empty imports table.
+    pub fn new(store: Arc<Store>) -> Self {
+        Self {
+            store,
+            imports: HashMap::new(),
+        }
+    }
+
+    /// Inserts an exported capability into this table.
+    pub fn insert(&mut self, id: u32, cap: Capability) {
+        if let Some(old_cap) = self.imports.insert(id, cap) {
+            // TODO better overwriting behavior?
+            warn!("export ID {} overwrites existing cap", id);
+            old_cap.free(self.store.as_ref());
+        }
+    }
+
+    /// Maps an import ID into a local capability, if valid.
+    pub fn get(&self, id: u32) -> Option<Capability> {
+        self.imports
+            .get(&id)
+            .map(|cap| cap.clone(self.store.as_ref()))
+    }
+
+    /// Removes an imported capability from this store.
+    ///
+    /// Returns true if the capability was removed, false if the ID was invalid.
+    pub fn remove(&mut self, id: u32) -> bool {
+        if let Some(old_cap) = self.imports.remove(&id) {
+            self.store.kill(old_cap.get_handle());
+            old_cap.free(self.store.as_ref());
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// A connection's exports table. Manages exported IDs for local capabilities.
+pub struct ExportsTable<Store: ProcessStoreTrait> {
+    store: Arc<Store>,
+    exports: Slab<Option<Capability>>,
+}
+
+impl<Store: ProcessStoreTrait> Drop for ExportsTable<Store> {
+    fn drop(&mut self) {
+        for cap in self.exports.drain().flatten() {
+            cap.free(self.store.as_ref());
+        }
+    }
+}
+
+impl<Store: ProcessStoreTrait> ExportsTable<Store> {
+    /// Creates an empty exports table.
+    pub fn new(store: Arc<Store>) -> Self {
+        Self {
+            store,
+            exports: Slab::new(),
+        }
+    }
+
+    /// Adds an exported capability into this table.
+    pub fn insert(&mut self, cap: Capability) -> u32 {
+        self.exports.insert(Some(cap)) as u32
+    }
+
+    /// Revokes a capability, making it invalid without freeing its ID.
+    ///
+    /// Returns true if revoked, false if the capability is already revoked.
+    pub fn revoke(&mut self, id: u32) -> bool {
+        let slot = self.exports.get_mut(id as usize);
+        let Some(cap) = slot else { return false };
+        let Some(old_cap) = cap.take() else { return false };
+        old_cap.free(self.store.as_ref());
+        true
+    }
+
+    /// Frees a capability. This should only be done after [Self::revoke] has
+    /// been acknowledged.
+    pub fn free(&mut self, id: u32) {
+        let slot = self.exports.try_remove(id as usize);
+        let Some(Some(old_cap)) = slot else { return };
+        old_cap.free(self.store.as_ref());
+    }
+
+    /// Sends a locally-mapped message to an exported capability. No-ops if
+    /// the ID is invalid or the operation is unpermitted.
+    pub fn send(&self, id: u32, message: Message) {
+        if let Some(Some(cap)) = self.exports.get(id as usize) {
+            if cap.get_flags().contains(Flags::SEND) {
+                self.store.send(cap.get_handle(), message);
+                return;
+            } else {
+                warn!("exported capability send operation is unpermitted");
+            }
+        }
+
+        message.free(self.store.as_ref());
+    }
+
+    /// Kills an exported capability. No-ops if the ID is invalid or the
+    /// operation is unpermitted.
+    pub fn kill(&self, id: u32) {
+        let slot = self.exports.get(id as usize);
+        let Some(Some(cap)) = slot else { return };
+
+        if cap.get_flags().contains(Flags::KILL) {
+            self.store.kill(cap.get_handle());
+        } else {
+            warn!("exported capability kill operation is unpermitted");
+        }
+    }
+}
+
 pub type RequestCb<T> = Box<dyn FnOnce(T) + 'static>;
 
 pub struct Connection<Store: ProcessStoreTrait> {
     store: Arc<Store>,
     registry: Arc<Registry<Store>>,
-    local_caps: Slab<Option<Capability>>,
-    remote_caps: HashMap<u32, Capability>,
+    imports: ImportsTable<Store>,
+    exports: ExportsTable<Store>,
     list_services_reqs: Slab<RequestCb<Vec<String>>>,
     get_service_reqs: Slab<RequestCb<Option<Capability>>>,
     cap_signal_tx: mpsc::UnboundedSender<(u32, Signal)>,
     op_tx: mpsc::UnboundedSender<CapOperation>,
-}
-
-impl<Store: ProcessStoreTrait> Drop for Connection<Store> {
-    fn drop(&mut self) {
-        for cap in self.local_caps.drain().flatten() {
-            cap.free(self.store.as_ref());
-        }
-
-        for (_, cap) in self.remote_caps.drain() {
-            cap.free(self.store.as_ref());
-        }
-    }
 }
 
 impl<Store> Connection<Store>
@@ -100,10 +222,10 @@ where
         op_tx: mpsc::UnboundedSender<CapOperation>,
     ) -> Self {
         Self {
-            store,
+            store: store.to_owned(),
             registry,
-            local_caps: Slab::new(),
-            remote_caps: HashMap::new(),
+            imports: ImportsTable::new(store.to_owned()),
+            exports: ExportsTable::new(store.to_owned()),
             list_services_reqs: Slab::new(),
             get_service_reqs: Slab::new(),
             cap_signal_tx,
@@ -140,13 +262,19 @@ where
         req.await.ok().flatten()
     }
 
-    /// Revokes a local capability from the remote cap.
+    /// Exports a capability through this connection.
+    pub fn export(&mut self, cap: Capability) -> u32 {
+        let flags = cap.get_flags();
+        let id = self.export(cap);
+        self.send_local_op(LocalCapOperation::DeclareCap { id, flags });
+        id
+    }
+
+    /// Revokes a local capability from the connection.
     pub fn revoke(&mut self, id: u32, reason: UnlinkReason) {
-        let Some(cap) = self.local_caps.get_mut(id as usize) else { return };
-        cap.take().map(|cap| {
+        if self.exports.revoke(id) {
             self.send_local_op(LocalCapOperation::RevokeCap { id, reason });
-            cap.free(self.store.as_ref());
-        });
+        }
     }
 
     pub fn on_op(&mut self, op: CapOperation) {
@@ -160,11 +288,6 @@ where
         use LocalCapOperation::*;
         match op {
             DeclareCap { id, flags } => {
-                if self.remote_caps.contains_key(&id) {
-                    warn!("peer attempted to re-declare a cap ID");
-                    return;
-                }
-
                 let process = RemoteProcess {
                     cap_id: id,
                     cap_signal_tx: self.cap_signal_tx.clone(),
@@ -172,13 +295,12 @@ where
 
                 let handle = self.store.insert(process.into());
                 let cap = Capability::new(handle, flags);
-                self.remote_caps.insert(id, cap);
+                self.imports.insert(id, cap);
             }
             RevokeCap { id, reason: _ } => {
-                let Some(cap) = self.remote_caps.remove(&id) else { return; };
-                self.store.kill(cap.get_handle()); // TODO kill reason?
-                cap.free(self.store.as_ref());
-                self.send_remote_op(RemoteCapOperation::AcknowledgeRevocation { id });
+                if self.imports.remove(id) {
+                    self.send_remote_op(RemoteCapOperation::AcknowledgeRevocation { id });
+                }
             }
             ListServicesResponse { req_id, services } => {
                 if let Some(cb) = self.list_services_reqs.try_remove(req_id as usize) {
@@ -192,8 +314,8 @@ where
                 if let Some(cb) = self.get_service_reqs.try_remove(req_id as usize) {
                     if let Some(service_cap) = service_cap {
                         if let Some(cap) = self
-                            .remote_caps
-                            .get(&service_cap)
+                            .imports
+                            .get(service_cap)
                             .map(|cap| cap.clone(self.store.as_ref()))
                         {
                             cb(Some(cap));
@@ -210,14 +332,10 @@ where
         use RemoteCapOperation::*;
         match op {
             AcknowledgeRevocation { id } => {
-                if let Some(None) = self.local_caps.get(id as usize) {
-                    self.local_caps.remove(id as usize);
-                }
+                self.exports.free(id);
             }
             FreeCap { id } => {
-                if let Some(cap) = self.local_caps.try_remove(id as usize).flatten() {
-                    cap.free(self.store.as_ref());
-                }
+                self.exports.free(id);
             }
             ListServicesRequest { req_id } => {
                 self.send_local_op(LocalCapOperation::ListServicesResponse {
@@ -226,25 +344,16 @@ where
                 });
             }
             GetServiceRequest { req_id, name } => {
-                let service_cap = self.registry.get(name).map(|cap| self.add_local_cap(cap));
+                let service_cap = self.registry.get(name).map(|cap| self.export(cap));
                 self.send_local_op(LocalCapOperation::GetServiceResponse {
                     req_id,
                     service_cap,
                 });
             }
             Send { id, data, caps } => {
-                let Some(Some(cap)) = self.local_caps.get(id as usize) else {
-                    return;
-                };
-
-                if !cap.get_flags().contains(Flags::SEND) {
-                    warn!("peer attempted unpermitted send operation");
-                    return;
-                }
-
                 let mut store_caps = Vec::with_capacity(caps.len());
                 for cap_id in caps {
-                    if let Some(cap) = self.remote_caps.get(&cap_id) {
+                    if let Some(cap) = self.imports.get(cap_id) {
                         store_caps.push(cap.clone(self.store.as_ref()));
                     } else {
                         warn!("peer transferred invalid cap ID");
@@ -252,8 +361,8 @@ where
                     }
                 }
 
-                self.store.send(
-                    cap.get_handle(),
+                self.exports.send(
+                    id,
                     Message {
                         data,
                         caps: store_caps,
@@ -261,22 +370,9 @@ where
                 );
             }
             Kill { id } => {
-                if let Some(Some(cap)) = self.local_caps.get(id as usize) {
-                    if cap.get_flags().contains(Flags::KILL) {
-                        self.store.kill(cap.get_handle());
-                    } else {
-                        warn!("peer attempted unpermitted kill operation");
-                    }
-                }
+                self.exports.kill(id);
             }
         }
-    }
-
-    fn add_local_cap(&mut self, cap: Capability) -> u32 {
-        let flags = cap.get_flags();
-        let id = self.local_caps.insert(Some(cap)) as u32;
-        self.send_local_op(LocalCapOperation::DeclareCap { id, flags });
-        id
     }
 
     fn send_local_op(&self, op: LocalCapOperation) {
@@ -333,8 +429,7 @@ pub mod tests {
         /// Declares a mock remote capability within this connection.
         pub fn declare_mock_cap(&mut self, id: u32, flags: Flags) -> Capability {
             self.on_local_op(LocalCapOperation::DeclareCap { id, flags });
-            let cap = self.remote_caps.get(&id).unwrap();
-            cap.clone(self.store.as_ref())
+            self.imports.get(id).unwrap()
         }
     }
 
