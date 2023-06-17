@@ -22,6 +22,7 @@ use hearth_rpc::hearth_types::LocalProcessId;
 use hearth_rpc::remoc::robs::list::ListSubscription;
 use hearth_rpc::remoc::rtc::ServerShared;
 use hearth_rpc::*;
+use parking_lot::Mutex;
 use remoc::rch::mpsc;
 use remoc::robs::hash_map::HashMapSubscription;
 use remoc::rtc::async_trait;
@@ -30,6 +31,7 @@ use tracing::info;
 use super::factory::{ProcessFactory, ProcessWrapper};
 use super::local::LocalProcess;
 use super::registry::Registry;
+use super::remote::{Connection, RemoteProcess};
 use super::store::ProcessStoreTrait;
 
 pub struct ProcessStoreImpl<Store: ProcessStoreTrait> {
@@ -42,13 +44,39 @@ pub struct ProcessStoreImpl<Store: ProcessStoreTrait> {
 impl<Store> hearth_rpc::ProcessStore for ProcessStoreImpl<Store>
 where
     Store: ProcessStoreTrait + Send + Sync + 'static,
-    Store::Entry: From<LocalProcess>,
+    Store::Entry: From<LocalProcess> + From<RemoteProcess>,
 {
     async fn caps_connect(
         &self,
-        _caps_rx: mpsc::Receiver<CapOperation>,
+        remote_tx: mpsc::Sender<CapOperation>,
     ) -> CallResult<mpsc::Sender<CapOperation>> {
-        Err(remoc::rtc::CallError::RemoteForward)
+        let (signal_tx, signal_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (local_caps_tx, mut caps_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let conn = Connection::new(
+            self.store.to_owned(),
+            self.registry.to_owned(),
+            signal_tx,
+            local_caps_tx,
+        );
+
+        let conn = Arc::new(Mutex::new(conn));
+        Connection::spawn(conn.clone(), signal_rx);
+
+        tokio::spawn(async move {
+            while let Some(op) = caps_rx.recv().await {
+                let _ = remote_tx.send(op).await;
+            }
+        });
+
+        let (incoming_tx, mut incoming_rx) = mpsc::channel(1024);
+        tokio::spawn(async move {
+            while let Some(op) = incoming_rx.recv().await {
+                conn.lock().on_op(op);
+            }
+        });
+
+        Ok(incoming_tx)
     }
 
     async fn print_hello_world(&self) -> CallResult<()> {
