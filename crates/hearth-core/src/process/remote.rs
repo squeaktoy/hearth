@@ -265,7 +265,7 @@ where
     /// Exports a capability through this connection.
     pub fn export(&mut self, cap: Capability) -> u32 {
         let flags = cap.get_flags();
-        let id = self.export(cap);
+        let id = self.exports.insert(cap);
         self.send_local_op(LocalCapOperation::DeclareCap { id, flags });
         id
     }
