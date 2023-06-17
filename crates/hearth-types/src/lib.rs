@@ -87,7 +87,7 @@ impl Display for LumpId {
 
 bitflags::bitflags! {
     /// The permission flags of a capability.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
     pub struct Flags: u32 {
         const SEND = 1 << 0;
         const KILL = 1 << 1;
