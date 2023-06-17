@@ -71,7 +71,7 @@ where
 
         let (incoming_tx, mut incoming_rx) = mpsc::channel(1024);
         tokio::spawn(async move {
-            while let Some(op) = incoming_rx.recv().await {
+            while let Ok(Some(op)) = incoming_rx.recv().await {
                 conn.lock().on_op(op);
             }
         });
