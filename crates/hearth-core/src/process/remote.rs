@@ -28,6 +28,7 @@ use std::sync::Arc;
 use hearth_rpc::caps::{LocalCapOperation, RemoteCapOperation, UnlinkReason};
 use hearth_rpc::hearth_types::Flags;
 use hearth_rpc::CapOperation;
+use parking_lot::Mutex;
 use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 use tracing::warn;
@@ -197,7 +198,7 @@ impl<Store: ProcessStoreTrait> ExportsTable<Store> {
     }
 }
 
-pub type RequestCb<T> = Box<dyn FnOnce(T) + 'static>;
+pub type RequestCb<T> = Box<dyn FnOnce(T) + Send + 'static>;
 
 pub struct Connection<Store: ProcessStoreTrait> {
     store: Arc<Store>,
@@ -212,7 +213,7 @@ pub struct Connection<Store: ProcessStoreTrait> {
 
 impl<Store> Connection<Store>
 where
-    Store: ProcessStoreTrait + 'static,
+    Store: ProcessStoreTrait + Send + Sync + 'static,
     Store::Entry: From<RemoteProcess>,
 {
     pub fn new(
@@ -231,6 +232,27 @@ where
             cap_signal_tx,
             op_tx,
         }
+    }
+
+    pub fn spawn(conn: Arc<Mutex<Self>>, mut signal_rx: mpsc::UnboundedReceiver<(u32, Signal)>) {
+        tokio::spawn(async move {
+            while let Some((id, signal)) = signal_rx.recv().await {
+                let mut conn = conn.lock();
+                match signal {
+                    Signal::Kill => {
+                        conn.send_remote_op(RemoteCapOperation::Kill { id });
+                    }
+                    Signal::Unlink { subject } => {
+                        // TODO networked unlinking?
+                        conn.store.dec_ref(subject);
+                    }
+                    Signal::Message(Message { data, caps }) => {
+                        let caps = caps.into_iter().map(|cap| conn.export(cap)).collect();
+                        conn.send_remote_op(RemoteCapOperation::Send { id, data, caps });
+                    }
+                }
+            }
+        });
     }
 
     pub async fn list_services(&mut self) -> Vec<String> {
@@ -390,6 +412,14 @@ pub mod tests {
 
     use crate::process::ProcessStore;
 
+    impl Connection<ProcessStore> {
+        /// Declares a mock remote capability within this connection.
+        pub fn declare_mock_cap(&mut self, id: u32, flags: Flags) -> Capability {
+            self.on_local_op(LocalCapOperation::DeclareCap { id, flags });
+            self.imports.get(id).unwrap()
+        }
+    }
+
     /// Utility struct to test connections.
     struct ConnectionEnv {
         pub connection: Connection<ProcessStore>,
@@ -426,10 +456,19 @@ pub mod tests {
             }
         }
 
-        /// Declares a mock remote capability within this connection.
-        pub fn declare_mock_cap(&mut self, id: u32, flags: Flags) -> Capability {
-            self.on_local_op(LocalCapOperation::DeclareCap { id, flags });
-            self.imports.get(id).unwrap()
+        pub fn new_spawned() -> (
+            Arc<Mutex<Connection<ProcessStore>>>,
+            mpsc::UnboundedReceiver<CapOperation>,
+        ) {
+            let Self {
+                connection,
+                signal_rx,
+                op_rx,
+            } = Self::new();
+
+            let conn = Arc::new(Mutex::new(connection));
+            Connection::spawn(conn.to_owned(), signal_rx);
+            (conn, op_rx)
         }
     }
 
@@ -446,7 +485,7 @@ pub mod tests {
     }
 
     #[tokio::test]
-    async fn local_signal_send() {
+    async fn signal_send() {
         let mut conn = ConnectionEnv::new();
         let cap = conn.declare_mock_cap(0, Flags::SEND);
 
@@ -462,6 +501,53 @@ pub mod tests {
         assert_eq!(
             conn.signal_rx.try_recv().unwrap(),
             (0, Signal::Message(msg))
+        );
+    }
+
+    #[tokio::test]
+    async fn kill() {
+        let (conn, mut op_rx) = ConnectionEnv::new_spawned();
+        let cap = conn.lock().declare_mock_cap(0, Flags::KILL);
+
+        let store = conn.lock().store.to_owned();
+        store.kill(cap.get_handle());
+        cap.free(store.as_ref());
+
+        // let the connection thread handle the new message
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        assert_eq!(
+            op_rx.try_recv().unwrap(),
+            CapOperation::Remote(RemoteCapOperation::Kill { id: 0 }),
+        );
+    }
+
+    #[tokio::test]
+    async fn send() {
+        let (conn, mut op_rx) = ConnectionEnv::new_spawned();
+        let cap = conn.lock().declare_mock_cap(0, Flags::SEND);
+
+        let data = b"Hello, world!".to_vec();
+        let msg = Message {
+            data: data.clone(),
+            caps: vec![],
+        };
+
+        let store = conn.lock().store.to_owned();
+        let send_msg = msg.clone(store.as_ref());
+        store.send(cap.get_handle(), send_msg);
+        cap.free(store.as_ref());
+
+        // let the connection thread handle the new message
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        assert_eq!(
+            op_rx.try_recv().unwrap(),
+            CapOperation::Remote(RemoteCapOperation::Send {
+                id: 0,
+                data,
+                caps: vec![]
+            }),
         );
     }
 }
