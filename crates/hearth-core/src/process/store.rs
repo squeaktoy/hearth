@@ -25,8 +25,6 @@ use sharded_slab::Slab as ShardedSlab;
 use tracing::trace;
 
 use super::context::Capability;
-use super::local::LocalProcess;
-use super::remote::{RemoteProcess, RemoteProcessData};
 
 /// An interface trait implemented by all process stores.
 ///
@@ -328,49 +326,6 @@ impl Message {
     pub fn free(self, store: &impl ProcessStoreTrait) {
         for cap in self.caps {
             cap.free(store);
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct AnyProcessData {
-    pub local: <LocalProcess as ProcessEntry>::Data,
-    pub remote: <RemoteProcess as ProcessEntry>::Data,
-}
-
-/// A process entry that can be either remote or local.
-pub enum AnyProcess {
-    Local(LocalProcess),
-    Remote(RemoteProcess),
-}
-
-impl From<LocalProcess> for AnyProcess {
-    fn from(local: LocalProcess) -> Self {
-        AnyProcess::Local(local)
-    }
-}
-
-impl ProcessEntry for AnyProcess {
-    type Data = AnyProcessData;
-
-    fn on_insert(&self, data: &Self::Data, handle: usize) {
-        match self {
-            AnyProcess::Local(local) => local.on_insert(&data.local, handle),
-            AnyProcess::Remote(remote) => remote.on_insert(&data.remote, handle),
-        }
-    }
-
-    fn on_signal(&self, data: &Self::Data, signal: Signal) -> Option<Signal> {
-        match self {
-            AnyProcess::Local(local) => local.on_signal(&data.local, signal),
-            AnyProcess::Remote(remote) => remote.on_signal(&data.remote, signal),
-        }
-    }
-
-    fn on_remove(&self, data: &Self::Data) {
-        match self {
-            AnyProcess::Local(local) => local.on_remove(&data.local),
-            AnyProcess::Remote(remote) => remote.on_remove(&data.remote),
         }
     }
 }

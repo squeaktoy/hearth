@@ -16,8 +16,20 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+pub mod context;
+pub mod factory;
+pub mod local;
+pub mod registry;
+pub mod remote;
+pub mod rpc;
+pub mod store;
+
+use local::LocalProcess;
+use remote::RemoteProcess;
+use store::{ProcessEntry, Signal};
+
 /// The default [store::ProcessStoreTrait] implementation.
-pub type ProcessStore = store::ProcessStore<store::AnyProcess>;
+pub type ProcessStore = store::ProcessStore<AnyProcess>;
 
 /// The default process registry using [ProcessStore].
 pub type Registry = registry::Registry<ProcessStore>;
@@ -28,10 +40,45 @@ pub type ProcessFactory = factory::ProcessFactory<ProcessStore>;
 /// The default local process using [ProcessStore].
 pub type Process = factory::Process<ProcessStore>;
 
-pub mod context;
-pub mod factory;
-pub mod local;
-pub mod registry;
-pub mod remote;
-pub mod rpc;
-pub mod store;
+#[derive(Default)]
+pub struct AnyProcessData {
+    pub local: <LocalProcess as ProcessEntry>::Data,
+    pub remote: <RemoteProcess as ProcessEntry>::Data,
+}
+
+/// A process entry that can be either remote or local.
+pub enum AnyProcess {
+    Local(LocalProcess),
+    Remote(RemoteProcess),
+}
+
+impl From<LocalProcess> for AnyProcess {
+    fn from(local: LocalProcess) -> Self {
+        AnyProcess::Local(local)
+    }
+}
+
+impl ProcessEntry for AnyProcess {
+    type Data = AnyProcessData;
+
+    fn on_insert(&self, data: &Self::Data, handle: usize) {
+        match self {
+            AnyProcess::Local(local) => local.on_insert(&data.local, handle),
+            AnyProcess::Remote(remote) => remote.on_insert(&data.remote, handle),
+        }
+    }
+
+    fn on_signal(&self, data: &Self::Data, signal: Signal) -> Option<Signal> {
+        match self {
+            AnyProcess::Local(local) => local.on_signal(&data.local, signal),
+            AnyProcess::Remote(remote) => remote.on_signal(&data.remote, signal),
+        }
+    }
+
+    fn on_remove(&self, data: &Self::Data) {
+        match self {
+            AnyProcess::Local(local) => local.on_remove(&data.local),
+            AnyProcess::Remote(remote) => remote.on_remove(&data.remote),
+        }
+    }
+}
