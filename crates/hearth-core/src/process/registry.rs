@@ -105,6 +105,13 @@ mod tests {
         let cap = Capability::new(handle, Flags::empty());
         assert!(reg.insert("test", cap).is_none());
         reg.store.kill(handle);
-        assert!(reg.get("test").is_none());
+
+        match reg.get("test") {
+            Some(cap) => {
+                cap.free(reg.store.as_ref());
+                panic!("dead process was not removed from registry");
+            }
+            None => {}
+        }
     }
 }
