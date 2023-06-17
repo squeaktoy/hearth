@@ -20,7 +20,7 @@ use hearth_types::Flags;
 use serde::{Deserialize, Serialize};
 
 /// A reason for the revocation or unlinking of a process.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum UnlinkReason {
     /// The process is no longer alive.
     Dead,
@@ -33,14 +33,14 @@ pub enum UnlinkReason {
 }
 
 /// Types of messages relating to low-level capability operations between two peers.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum CapOperation {
     Local(LocalCapOperation),
     Remote(RemoteCapOperation),
 }
 
 /// Operations on local capabilities.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum LocalCapOperation {
     /// Declares a capability and its identifier.
     DeclareCap { id: u32, flags: Flags },
@@ -75,7 +75,7 @@ pub enum LocalCapOperation {
 }
 
 /// Operations on remote capabilities.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum RemoteCapOperation {
     /// Acknowledges that a capability has been revoked, freeing the ID for
     /// reuse.
