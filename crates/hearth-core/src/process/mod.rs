@@ -58,6 +58,12 @@ impl From<LocalProcess> for AnyProcess {
     }
 }
 
+impl From<RemoteProcess> for AnyProcess {
+    fn from(remote: RemoteProcess) -> Self {
+        AnyProcess::Remote(remote)
+    }
+}
+
 impl ProcessEntry for AnyProcess {
     type Data = AnyProcessData;
 

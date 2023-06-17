@@ -25,8 +25,7 @@ use hearth_rpc::caps::{LocalCapOperation, RemoteCapOperation, UnlinkReason};
 use hearth_rpc::hearth_types::Flags;
 use hearth_rpc::CapOperation;
 use slab::Slab;
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tracing::warn;
 
 use crate::process::store::Message;
@@ -45,7 +44,7 @@ pub struct RemoteProcess {
     cap_id: u32,
 
     /// The connection's outgoing signal mailbox.
-    cap_signal_tx: UnboundedSender<(u32, Signal)>,
+    cap_signal_tx: mpsc::UnboundedSender<(u32, Signal)>,
 }
 
 impl ProcessEntry for RemoteProcess {
@@ -73,8 +72,8 @@ pub struct Connection<Store: ProcessStoreTrait> {
     remote_caps: HashMap<u32, Capability>,
     list_services_reqs: Slab<RequestCb<Vec<String>>>,
     get_service_reqs: Slab<RequestCb<Option<Capability>>>,
-    cap_signal_tx: UnboundedSender<(u32, Signal)>,
-    op_tx: UnboundedSender<CapOperation>,
+    cap_signal_tx: mpsc::UnboundedSender<(u32, Signal)>,
+    op_tx: mpsc::UnboundedSender<CapOperation>,
 }
 
 impl<Store: ProcessStoreTrait> Drop for Connection<Store> {
@@ -97,8 +96,8 @@ where
     pub fn new(
         store: Arc<Store>,
         registry: Arc<Registry<Store>>,
-        cap_signal_tx: UnboundedSender<(u32, Signal)>,
-        op_tx: UnboundedSender<CapOperation>,
+        cap_signal_tx: mpsc::UnboundedSender<(u32, Signal)>,
+        op_tx: mpsc::UnboundedSender<CapOperation>,
     ) -> Self {
         Self {
             store,
@@ -286,5 +285,88 @@ where
 
     fn send_remote_op(&self, op: RemoteCapOperation) {
         let _ = self.op_tx.send(CapOperation::Remote(op));
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    use crate::process::ProcessStore;
+
+    /// Utility struct to test connections.
+    struct ConnectionEnv {
+        pub connection: Connection<ProcessStore>,
+        pub signal_rx: mpsc::UnboundedReceiver<(u32, Signal)>,
+        pub op_rx: mpsc::UnboundedReceiver<CapOperation>,
+    }
+
+    impl std::ops::Deref for ConnectionEnv {
+        type Target = Connection<ProcessStore>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.connection
+        }
+    }
+
+    impl std::ops::DerefMut for ConnectionEnv {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.connection
+        }
+    }
+
+    impl ConnectionEnv {
+        pub fn new() -> Self {
+            let store = Arc::new(ProcessStore::default());
+            let registry = Arc::new(Registry::new(store.to_owned()));
+            let (signal_tx, signal_rx) = mpsc::unbounded_channel();
+            let (op_tx, op_rx) = mpsc::unbounded_channel();
+            let connection = Connection::new(store, registry, signal_tx, op_tx);
+
+            Self {
+                connection,
+                signal_rx,
+                op_rx,
+            }
+        }
+
+        /// Declares a mock remote capability within this connection.
+        pub fn declare_mock_cap(&mut self, id: u32, flags: Flags) -> Capability {
+            self.on_local_op(LocalCapOperation::DeclareCap { id, flags });
+            let cap = self.remote_caps.get(&id).unwrap();
+            cap.clone(self.store.as_ref())
+        }
+    }
+
+    #[test]
+    fn create_connection() {
+        let _ = ConnectionEnv::new();
+    }
+
+    #[test]
+    fn declare_cap() {
+        let mut conn = ConnectionEnv::new();
+        let cap = conn.declare_mock_cap(0, Flags::empty());
+        cap.free(conn.store.as_ref());
+    }
+
+    #[tokio::test]
+    async fn local_signal_send() {
+        let mut conn = ConnectionEnv::new();
+        let cap = conn.declare_mock_cap(0, Flags::SEND);
+
+        let msg = Message {
+            data: b"Hello, world!".to_vec(),
+            caps: vec![],
+        };
+
+        let send_msg = msg.clone(conn.store.as_ref());
+        conn.store.send(cap.get_handle(), send_msg);
+        cap.free(conn.store.as_ref());
+
+        assert_eq!(
+            conn.signal_rx.try_recv().unwrap(),
+            (0, Signal::Message(msg))
+        );
     }
 }
