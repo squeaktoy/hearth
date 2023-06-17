@@ -22,6 +22,7 @@ use hearth_rpc::hearth_types::LocalProcessId;
 use hearth_rpc::remoc::robs::list::ListSubscription;
 use hearth_rpc::remoc::rtc::ServerShared;
 use hearth_rpc::*;
+use remoc::rch::mpsc;
 use remoc::robs::hash_map::HashMapSubscription;
 use remoc::rtc::async_trait;
 use tracing::info;
@@ -43,6 +44,13 @@ where
     Store: ProcessStoreTrait + Send + Sync + 'static,
     Store::Entry: From<LocalProcess>,
 {
+    async fn caps_connect(
+        &self,
+        _caps_rx: mpsc::Receiver<CapOperation>,
+    ) -> CallResult<mpsc::Sender<CapOperation>> {
+        Err(remoc::rtc::CallError::RemoteForward)
+    }
+
     async fn print_hello_world(&self) -> CallResult<()> {
         info!("Hello, world!");
         Ok(())
