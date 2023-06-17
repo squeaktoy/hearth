@@ -30,8 +30,12 @@ use serde::{Deserialize, Serialize};
 pub use hearth_types;
 pub use remoc;
 
+pub mod caps;
+
 #[cfg(feature = "mocks")]
 pub mod mocks;
+
+pub use caps::CapOperation;
 
 pub type CallResult<T> = Result<T, CallError>;
 
@@ -144,6 +148,12 @@ pub struct PeerInfo {
 /// this store belongs to a specific peer.
 #[remote]
 pub trait ProcessStore {
+    /// Creates a new capability connection with this process store.
+    async fn caps_connect(
+        &self,
+        receiver: mpsc::Receiver<CapOperation>,
+    ) -> CallResult<mpsc::Sender<CapOperation>>;
+
     /// Placeholder function call for testing.
     async fn print_hello_world(&self) -> CallResult<()>;
 
