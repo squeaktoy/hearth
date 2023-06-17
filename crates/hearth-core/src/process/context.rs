@@ -72,6 +72,11 @@ impl Capability {
         self.handle
     }
 
+    /// Retrieves this capability's flags.
+    pub(crate) fn get_flags(&self) -> Flags {
+        self.flags
+    }
+
     /// Duplicates this capability and increments its reference count in the store.
     pub fn clone(&self, store: &impl ProcessStoreTrait) -> Self {
         store.inc_ref(self.handle);
