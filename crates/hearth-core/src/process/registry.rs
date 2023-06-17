@@ -45,6 +45,10 @@ impl<Store: ProcessStoreTrait> Registry<Store> {
         }
     }
 
+    pub fn list(&self) -> Vec<String> {
+        self.services.lock().keys().cloned().collect()
+    }
+
     pub fn get(&self, service: impl AsRef<str>) -> Option<Capability> {
         let cap = self
             .services
