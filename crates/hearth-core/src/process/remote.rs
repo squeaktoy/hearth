@@ -411,7 +411,7 @@ where
                 let mut store_caps = Vec::with_capacity(caps.len());
                 for cap_id in caps {
                     if let Some(cap) = self.imports.get(cap_id) {
-                        store_caps.push(cap.clone(self.store.as_ref()));
+                        store_caps.push(cap);
                     } else {
                         warn!("peer transferred invalid cap ID");
                         return;
