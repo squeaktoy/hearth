@@ -53,7 +53,7 @@ where
         let (signal_tx, signal_rx) = tokio::sync::mpsc::unbounded_channel();
         let (local_caps_tx, mut caps_rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let conn = Connection::new(
+        let conn = Connection::new_unspawned(
             self.store.to_owned(),
             self.registry.to_owned(),
             signal_tx,
@@ -61,7 +61,7 @@ where
         );
 
         let conn = Arc::new(Mutex::new(conn));
-        Connection::spawn(conn.clone(), signal_rx);
+        Connection::spawn_signal_rx(conn.clone(), signal_rx);
 
         tokio::spawn(async move {
             while let Some(op) = caps_rx.recv().await {

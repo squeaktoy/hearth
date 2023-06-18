@@ -216,7 +216,28 @@ where
     Store: ProcessStoreTrait + Send + Sync + 'static,
     Store::Entry: From<RemoteProcess>,
 {
+    /// Creates a new connection.
+    ///
+    /// `op_rx` is the channel receiver used to receive incoming [CapOperation]
+    /// messages on this connection. `op_rx` is the channel sender used to send
+    /// outgoing [CapOperation]s.
     pub fn new(
+        store: Arc<Store>,
+        registry: Arc<Registry<Store>>,
+        op_rx: mpsc::UnboundedReceiver<CapOperation>,
+        op_tx: mpsc::UnboundedSender<CapOperation>,
+    ) -> Arc<Mutex<Self>> {
+        let (signal_tx, signal_rx) = mpsc::unbounded_channel();
+        let conn = Self::new_unspawned(store, registry, signal_tx, op_tx);
+        let conn = Arc::new(Mutex::new(conn));
+        Self::spawn_signal_rx(conn.to_owned(), signal_rx);
+        Self::spawn_op_rx(conn.to_owned(), op_rx);
+        conn
+    }
+
+    /// Internal constructor used to create a connection without spawning
+    /// threads to pump the signal and operation channels.
+    pub(crate) fn new_unspawned(
         store: Arc<Store>,
         registry: Arc<Registry<Store>>,
         cap_signal_tx: mpsc::UnboundedSender<(u32, Signal)>,
@@ -234,7 +255,11 @@ where
         }
     }
 
-    pub fn spawn(conn: Arc<Mutex<Self>>, mut signal_rx: mpsc::UnboundedReceiver<(u32, Signal)>) {
+    /// Spawns a thread that processes received signals from the given channel.
+    pub fn spawn_signal_rx(
+        conn: Arc<Mutex<Self>>,
+        mut signal_rx: mpsc::UnboundedReceiver<(u32, Signal)>,
+    ) {
         tokio::spawn(async move {
             while let Some((id, signal)) = signal_rx.recv().await {
                 let mut conn = conn.lock();
@@ -251,6 +276,16 @@ where
                         conn.send_remote_op(RemoteCapOperation::Send { id, data, caps });
                     }
                 }
+            }
+        });
+    }
+
+    /// Spawns a thread that will process received operations from the given
+    /// channel.
+    pub fn spawn_op_rx(conn: Arc<Mutex<Self>>, mut op_rx: mpsc::UnboundedReceiver<CapOperation>) {
+        tokio::spawn(async move {
+            while let Some(op) = op_rx.recv().await {
+                conn.lock().on_op(op);
             }
         });
     }
@@ -442,12 +477,12 @@ pub mod tests {
     }
 
     impl ConnectionEnv {
-        pub fn new() -> Self {
+        pub fn new_unspawned() -> Self {
             let store = Arc::new(ProcessStore::default());
             let registry = Arc::new(Registry::new(store.to_owned()));
             let (signal_tx, signal_rx) = mpsc::unbounded_channel();
             let (op_tx, op_rx) = mpsc::unbounded_channel();
-            let connection = Connection::new(store, registry, signal_tx, op_tx);
+            let connection = Connection::new_unspawned(store, registry, signal_tx, op_tx);
 
             Self {
                 connection,
@@ -456,37 +491,33 @@ pub mod tests {
             }
         }
 
-        pub fn new_spawned() -> (
+        pub fn spawn(
+            self,
+        ) -> (
             Arc<Mutex<Connection<ProcessStore>>>,
             mpsc::UnboundedReceiver<CapOperation>,
         ) {
-            let Self {
-                connection,
-                signal_rx,
-                op_rx,
-            } = Self::new();
-
-            let conn = Arc::new(Mutex::new(connection));
-            Connection::spawn(conn.to_owned(), signal_rx);
-            (conn, op_rx)
+            let conn = Arc::new(Mutex::new(self.connection));
+            Connection::spawn_signal_rx(conn.to_owned(), self.signal_rx);
+            (conn, self.op_rx)
         }
     }
 
     #[test]
     fn create_connection() {
-        let _ = ConnectionEnv::new();
+        let _ = ConnectionEnv::new_unspawned();
     }
 
     #[test]
     fn declare_cap() {
-        let mut conn = ConnectionEnv::new();
+        let mut conn = ConnectionEnv::new_unspawned();
         let cap = conn.declare_mock_cap(0, Flags::empty());
         cap.free(conn.store.as_ref());
     }
 
     #[tokio::test]
     async fn signal_send() {
-        let mut conn = ConnectionEnv::new();
+        let mut conn = ConnectionEnv::new_unspawned();
         let cap = conn.declare_mock_cap(0, Flags::SEND);
 
         let msg = Message {
@@ -506,7 +537,8 @@ pub mod tests {
 
     #[tokio::test]
     async fn kill() {
-        let (conn, mut op_rx) = ConnectionEnv::new_spawned();
+        let conn = ConnectionEnv::new_unspawned();
+        let (conn, mut op_rx) = conn.spawn();
         let cap = conn.lock().declare_mock_cap(0, Flags::KILL);
 
         let store = conn.lock().store.to_owned();
@@ -524,7 +556,8 @@ pub mod tests {
 
     #[tokio::test]
     async fn send() {
-        let (conn, mut op_rx) = ConnectionEnv::new_spawned();
+        let conn = ConnectionEnv::new_unspawned();
+        let (conn, mut op_rx) = conn.spawn();
         let cap = conn.lock().declare_mock_cap(0, Flags::SEND);
 
         let data = b"Hello, world!".to_vec();
