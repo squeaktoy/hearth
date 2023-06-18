@@ -583,4 +583,101 @@ pub mod tests {
             }),
         );
     }
+
+    pub mod contexts {
+        use super::*;
+
+        use crate::process::context::{ContextMessage, ContextSignal};
+        use crate::process::{Process, ProcessFactory};
+        use hearth_rpc::ProcessInfo;
+
+        pub async fn make_connected() -> ((Process, usize), (Process, usize)) {
+            let init_side = |peer_id| {
+                let conn = ConnectionEnv::new_unspawned();
+                let factory = ProcessFactory::new(
+                    conn.store.to_owned(),
+                    conn.registry.to_owned(),
+                    hearth_rpc::hearth_types::PeerId(peer_id),
+                );
+                let (conn, conn_rx) = conn.spawn();
+                let ctx = factory.spawn(ProcessInfo {}, Flags::all());
+                (conn, conn_rx, ctx)
+            };
+
+            let (a, a_rx, a_ctx) = init_side(0);
+            let (b, b_rx, b_ctx) = init_side(1);
+
+            Connection::spawn_op_rx(a.to_owned(), b_rx);
+            Connection::spawn_op_rx(b.to_owned(), a_rx);
+
+            let mut a = a.lock();
+            let a_cap = a.export(a_ctx.get_self_capability());
+
+            let mut b = b.lock();
+            let b_cap = b.export(b_ctx.get_self_capability());
+
+            a.send_remote_op(RemoteCapOperation::Send {
+                id: b_cap,
+                data: vec![],
+                caps: vec![a_cap],
+            });
+
+            b.send_remote_op(RemoteCapOperation::Send {
+                id: a_cap,
+                data: vec![],
+                caps: vec![b_cap],
+            });
+
+            drop(a);
+            drop(b);
+
+            async fn recv_cap(mut ctx: Process) -> (Process, usize) {
+                let signal = ctx.recv().await.unwrap();
+                let cap = match signal {
+                    crate::process::context::ContextSignal::Unlink { .. } => {
+                        panic!("expected message, got unlink")
+                    }
+                    crate::process::context::ContextSignal::Message(ContextMessage {
+                        data,
+                        mut caps,
+                    }) => {
+                        assert!(data.is_empty());
+                        assert_eq!(caps.len(), 1);
+                        caps.remove(0)
+                    }
+                };
+
+                (ctx, cap)
+            }
+
+            (recv_cap(a_ctx).await, recv_cap(b_ctx).await)
+        }
+
+        #[tokio::test]
+        async fn create_connected_contexts() {
+            let _ = make_connected().await;
+        }
+
+        #[tokio::test]
+        async fn send_data() {
+            let ((a_ctx, b_cap), (mut b_ctx, _a_cap)) = make_connected().await;
+
+            let data = b"Hello, world!".to_vec();
+
+            a_ctx
+                .send(
+                    b_cap,
+                    ContextMessage {
+                        data: data.clone(),
+                        caps: vec![],
+                    },
+                )
+                .unwrap();
+
+            assert_eq!(
+                b_ctx.recv().await.unwrap(),
+                ContextSignal::Message(ContextMessage { data, caps: vec![] })
+            );
+        }
+    }
 }
