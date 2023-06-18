@@ -173,8 +173,15 @@ impl<Entry: ProcessEntry> ProcessStoreTrait for ProcessStore<Entry> {
         trace!("linking subject {} to object {}", subject, object);
         let entry = self.get(subject);
         let mut linked = entry.linked.lock();
-        self.inc_ref(object);
-        linked.push(object);
+        if entry.is_alive.load(Ordering::SeqCst) {
+            if !linked.contains(&object) {
+                self.inc_ref(object);
+                linked.push(object);
+            }
+        } else {
+            self.inc_ref(object);
+            self.send_signal(object, Signal::Unlink { subject });
+        }
     }
 
     fn is_alive(&self, handle: usize) -> bool {
@@ -219,7 +226,14 @@ impl<T: ProcessEntry> ProcessStore<T> {
 
     /// Internal utility function to safely send a signal to a process.
     fn send_signal(&self, handle: usize, signal: Signal) {
-        if let Some(unsent) = self.get(handle).inner.on_signal(&self.entries_data, signal) {
+        let entry = self.get(handle);
+
+        if !entry.is_alive.load(Ordering::SeqCst) {
+            signal.free(self);
+            return;
+        }
+
+        if let Some(unsent) = entry.inner.on_signal(&self.entries_data, signal) {
             unsent.free(self);
         }
     }
@@ -409,6 +423,7 @@ pub mod tests {
         let (mailbox, handle) = store.insert_forward();
 
         store.kill(handle);
+        assert_eq!(mailbox.try_recv(), Ok(Signal::Kill));
 
         store.send(
             handle,
