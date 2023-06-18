@@ -172,6 +172,14 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
         }
     }
 
+    /// Gets the self-capability of this context.
+    pub fn get_self_capability(&self) -> Capability {
+        self.self_cap
+            .as_ref()
+            .expect("self-capability has been deinitialized")
+            .clone(self.store.as_ref())
+    }
+
     /// Copies another process context's self-capability into this context.
     pub fn copy_self_capability(&mut self, other: &Self) -> usize {
         assert!(
@@ -179,12 +187,7 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
             "attempt to copy self-capability from a context from another process store"
         );
 
-        let cap = other
-            .self_cap
-            .as_ref()
-            .expect("self-capability has been deinitialized");
-
-        self.insert_cap(cap.clone(self.store.as_ref()))
+        self.insert_cap(other.get_self_capability())
     }
 
     /// Receives the next signal sent to this process and maps its
