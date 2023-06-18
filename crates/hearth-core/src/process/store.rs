@@ -398,11 +398,13 @@ pub mod tests {
         ProcessStore::new(())
     }
 
+    /// Asserts that process stores can be safely initialized.
     #[test]
     fn create_store() {
         let _store = make_store();
     }
 
+    /// Asserts that a process can receive messages.
     #[test]
     fn send() {
         let store = make_store();
@@ -417,6 +419,7 @@ pub mod tests {
         assert_eq!(mailbox.try_recv(), Ok(Signal::Message(message)));
     }
 
+    /// Asserts that dead processes do not receive any messages.
     #[test]
     fn send_dead() {
         let store = make_store();
@@ -436,6 +439,8 @@ pub mod tests {
         assert!(mailbox.try_recv().is_err());
     }
 
+    /// Asserts that processes send unlink messages to objects of links
+    /// targeting them when they die.
     #[test]
     fn link() {
         let store = make_store();
@@ -446,6 +451,8 @@ pub mod tests {
         assert_eq!(mailbox.try_recv(), Ok(Signal::Unlink { subject }));
     }
 
+    /// Asserts that already-dead processes immediately send unlink messages to
+    /// objects of links targeting them.
     #[test]
     fn link_dead() {
         let store = make_store();
@@ -456,6 +463,8 @@ pub mod tests {
         assert_eq!(mailbox.try_recv(), Ok(Signal::Unlink { subject }));
     }
 
+    /// Asserts that processes with zero reference counts are removed from the
+    /// store.
     #[test]
     fn ref_counting() {
         let store = make_store();
@@ -465,6 +474,7 @@ pub mod tests {
         assert!(!store.contains(handle));
     }
 
+    /// Asserts that killed processes become no longer alive.
     #[test]
     fn kill() {
         let store = make_store();
@@ -474,6 +484,7 @@ pub mod tests {
         assert!(!store.is_alive(handle));
     }
 
+    /// Asserts that processes can be safely killed twice.
     #[test]
     fn double_kill() {
         let store = make_store();
@@ -482,6 +493,9 @@ pub mod tests {
         store.kill(handle);
     }
 
+    /// Asserts that objects of links keep reference counts to their subjects.
+    // TODO is this even necessary? when would you want to receive an unlink
+    // message for a process that has zero reference counts?
     #[test]
     fn link_object_holds_reference() {
         let store = make_store();
@@ -494,6 +508,10 @@ pub mod tests {
         assert!(!store.contains(subject));
     }
 
+    /// Asserts that subjects of links are kept alive by their objects. This is
+    /// necessary so that a link subject always contains a valid reference to
+    /// its object, so that the object handle is not replaced by another
+    /// process.
     #[test]
     fn link_subject_holds_reference() {
         let store = make_store();
@@ -506,6 +524,9 @@ pub mod tests {
         assert!(!store.contains(subject));
     }
 
+    /// Asserts that processes who have cyclically linked to each other are
+    /// removed from the process store when there are no other references to
+    /// them. Necessary to prevent process memory leaks.
     #[test]
     fn cyclic_linking_deref() {
         let store = make_store();
@@ -519,6 +540,8 @@ pub mod tests {
         assert!(!store.contains(b));
     }
 
+    /// Asserts that object processes who have linked to a subject processes
+    /// twice only receive a single unlink signal when the subject dies.
     #[test]
     fn no_double_linking() {
         let store = make_store();
@@ -531,6 +554,8 @@ pub mod tests {
         assert!(mailbox.try_recv().is_err());
     }
 
+    /// Asserts that reference-holding messages that are dropped by the
+    /// receiver safely have their references dropped.
     #[test]
     fn safe_message_drop() {
         let store = make_store();
