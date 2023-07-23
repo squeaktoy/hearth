@@ -18,6 +18,7 @@
 
 use std::path::{Path, PathBuf};
 
+pub use async_trait::async_trait;
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::prelude::*;
 
