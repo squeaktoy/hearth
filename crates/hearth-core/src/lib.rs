@@ -23,6 +23,7 @@ use tracing::{debug, error, info, Level};
 use tracing_subscriber::prelude::*;
 
 pub use anyhow;
+pub use hearth_types;
 pub use tokio;
 pub use tracing;
 
