@@ -19,13 +19,9 @@
 use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
-use hearth_rpc::{hearth_types::*, DaemonOffer};
+use hearth_types::*;
 
-mod kill;
-mod list_peers;
-mod list_processes;
-mod run_mock_runtime;
-mod spawn_wasm;
+pub struct DaemonOffer {}
 
 #[derive(Clone, Debug)]
 pub enum MaybeLocalPID {
@@ -64,23 +60,12 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    ListPeers(list_peers::ListPeers),
-    ListProcesses(list_processes::ListProcesses),
-    RunMockRuntime(run_mock_runtime::RunMockRuntime),
-    SpawnWasm(spawn_wasm::SpawnWasm),
-    Kill(kill::Kill),
+    /// A dummy command.
+    Dummy,
 }
 
 impl Commands {
-    pub async fn run(self) {
-        match self {
-            Commands::ListPeers(args) => args.run(get_daemon().await).await,
-            Commands::ListProcesses(args) => args.run(get_daemon().await).await,
-            Commands::SpawnWasm(args) => args.run(get_daemon().await).await,
-            Commands::RunMockRuntime(args) => args.run().await,
-            Commands::Kill(args) => args.run(get_daemon().await).await,
-        }
-    }
+    pub async fn run(self) {}
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -90,9 +75,11 @@ async fn main() {
 }
 
 async fn get_daemon() -> DaemonOffer {
-    hearth_ipc::connect()
+    let _connection = hearth_ipc::connect()
         .await
-        .expect("Failed to connect to Hearth daemon")
+        .expect("Failed to connect to Hearth daemon");
+
+    DaemonOffer {}
 }
 
 fn hash_map_to_ordered_vec<K: Copy + Ord, V>(map: HashMap<K, V>) -> Vec<(K, V)> {
