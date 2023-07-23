@@ -10,7 +10,6 @@ members = [
   "crates/hearth-macros",
   "crates/hearth-network",
   "crates/hearth-rend3",
-  "crates/hearth-rpc",
   "crates/hearth-server",
   "crates/hearth-types",
   "crates/hearth-wasm",
@@ -25,7 +24,6 @@ hearth-ipc = { path = "crates/hearth-ipc" }
 hearth-macros = { path = "crates/hearth-macros" }
 hearth-network = { path = "crates/hearth-network" }
 hearth-rend3 = { path = "crates/hearth-rend3" }
-hearth-rpc = { path = "crates/hearth-rpc" }
 hearth-types = { path = "crates/hearth-types" }
 hearth-wasm = { path = "crates/hearth-wasm" }
 parking_lot = "0.12"

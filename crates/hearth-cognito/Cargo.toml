@@ -8,7 +8,6 @@ license = "AGPL-3.0-or-later"
 bytemuck = { workspace = true }
 hearth-core = { workspace = true }
 hearth-macros = { workspace = true }
-hearth-rpc = { workspace = true }
 hearth-wasm = { workspace = true }
 serde_json = { workspace = true }
 slab = "0.4.8"
