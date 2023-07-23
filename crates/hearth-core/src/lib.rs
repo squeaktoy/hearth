@@ -18,7 +18,6 @@
 
 use std::path::{Path, PathBuf};
 
-pub use hearth_rpc::remoc::rtc::async_trait;
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::prelude::*;
 

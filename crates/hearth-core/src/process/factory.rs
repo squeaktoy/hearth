@@ -19,26 +19,34 @@
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-use hearth_rpc::hearth_types::{LocalProcessId, PeerId, ProcessId, ProcessLogLevel};
-use hearth_rpc::remoc::robs::hash_map::ObservableHashMap;
-use hearth_rpc::remoc::robs::list::ObservableListDistributor;
-use hearth_rpc::{remoc, ProcessInfo, ProcessLogEvent, ProcessStatus};
+use hearth_types::{Flags, LocalProcessId, PeerId, ProcessId, ProcessLogLevel};
 use parking_lot::RwLock;
-use remoc::rch::watch;
-use remoc::robs::list::ObservableList;
 use slab::Slab;
 use tokio::sync::mpsc::unbounded_channel;
 use tracing::debug;
 
-use super::context::{Capability, Flags, ProcessContext};
+use super::context::{Capability, ProcessContext};
 use super::local::LocalProcess;
 use super::registry::Registry;
 use super::store::ProcessStoreTrait;
 
+/// User-frinedly metadata for a local process.
+#[derive(Clone, Debug, Hash)]
+pub struct ProcessInfo {}
+
+/// Log event emitted by a process.
+#[derive(Clone, Debug, Hash)]
+pub struct ProcessLogEvent {
+    pub level: ProcessLogLevel,
+    pub module: String,
+    pub content: String,
+    // TODO optional source code location?
+    // TODO serializeable timestamp?
+}
+
 pub(crate) struct ProcessWrapper {
     pub info: ProcessInfo,
     pub cap: Capability,
-    pub log_distributor: ObservableListDistributor<ProcessLogEvent>,
 }
 
 pub struct ProcessFactory<Store: ProcessStoreTrait> {
@@ -46,7 +54,6 @@ pub struct ProcessFactory<Store: ProcessStoreTrait> {
     registry: Arc<Registry<Store>>,
     peer: PeerId,
     processes: RwLock<Slab<ProcessWrapper>>,
-    pub(crate) statuses: RwLock<ObservableHashMap<LocalProcessId, ProcessStatus>>,
 }
 
 impl<Store: ProcessStoreTrait> Drop for ProcessFactory<Store> {
@@ -70,36 +77,20 @@ where
             registry,
             peer,
             processes: Default::default(),
-            statuses: Default::default(),
         }
     }
 
     /// Spawns a process.
     pub fn spawn(&self, info: ProcessInfo, flags: Flags) -> Process<Store> {
-        let log = ObservableList::new();
         let (mailbox_tx, mailbox) = unbounded_channel();
         let entry = LocalProcess { mailbox_tx };
         let handle = self.store.insert(entry.into());
-        let (warning_num_tx, warning_num) = watch::channel(0);
-        let (error_num_tx, error_num) = watch::channel(0);
-        let (log_num_tx, log_num) = watch::channel(0);
         let self_cap = Capability::new(handle, flags);
 
         let pid = LocalProcessId(self.processes.write().insert(ProcessWrapper {
             info: info.clone(),
             cap: self_cap.clone(self.store.as_ref()),
-            log_distributor: log.distributor(),
         }) as u32);
-
-        self.statuses.write().insert(
-            pid,
-            ProcessStatus {
-                warning_num,
-                error_num,
-                log_num,
-                info,
-            },
-        );
 
         let ctx = ProcessContext::new(self.store.to_owned(), self_cap, mailbox);
 
@@ -107,10 +98,6 @@ where
             pid: ProcessId::from_peer_process(self.peer, pid),
             ctx,
             registry: self.registry.clone(),
-            log,
-            warning_num_tx,
-            error_num_tx,
-            log_num_tx,
         }
     }
 
@@ -121,7 +108,6 @@ where
             .map(|wrapper| ProcessWrapper {
                 info: wrapper.info.clone(),
                 cap: wrapper.cap.clone(self.store.as_ref()),
-                log_distributor: wrapper.log_distributor.clone(),
             })
     }
 }
@@ -136,18 +122,6 @@ pub struct Process<Store: ProcessStoreTrait> {
 
     /// The registry for this process.
     registry: Arc<Registry<Store>>,
-
-    /// Observable log for this process's log events.
-    log: ObservableList<ProcessLogEvent>,
-
-    /// A sender to this process's number of warning logs.
-    warning_num_tx: watch::Sender<u32>,
-
-    /// A sender to this process's number of error logs.
-    error_num_tx: watch::Sender<u32>,
-
-    /// A sender to this process's total number of log events.
-    log_num_tx: watch::Sender<u32>,
 }
 
 impl<Store: ProcessStoreTrait> Deref for Process<Store> {
@@ -173,24 +147,6 @@ impl<Store: ProcessStoreTrait> Process<Store> {
     /// Adds a lot event to this process's log.
     pub fn log(&mut self, event: ProcessLogEvent) {
         debug!("process log: {:?}", event);
-
-        // helper function for incrementing watched counter
-        let inc_num = |watch: &mut watch::Sender<u32>| {
-            watch.send_modify(|i| *i += 1);
-        };
-
-        // update level-specific log event counters
-        match event.level {
-            ProcessLogLevel::Warning => inc_num(&mut self.warning_num_tx),
-            ProcessLogLevel::Error => inc_num(&mut self.error_num_tx),
-            _ => {}
-        }
-
-        // always increment the total log event counter
-        inc_num(&mut self.log_num_tx);
-
-        // actually push the log event
-        self.log.push(event);
     }
 
     /// Retrieves a service capability from the registry.

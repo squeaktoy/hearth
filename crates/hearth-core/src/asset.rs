@@ -22,9 +22,8 @@ use std::sync::Arc;
 
 use crate::lump::LumpStoreImpl;
 use anyhow::{anyhow, Result};
-use hearth_rpc::{hearth_types, remoc};
 use hearth_types::LumpId;
-use remoc::rtc::async_trait;
+use async_trait::async_trait;
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error};
 

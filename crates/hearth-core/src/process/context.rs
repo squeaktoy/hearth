@@ -20,12 +20,11 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use anyhow::{bail, Context};
+use hearth_types::Flags;
 use slab::Slab;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::store::{Message, ProcessStoreTrait, Signal};
-
-pub use hearth_rpc::hearth_types::Flags;
 
 /// A capability within a process store, storing both a handle and its
 /// permission flags.

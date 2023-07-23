@@ -27,16 +27,14 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::Arc;
 
-use hearth_rpc::remoc::rtc::ServerShared;
-use hearth_rpc::*;
-use hearth_types::PeerId;
-use remoc::rtc::async_trait;
+use async_trait::async_trait;
+use hearth_types::{Flags, PeerId};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
-use crate::process::context::Flags;
+use crate::process::factory::ProcessInfo;
 
 /// Interface trait for plugins to the Hearth runtime.
 ///
@@ -235,44 +233,14 @@ impl RuntimeBuilder {
             config.this_peer,
         ));
 
-        debug!("Spawning lum store server");
         let lump_store = self.lump_store;
-        let (lump_store_server, lump_store_client) =
-            LumpStoreServerShared::new(lump_store.clone(), 1024);
-        tokio::spawn(async move {
-            lump_store_server.serve(true).await;
-        });
-
-        debug!("Spawning process store server");
-        let store_impl = rpc::ProcessStoreImpl::new(
-            process_store.clone(),
-            process_factory.clone(),
-            process_registry.clone(),
-        );
-
-        let (process_store_server, process_store_client) =
-            ProcessStoreServerShared::new(Arc::new(store_impl), 1024);
-        tokio::spawn(async move {
-            process_store_server.serve(true).await;
-        });
-
-        debug!("Spawning process factory server");
-        let factory_impl = rpc::ProcessFactoryImpl::new(process_factory.clone());
-        let (process_factory_server, process_factory_client) =
-            ProcessFactoryServerShared::new(Arc::new(factory_impl), 1024);
-        tokio::spawn(async move {
-            process_factory_server.serve(true).await;
-        });
 
         let runtime = Arc::new(Runtime {
             asset_store: Arc::new(self.asset_store),
             lump_store,
-            lump_store_client,
             process_store,
             process_registry,
             process_factory,
-            process_store_client,
-            process_factory_client,
             config,
         });
 
@@ -297,14 +265,8 @@ impl RuntimeBuilder {
 
 /// Configuration info for a runtime.
 pub struct RuntimeConfig {
-    /// The provider to other peers on the network.
-    pub peer_provider: PeerProviderClient,
-
     /// The ID of this peer.
     pub this_peer: PeerId,
-
-    /// The [PeerInfo] for this peer.
-    pub info: PeerInfo,
 }
 
 /// An instance of a single Hearth runtime.
@@ -326,9 +288,6 @@ pub struct Runtime {
     /// This runtime's lump store.
     pub lump_store: Arc<LumpStoreImpl>,
 
-    /// A clone-able client to this runtime's lump store.
-    pub lump_store_client: LumpStoreClient,
-
     /// This runtime's process store.
     pub process_store: Arc<crate::process::ProcessStore>,
 
@@ -337,38 +296,4 @@ pub struct Runtime {
 
     /// This runtime's process factory.
     pub process_factory: Arc<crate::process::ProcessFactory>,
-
-    /// A clone-able client to this runtime's process store.
-    pub process_store_client: ProcessStoreClient,
-
-    /// A clone-able client to the process store's factory.
-    pub process_factory_client: ProcessFactoryClient,
-}
-
-#[async_trait]
-impl PeerApi for Runtime {
-    async fn get_info(&self) -> CallResult<PeerInfo> {
-        Ok(self.config.info.clone())
-    }
-
-    async fn get_process_store(&self) -> CallResult<ProcessStoreClient> {
-        Ok(self.process_store_client.clone())
-    }
-
-    async fn get_lump_store(&self) -> CallResult<LumpStoreClient> {
-        Ok(self.lump_store_client.clone())
-    }
-}
-
-impl Runtime {
-    /// Spawns a new [PeerApiServer] for this runtime and returns a client to it.
-    pub fn serve_peer_api(self: Arc<Self>) -> PeerApiClient {
-        debug!("Serving runtime PeerApi");
-        let (server, client) = PeerApiServerShared::new(self, 1024);
-        tokio::spawn(async move {
-            server.serve(true).await;
-        });
-
-        client
-    }
 }
