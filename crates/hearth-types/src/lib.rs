@@ -24,6 +24,9 @@ use serde::{Deserialize, Serialize};
 /// Paneling-related protocols and utilities.
 pub mod panels;
 
+/// Registry protocol.
+pub mod registry;
+
 /// WebAssembly process protocols and utilities.
 pub mod wasm;
 
