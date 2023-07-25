@@ -348,9 +348,8 @@ impl Message {
 pub mod tests {
     use super::*;
 
+    use hearth_types::Flags;
     use std::sync::mpsc::{channel, Receiver, Sender};
-
-    use crate::process::context::Flags;
 
     pub struct MockProcessEntry {
         mailbox_tx: Sender<Signal>,
