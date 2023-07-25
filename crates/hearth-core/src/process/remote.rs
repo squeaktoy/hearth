@@ -70,6 +70,7 @@ impl ProcessEntry for RemoteProcess {
 pub struct ImportsTable<Store: ProcessStoreTrait> {
     store: Arc<Store>,
     imports: HashMap<u32, Capability>,
+    root_cap: Option<u32>,
 }
 
 impl<Store: ProcessStoreTrait> Drop for ImportsTable<Store> {
@@ -86,6 +87,7 @@ impl<Store: ProcessStoreTrait> ImportsTable<Store> {
         Self {
             store,
             imports: HashMap::new(),
+            root_cap: None,
         }
     }
 
@@ -105,13 +107,45 @@ impl<Store: ProcessStoreTrait> ImportsTable<Store> {
             .map(|cap| cap.clone(self.store.as_ref()))
     }
 
+    /// Sets the index of the root capability.
+    ///
+    /// Returns true if the capability was valid. Returns false and does not
+    /// update the root otherwise.
+    pub fn set_root(&mut self, id: u32) -> bool {
+        if self.imports.contains_key(&id) {
+            self.root_cap = Some(id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Gets the root capability, if set and not revoked.
+    pub fn get_root(&mut self) -> Option<Capability> {
+        let id = self.root_cap?;
+        let cap = self.get(id);
+
+        if cap.is_none() {
+            warn!("root cap {} was set but wasn't imported", id);
+        }
+
+        cap
+    }
+
     /// Removes an imported capability from this store.
     ///
     /// Returns true if the capability was removed, false if the ID was invalid.
+    ///
+    /// If the removed cap is the root cap, the root cap is unset.
     pub fn remove(&mut self, id: u32) -> bool {
         if let Some(old_cap) = self.imports.remove(&id) {
             self.store.kill(old_cap.get_handle());
             old_cap.free(self.store.as_ref());
+
+            if self.root_cap == Some(id) {
+                self.root_cap.take();
+            }
+
             true
         } else {
             false
@@ -287,6 +321,12 @@ where
         id
     }
 
+    /// Exports a capability as this side of the connection's root cap.
+    pub fn export_root(&mut self, cap: Capability) {
+        let id = self.export(cap);
+        self.send_local_op(LocalCapOperation::SetRootCap { id });
+    }
+
     /// Revokes a local capability from the connection.
     pub fn revoke(&mut self, id: u32, reason: UnlinkReason) {
         if self.exports.revoke(id) {
@@ -319,7 +359,9 @@ where
                     self.send_remote_op(RemoteCapOperation::AcknowledgeRevocation { id });
                 }
             }
-            SetRootCap { id } => unimplemented!(),
+            SetRootCap { id } => {
+                self.imports.set_root(id);
+            }
         }
     }
 
