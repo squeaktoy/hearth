@@ -25,135 +25,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use hearth_types::protocol::*;
 use parking_lot::Mutex;
 use slab::Slab;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tracing::warn;
 
 use crate::process::store::Message;
 
 use super::context::Capability;
-use super::registry::Registry;
 use super::store::{ProcessEntry, ProcessStoreTrait, Signal};
-
-use caps::*;
-
-pub mod caps {
-    pub use hearth_types::Flags;
-
-    use serde::{Deserialize, Serialize};
-
-    /// A reason for the revocation or unlinking of a process.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
-    pub enum UnlinkReason {
-        /// The process is no longer alive.
-        Dead,
-
-        /// The process is no longer accessible.
-        Inaccessible,
-
-        /// Access to the process has been revoked.
-        AccessRevoked,
-    }
-
-    /// Types of messages relating to low-level capability operations between two peers.
-    #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-    pub enum CapOperation {
-        Local(LocalCapOperation),
-        Remote(RemoteCapOperation),
-    }
-
-    /// Operations on local capabilities.
-    #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-    pub enum LocalCapOperation {
-        /// Declares a capability and its identifier.
-        DeclareCap { id: u32, flags: Flags },
-
-        /// Revokes a capability.
-        ///
-        /// All operations on this capability become invalid when this operation
-        /// is sent, but the capability ID will not be reused until
-        /// [RemoteCapOperation::AcknowledgeRevocation] is received.
-        RevokeCap { id: u32, reason: UnlinkReason },
-
-        /// Responds to [RemoteCapOperation::ListServicesResponse].
-        ListServicesResponse {
-            /// The identifier of the request being responded to.
-            req_id: u32,
-
-            /// The list of all services.
-            ///
-            /// This may change between messages, so do not assume that the list
-            /// is valid even at the time of receiving.
-            services: Vec<String>,
-        },
-
-        /// Responds to [RemoteCapOperation::GetServiceRequest].
-        GetServiceResponse {
-            /// The identifier of the request being responded to.
-            req_id: u32,
-
-            /// The service's capability, if available.
-            service_cap: Option<u32>,
-        },
-    }
-
-    /// Operations on remote capabilities.
-    #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-    pub enum RemoteCapOperation {
-        /// Acknowledges that a capability has been revoked, freeing the ID for
-        /// reuse.
-        AcknowledgeRevocation { id: u32 },
-
-        /// Communicates that a capability is no longer being used.
-        ///
-        /// Local cap operations may still may still be received using this
-        /// capability and the sender of this operation must assume that the ID of
-        /// this cap will stay in use until it is revoked.
-        FreeCap { id: u32 },
-
-        /// Requests a list of all services.
-        ListServicesRequest {
-            /// The identifier to use for the response.
-            req_id: u32,
-        },
-
-        /// Requests a capability for a service.
-        GetServiceRequest {
-            /// The identifier to use for the response.
-            req_id: u32,
-
-            /// The service being requested.
-            name: String,
-        },
-
-        /// Sends a message to a remote capability.
-        ///
-        /// Ignored if the capability does not have [Flags::SEND] set.
-        Send {
-            /// The remote capability to send a message to.
-            ///
-            /// Ignored if invalid or revoked.
-            id: u32,
-
-            /// The contents of the message.
-            data: Vec<u8>,
-
-            /// The local capabilities transferred in this message.
-            caps: Vec<u32>,
-        },
-
-        /// Kills a remote capability.
-        ///
-        /// Ignored if the capability does not have [Flags::KILL] set.
-        Kill {
-            /// The remote capability to kill.
-            ///
-            /// Ignored if invalid or revoked.
-            id: u32,
-        },
-    }
-}
 
 /// The [ProcessEntry::Data] for [RemoteProcess].
 #[derive(Default)]
@@ -318,11 +199,8 @@ pub type RequestCb<T> = Box<dyn FnOnce(T) + Send + 'static>;
 
 pub struct Connection<Store: ProcessStoreTrait> {
     store: Arc<Store>,
-    registry: Arc<Registry<Store>>,
     imports: ImportsTable<Store>,
     exports: ExportsTable<Store>,
-    list_services_reqs: Slab<RequestCb<Vec<String>>>,
-    get_service_reqs: Slab<RequestCb<Option<Capability>>>,
     cap_signal_tx: mpsc::UnboundedSender<(u32, Signal)>,
     op_tx: mpsc::UnboundedSender<CapOperation>,
 }
@@ -339,12 +217,11 @@ where
     /// outgoing [CapOperation]s.
     pub fn new(
         store: Arc<Store>,
-        registry: Arc<Registry<Store>>,
         op_rx: mpsc::UnboundedReceiver<CapOperation>,
         op_tx: mpsc::UnboundedSender<CapOperation>,
     ) -> Arc<Mutex<Self>> {
         let (signal_tx, signal_rx) = mpsc::unbounded_channel();
-        let conn = Self::new_unspawned(store, registry, signal_tx, op_tx);
+        let conn = Self::new_unspawned(store, signal_tx, op_tx);
         let conn = Arc::new(Mutex::new(conn));
         Self::spawn_signal_rx(conn.to_owned(), signal_rx);
         Self::spawn_op_rx(conn.to_owned(), op_rx);
@@ -355,17 +232,13 @@ where
     /// threads to pump the signal and operation channels.
     pub(crate) fn new_unspawned(
         store: Arc<Store>,
-        registry: Arc<Registry<Store>>,
         cap_signal_tx: mpsc::UnboundedSender<(u32, Signal)>,
         op_tx: mpsc::UnboundedSender<CapOperation>,
     ) -> Self {
         Self {
             store: store.to_owned(),
-            registry,
             imports: ImportsTable::new(store.to_owned()),
             exports: ExportsTable::new(store.to_owned()),
-            list_services_reqs: Slab::new(),
-            get_service_reqs: Slab::new(),
             cap_signal_tx,
             op_tx,
         }
@@ -404,35 +277,6 @@ where
                 conn.lock().on_op(op);
             }
         });
-    }
-
-    pub async fn list_services(&mut self) -> Vec<String> {
-        let (req_tx, req) = oneshot::channel();
-
-        let req_id = self.list_services_reqs.insert(Box::new(move |services| {
-            let _ = req_tx.send(services);
-        })) as u32;
-
-        self.send_remote_op(RemoteCapOperation::ListServicesRequest { req_id });
-
-        req.await.ok().unwrap_or_default()
-    }
-
-    pub async fn get_service(&mut self, name: String) -> Option<Capability> {
-        let (req_tx, req) = oneshot::channel();
-
-        let store = self.store.to_owned();
-        let req_id = self.get_service_reqs.insert(Box::new(move |cap| {
-            req_tx
-                .send(cap)
-                .err()
-                .flatten()
-                .map(|cap| cap.free(store.as_ref()));
-        })) as u32;
-
-        self.send_remote_op(RemoteCapOperation::GetServiceRequest { req_id, name });
-
-        req.await.ok().flatten()
     }
 
     /// Exports a capability through this connection.
@@ -475,29 +319,7 @@ where
                     self.send_remote_op(RemoteCapOperation::AcknowledgeRevocation { id });
                 }
             }
-            ListServicesResponse { req_id, services } => {
-                if let Some(cb) = self.list_services_reqs.try_remove(req_id as usize) {
-                    cb(services);
-                }
-            }
-            GetServiceResponse {
-                req_id,
-                service_cap,
-            } => {
-                if let Some(cb) = self.get_service_reqs.try_remove(req_id as usize) {
-                    if let Some(service_cap) = service_cap {
-                        if let Some(cap) = self
-                            .imports
-                            .get(service_cap)
-                            .map(|cap| cap.clone(self.store.as_ref()))
-                        {
-                            cb(Some(cap));
-                        }
-                    } else {
-                        cb(None);
-                    }
-                }
-            }
+            SetRootCap { id } => unimplemented!(),
         }
     }
 
@@ -509,19 +331,6 @@ where
             }
             FreeCap { id } => {
                 self.exports.free(id);
-            }
-            ListServicesRequest { req_id } => {
-                self.send_local_op(LocalCapOperation::ListServicesResponse {
-                    req_id,
-                    services: self.registry.list(),
-                });
-            }
-            GetServiceRequest { req_id, name } => {
-                let service_cap = self.registry.get(name).map(|cap| self.export(cap));
-                self.send_local_op(LocalCapOperation::GetServiceResponse {
-                    req_id,
-                    service_cap,
-                });
             }
             Send { id, data, caps } => {
                 let mut store_caps = Vec::with_capacity(caps.len());
@@ -595,10 +404,9 @@ pub mod tests {
     impl ConnectionEnv {
         pub fn new_unspawned() -> Self {
             let store = Arc::new(ProcessStore::default());
-            let registry = Arc::new(Registry::new(store.to_owned()));
             let (signal_tx, signal_rx) = mpsc::unbounded_channel();
             let (op_tx, op_rx) = mpsc::unbounded_channel();
-            let connection = Connection::new_unspawned(store, registry, signal_tx, op_tx);
+            let connection = Connection::new_unspawned(store, signal_tx, op_tx);
 
             Self {
                 connection,
@@ -705,14 +513,15 @@ pub mod tests {
 
         use crate::process::context::{ContextMessage, ContextSignal};
         use crate::process::factory::ProcessInfo;
-        use crate::process::{Process, ProcessFactory};
+        use crate::process::{Process, ProcessFactory, Registry};
 
         pub async fn make_connected() -> ((Process, usize), (Process, usize)) {
             let init_side = |peer_id| {
                 let conn = ConnectionEnv::new_unspawned();
+                let registry = Arc::new(Registry::new(conn.store.to_owned()));
                 let factory = ProcessFactory::new(
                     conn.store.to_owned(),
-                    conn.registry.to_owned(),
+                    registry,
                     hearth_types::PeerId(peer_id),
                 );
                 let (conn, conn_rx) = conn.spawn();

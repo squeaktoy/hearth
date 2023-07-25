@@ -24,6 +24,9 @@ use serde::{Deserialize, Serialize};
 /// Paneling-related protocols and utilities.
 pub mod panels;
 
+/// Network/IPC protocol definitions.
+pub mod protocol;
+
 /// Registry protocol.
 pub mod registry;
 
