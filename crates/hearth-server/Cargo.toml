@@ -10,5 +10,6 @@ hearth-cognito = { workspace = true }
 hearth-core = { workspace = true }
 hearth-ipc = { workspace = true }
 hearth-network = { workspace = true }
+hearth-types = { workspace = true }
 tokio = { version = "1.24", features = ["full"] }
 tracing = { workspace = true }
