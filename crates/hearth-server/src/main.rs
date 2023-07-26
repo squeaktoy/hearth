@@ -21,8 +21,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
-use hearth_network::auth::ServerAuthenticator;
+use hearth_core::{
+    process::{context::Capability, ProcessStore},
+    runtime::{RuntimeBuilder, RuntimeConfig},
+};
+use hearth_network::{auth::ServerAuthenticator, connection::Connection};
 use hearth_types::*;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
@@ -66,7 +69,7 @@ async fn main() {
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
 
-    let (_runtime, join_handles) = builder.run(config);
+    let (runtime, join_handles) = builder.run(config);
 
     debug!("Initializing IPC");
     let daemon_listener = match hearth_ipc::Listener::new().await {
@@ -86,7 +89,8 @@ async fn main() {
                 return;
             }
         };
-        listen(listener, authenticator);
+
+        listen(listener, runtime.process_store.clone(), authenticator);
     } else {
         info!("Server running in headless mode");
     }
@@ -100,7 +104,11 @@ async fn main() {
     }
 }
 
-fn listen(listener: TcpListener, authenticator: Arc<ServerAuthenticator>) {
+fn listen(
+    listener: TcpListener,
+    store: Arc<ProcessStore>,
+    authenticator: Arc<ServerAuthenticator>,
+) {
     debug!("Spawning listen thread");
     tokio::spawn(async move {
         info!("Listening");
@@ -114,20 +122,17 @@ fn listen(listener: TcpListener, authenticator: Arc<ServerAuthenticator>) {
             };
 
             info!("Connection from {:?}", addr);
+            let store = store.clone();
             let authenticator = authenticator.clone();
             tokio::task::spawn(async move {
-                on_accept(
-                    authenticator,
-                    socket,
-                    addr,
-                )
-                .await;
+                on_accept(store, authenticator, socket, addr).await;
             });
         }
     });
 }
 
 async fn on_accept(
+    store: Arc<ProcessStore>,
     authenticator: Arc<ServerAuthenticator>,
     mut client: TcpStream,
     addr: SocketAddr,
@@ -147,6 +152,36 @@ async fn on_accept(
     let server_key = Key::from_server_session(&session_key);
 
     let (client_rx, client_tx) = tokio::io::split(client);
-    let _client_rx = AsyncDecryptor::new(&client_key, client_rx);
-    let _client_tx = AsyncEncryptor::new(&server_key, client_tx);
+    let client_rx = AsyncDecryptor::new(&client_key, client_rx);
+    let client_tx = AsyncEncryptor::new(&server_key, client_tx);
+    let conn = Connection::new(client_rx, client_tx);
+
+    let (root_cap_tx, root_cap) = tokio::sync::oneshot::channel();
+    let on_root_cap = {
+        let store = store.clone();
+        move |root: Capability| {
+            if let Err(dropped) = root_cap_tx.send(root) {
+                dropped.free(store.as_ref());
+            }
+        }
+    };
+
+    info!("Beginning connection");
+    let _conn = hearth_core::process::remote::Connection::new(
+        store.clone(),
+        conn.op_rx,
+        conn.op_tx,
+        Some(Box::new(on_root_cap)),
+    );
+
+    info!("Waiting for client's root cap...");
+    let root_cap = match root_cap.await {
+        Ok(cap) => cap,
+        Err(err) => {
+            eprintln!("Client's root cap was never received: {:?}", err);
+            return;
+        }
+    };
+
+    root_cap.free(store.as_ref());
 }
