@@ -229,7 +229,7 @@ impl<Store: ProcessStoreTrait> ExportsTable<Store> {
     }
 }
 
-pub type RequestCb<T> = Box<dyn FnOnce(T) + Send + 'static>;
+pub type OnRootCap = Box<dyn FnOnce(Capability) + Send + 'static>;
 
 pub struct Connection<Store: ProcessStoreTrait> {
     store: Arc<Store>,
@@ -237,6 +237,7 @@ pub struct Connection<Store: ProcessStoreTrait> {
     exports: ExportsTable<Store>,
     cap_signal_tx: mpsc::UnboundedSender<(u32, Signal)>,
     op_tx: mpsc::UnboundedSender<CapOperation>,
+    on_root_cap: Option<OnRootCap>,
 }
 
 impl<Store> Connection<Store>
@@ -253,9 +254,10 @@ where
         store: Arc<Store>,
         op_rx: mpsc::UnboundedReceiver<CapOperation>,
         op_tx: mpsc::UnboundedSender<CapOperation>,
+        on_root_cap: Option<OnRootCap>,
     ) -> Arc<Mutex<Self>> {
         let (signal_tx, signal_rx) = mpsc::unbounded_channel();
-        let conn = Self::new_unspawned(store, signal_tx, op_tx);
+        let conn = Self::new_unspawned(store, signal_tx, op_tx, on_root_cap);
         let conn = Arc::new(Mutex::new(conn));
         Self::spawn_signal_rx(conn.to_owned(), signal_rx);
         Self::spawn_op_rx(conn.to_owned(), op_rx);
@@ -268,6 +270,7 @@ where
         store: Arc<Store>,
         cap_signal_tx: mpsc::UnboundedSender<(u32, Signal)>,
         op_tx: mpsc::UnboundedSender<CapOperation>,
+        on_root_cap: Option<OnRootCap>,
     ) -> Self {
         Self {
             store: store.to_owned(),
@@ -275,6 +278,7 @@ where
             exports: ExportsTable::new(store.to_owned()),
             cap_signal_tx,
             op_tx,
+            on_root_cap,
         }
     }
 
@@ -360,7 +364,13 @@ where
                 }
             }
             SetRootCap { id } => {
-                self.imports.set_root(id);
+                if self.imports.set_root(id) {
+                    if let Some(cb) = self.on_root_cap.take() {
+                        if let Some(root) = self.imports.get_root() {
+                            cb(root);
+                        }
+                    }
+                }
             }
         }
     }
@@ -448,7 +458,7 @@ pub mod tests {
             let store = Arc::new(ProcessStore::default());
             let (signal_tx, signal_rx) = mpsc::unbounded_channel();
             let (op_tx, op_rx) = mpsc::unbounded_channel();
-            let connection = Connection::new_unspawned(store, signal_tx, op_tx);
+            let connection = Connection::new_unspawned(store, signal_tx, op_tx, None);
 
             Self {
                 connection,
