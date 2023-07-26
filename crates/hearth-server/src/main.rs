@@ -22,11 +22,15 @@ use std::sync::Arc;
 
 use clap::Parser;
 use hearth_core::{
-    process::{context::Capability, ProcessStore},
+    process::{
+        context::{Capability, ContextMessage},
+        factory::ProcessInfo,
+        ProcessStore,
+    },
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
 use hearth_network::{auth::ServerAuthenticator, connection::Connection};
-use hearth_types::*;
+use hearth_types::{wasm::WasmSpawnInfo, *};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
 
@@ -47,6 +51,10 @@ pub struct Args {
     /// A configuration file to use if not the default one.
     #[clap(short, long)]
     pub config: Option<PathBuf>,
+
+    /// The init system to run.
+    #[clap(short, long)]
+    pub init: PathBuf,
 }
 
 #[tokio::main]
@@ -66,10 +74,35 @@ async fn main() {
         .config
         .unwrap_or_else(|| hearth_core::get_config_path());
     let config_file = hearth_core::load_config(&config_path).unwrap();
+
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    let (runtime, join_handles) = builder.run(config).await;
 
-    let (runtime, join_handles) = builder.run(config);
+    debug!("Loading init system module");
+    let wasm_data = std::fs::read(args.init).unwrap();
+    let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
+
+    debug!("Running init system");
+    let mut parent = runtime.process_factory.spawn(ProcessInfo {}, Flags::SEND);
+    let wasm_spawner = parent
+        .get_service("hearth.cognito.WasmProcessSpawner")
+        .expect("Wasm spawner service not found");
+
+    let spawn_info = WasmSpawnInfo {
+        lump: wasm_lump,
+        entrypoint: None,
+    };
+
+    parent
+        .send(
+            wasm_spawner,
+            ContextMessage {
+                data: serde_json::to_vec(&spawn_info).unwrap(),
+                caps: vec![0],
+            },
+        )
+        .unwrap();
 
     debug!("Initializing IPC");
     let daemon_listener = match hearth_ipc::Listener::new().await {
