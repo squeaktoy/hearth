@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use serde::{Deserialize, Serialize};
+
 pub use hearth_types::*;
 
 /// Internal helper function to turn a string into a pointer and length.
@@ -35,6 +37,14 @@ pub fn this_lump() -> LumpId {
 
 /// The process currently executing.
 pub static SELF: Process = Process(0);
+
+lazy_static::lazy_static! {
+    /// A lazily-initialized handle to the WebAssembly spawner service.
+    pub static ref WASM_SPAWNER: Process = {
+        Process::get_service("hearth.cognito.WasmProcessSpawner")
+            .expect("couldn't find Wasm spawner service")
+    };
+}
 
 /// A handle to a process.
 #[repr(transparent)]
@@ -68,6 +78,12 @@ impl Process {
         }
     }
 
+    /// Sends a type, serialized as JSON, to this process.
+    pub fn send_json(&self, data: &impl Serialize, caps: &[&Process]) {
+        let msg = serde_json::to_string(data).unwrap();
+        self.send(&msg.into_bytes(), caps);
+    }
+
     /// Kills this process.
     pub fn kill(&self) {
         unsafe { abi::process::kill(self.0) }
@@ -95,6 +111,24 @@ impl Process {
                 Some(Process(handle))
             }
         }
+    }
+
+    /// Spawns a child process for the given function.
+    pub fn spawn(cb: fn()) -> Self {
+        WASM_SPAWNER.send_json(
+            &wasm::WasmSpawnInfo {
+                lump: this_lump(),
+                entrypoint: Some(unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32),
+            },
+            &[&SELF],
+        );
+
+        let signal = Signal::recv();
+        let Signal::Message(mut msg) = signal else {
+            panic!("expected message, received {:?}", signal);
+        };
+
+        msg.caps.remove(0)
     }
 }
 
@@ -132,6 +166,21 @@ impl Signal {
                 Some(Signal::Message(msg))
             }
         }
+    }
+
+    /// Receives a JSON message. Panics if the next signal isn't a message or
+    /// if deserialization fails.
+    pub fn recv_json<T>() -> (Vec<Process>, T)
+    where
+        T: for<'a> Deserialize<'a>,
+    {
+        let signal = Signal::recv();
+        let Signal::Message(msg) = signal else {
+            panic!("expected message, received {:?}", signal);
+        };
+
+        let data = serde_json::from_slice(&msg.data).unwrap();
+        (msg.caps, data)
     }
 }
 
