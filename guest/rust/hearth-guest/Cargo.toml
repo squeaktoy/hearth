@@ -6,3 +6,6 @@ license = "AGPL-3.0-or-later"
 
 [dependencies]
 hearth-types = { workspace = true }
+lazy_static = "1.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
