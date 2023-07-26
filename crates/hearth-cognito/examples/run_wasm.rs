@@ -22,7 +22,7 @@ async fn main() {
     let config_file = hearth_core::load_config(&config_path).unwrap();
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
-    let (runtime, join_handles) = builder.run(config);
+    let (runtime, join_handles) = builder.run(config).await;
 
     let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
     let spawn_info = WasmSpawnInfo {
@@ -31,9 +31,6 @@ async fn main() {
     };
 
     let mut parent = runtime.process_factory.spawn(ProcessInfo {}, Flags::SEND);
-
-    // TODO block RuntimeBuilder::run() until after all services are registered
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let wasm_spawner = parent
         .get_service("hearth.cognito.WasmProcessSpawner")
