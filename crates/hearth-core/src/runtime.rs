@@ -29,6 +29,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use hearth_types::{Flags, PeerId};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
 
@@ -63,6 +64,9 @@ pub struct RuntimeBuilder {
     services: HashSet<String>,
     lump_store: Arc<LumpStoreImpl>,
     asset_store: AssetStore,
+    service_num: usize,
+    service_start_tx: UnboundedSender<String>,
+    service_start_rx: UnboundedReceiver<String>,
 }
 
 impl RuntimeBuilder {
@@ -70,6 +74,7 @@ impl RuntimeBuilder {
     pub fn new(config_file: toml::Table) -> Self {
         let lump_store = Arc::new(LumpStoreImpl::new());
         let asset_store = AssetStore::new(lump_store.clone());
+        let (service_start_tx, service_start_rx) = unbounded_channel();
 
         Self {
             config_file,
@@ -78,6 +83,9 @@ impl RuntimeBuilder {
             services: Default::default(),
             lump_store,
             asset_store,
+            service_num: 0,
+            service_start_tx,
+            service_start_rx,
         }
     }
 
@@ -165,6 +173,9 @@ impl RuntimeBuilder {
             return self;
         }
 
+        let service_start_tx = self.service_start_tx.clone();
+        self.service_num += 1;
+
         self.services.insert(name.clone());
         self.runners.push(Box::new(move |runtime| {
             tokio::spawn(async move {
@@ -178,6 +189,8 @@ impl RuntimeBuilder {
                     warn!("Service name {:?} was taken; replacing", name);
                     old_cap.free(runtime.process_store.as_ref());
                 }
+
+                let _ = service_start_tx.send(name);
 
                 cb(runtime, process);
             })
@@ -222,7 +235,7 @@ impl RuntimeBuilder {
     ///
     /// This returns a shared pointer to the new runtime, as well as all of the
     /// [JoinHandles][JoinHandle] for the launched runners and plugins.
-    pub fn run(self, config: RuntimeConfig) -> (Arc<Runtime>, Vec<JoinHandle<()>>) {
+    pub async fn run(self, config: RuntimeConfig) -> (Arc<Runtime>, Vec<JoinHandle<()>>) {
         use crate::process::*;
 
         let process_store = Arc::new(ProcessStore::default());
@@ -259,6 +272,20 @@ impl RuntimeBuilder {
             join_handles.push(join);
         }
 
+        let service_num = self.service_num;
+        let mut service_rx = self.service_start_rx;
+        debug!("Waiting for {} services to start...", service_num);
+        for i in 0..service_num {
+            let name = service_rx.recv().await.expect(
+                "all instances of service_start_tx dropped while waiting for all services to start",
+            );
+
+            let left = service_num - i;
+            debug!("Service {:?} started, {} left", name, left);
+        }
+
+        debug!("All services started");
+
         (runtime, join_handles)
     }
 }
@@ -271,9 +298,8 @@ pub struct RuntimeConfig {
 
 /// An instance of a single Hearth runtime.
 ///
-/// This contains all of the resources that are used by plugins, processes,
-/// and network peers. A runtime can be built and started using
-/// [RuntimeBuilder].
+/// This contains all of the resources that are used by plugins and processes.
+/// A runtime can be built and started using [RuntimeBuilder].
 ///
 /// Note that Hearth uses Tokio for all of its asynchronous
 /// task execution and IO, so it's assumed that a Tokio runtime has already
