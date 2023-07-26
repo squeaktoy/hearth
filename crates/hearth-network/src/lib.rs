@@ -17,6 +17,7 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 pub mod auth;
+pub mod connection;
 pub mod encryption;
 
 #[cfg(test)]
