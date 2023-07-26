@@ -48,7 +48,8 @@ pub fn init_logging() {
         .with_target("wgpu", Level::INFO)
         .with_target("wgpu_core", Level::WARN)
         .with_target("wgpu_hal", Level::WARN)
-        .with_default(Level::DEBUG);
+        .with_target("hearth", Level::DEBUG)
+        .with_default(Level::INFO);
 
     let format = tracing_subscriber::fmt::layer().compact();
 
