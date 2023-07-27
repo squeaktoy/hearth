@@ -55,6 +55,10 @@ pub struct Args {
     /// The init system to run.
     #[clap(short, long)]
     pub init: PathBuf,
+
+    /// A path to the guest-side filesystem root.
+    #[clap(short, long)]
+    pub root: PathBuf,
 }
 
 #[tokio::main]
@@ -77,6 +81,7 @@ async fn main() {
 
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     let (runtime, join_handles) = builder.run(config).await;
 
     debug!("Loading init system module");
