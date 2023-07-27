@@ -21,6 +21,9 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
+/// Filesystem native service protocol.
+pub mod fs;
+
 /// Paneling-related protocols and utilities.
 pub mod panels;
 
