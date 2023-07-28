@@ -100,8 +100,9 @@ bitflags::bitflags! {
     pub struct Flags: u32 {
         const SEND = 1 << 0;
         const KILL = 1 << 1;
-        const REGISTER = 1 << 2;
-        const TRUSTED = 1 << 3;
+        const LINK = 1 << 2;
+        const REGISTER = 1 << 3;
+        const TRUSTED = 1 << 4;
     }
 }
 
