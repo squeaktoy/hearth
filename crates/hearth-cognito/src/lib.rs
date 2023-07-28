@@ -206,6 +206,10 @@ impl ProcessAbi {
         self.ctx.lock().await.kill(cap as usize)
     }
 
+    async fn link(&self, cap: u32) -> Result<()> {
+        self.ctx.lock().await.link(cap as usize)
+    }
+
     async fn free(&self, cap: u32) -> Result<()> {
         self.ctx.lock().await.delete_capability(cap as usize)
     }
