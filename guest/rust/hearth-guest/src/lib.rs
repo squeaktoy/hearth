@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use std::{borrow::Borrow, ops::Deref};
+
 use serde::{Deserialize, Serialize};
 
 pub use hearth_types::*;
@@ -36,7 +38,7 @@ pub fn this_lump() -> LumpId {
 }
 
 /// The process currently executing.
-pub static SELF: Process = Process(0);
+pub static SELF: Process = Process(ProcessRef(0));
 
 lazy_static::lazy_static! {
     /// A lazily-initialized handle to the WebAssembly spawner service.
@@ -48,8 +50,14 @@ lazy_static::lazy_static! {
 
 /// A handle to a process.
 #[repr(transparent)]
-#[derive(Debug)]
-pub struct Process(u32);
+#[derive(Debug, Hash, PartialEq, Eq)]
+pub struct Process(ProcessRef);
+
+impl Borrow<ProcessRef> for Process {
+    fn borrow(&self) -> &ProcessRef {
+        &self.0
+    }
+}
 
 impl Clone for Process {
     fn clone(&self) -> Self {
@@ -57,48 +65,21 @@ impl Clone for Process {
     }
 }
 
+impl Deref for Process {
+    type Target = ProcessRef;
+
+    fn deref(&self) -> &ProcessRef {
+        &self.0
+    }
+}
+
 impl Drop for Process {
     fn drop(&mut self) {
-        unsafe { abi::process::free(self.0) }
+        unsafe { abi::process::free(self.0 .0) }
     }
 }
 
 impl Process {
-    /// Sends a message to this process.
-    pub fn send(&self, data: &[u8], caps: &[&Process]) {
-        let caps: Vec<u32> = caps.iter().map(|process| process.0).collect();
-        unsafe {
-            abi::process::send(
-                self.0,
-                data.as_ptr() as u32,
-                data.len() as u32,
-                caps.as_ptr() as u32,
-                caps.len() as u32,
-            );
-        }
-    }
-
-    /// Sends a type, serialized as JSON, to this process.
-    pub fn send_json(&self, data: &impl Serialize, caps: &[&Process]) {
-        let msg = serde_json::to_string(data).unwrap();
-        self.send(&msg.into_bytes(), caps);
-    }
-
-    /// Kills this process.
-    pub fn kill(&self) {
-        unsafe { abi::process::kill(self.0) }
-    }
-
-    /// Demotes this process handle to a handle with fewer flags.
-    pub fn demote(&self, new_flags: Flags) -> Self {
-        Process(unsafe { abi::process::copy(self.0, new_flags.bits()) })
-    }
-
-    /// Gets the flags for this process.
-    pub fn get_flags(&self) -> Flags {
-        Flags::from_bits_retain(unsafe { abi::process::get_flags(self.0) })
-    }
-
     /// Looks up a service.
     // TODO multiple peers support; better API
     pub fn get_service(name: &str) -> Option<Self> {
@@ -108,7 +89,7 @@ impl Process {
             if handle == u32::MAX {
                 None
             } else {
-                Some(Process(handle))
+                Some(Process(ProcessRef(handle)))
             }
         }
     }
@@ -132,10 +113,59 @@ impl Process {
     }
 }
 
+/// A non-owning process reference.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ProcessRef(u32);
+
+impl ProcessRef {
+    /// Sends a message to this process.
+    pub fn send<T>(&self, data: &[u8], caps: &[&T])
+    where
+        T: Borrow<ProcessRef>,
+    {
+        let caps: Vec<u32> = caps.iter().map(|process| (*process).borrow().0).collect();
+        unsafe {
+            abi::process::send(
+                self.0,
+                data.as_ptr() as u32,
+                data.len() as u32,
+                caps.as_ptr() as u32,
+                caps.len() as u32,
+            );
+        }
+    }
+
+    /// Sends a type, serialized as JSON, to this process.
+    pub fn send_json<T>(&self, data: &impl Serialize, caps: &[&T])
+    where
+        T: Borrow<ProcessRef>,
+    {
+        let msg = serde_json::to_string(data).unwrap();
+        self.send(&msg.into_bytes(), caps);
+    }
+
+    /// Kills this process.
+    pub fn kill(&self) {
+        unsafe { abi::process::kill(self.0) }
+    }
+
+    /// Demotes this process handle to an owned process with fewer flags.
+    pub fn demote(&self, new_flags: Flags) -> Process {
+        let handle = unsafe { abi::process::copy(self.0, new_flags.bits()) };
+        Process(ProcessRef(handle))
+    }
+
+    /// Gets the flags for this process.
+    pub fn get_flags(&self) -> Flags {
+        Flags::from_bits_retain(unsafe { abi::process::get_flags(self.0) })
+    }
+}
+
 /// A signal.
 #[derive(Clone, Debug)]
 pub enum Signal {
-    Unlink { subject: usize },
+    Unlink { subject: ProcessRef },
     Message(Message),
 }
 
@@ -153,7 +183,10 @@ impl Signal {
                 SignalKind::Message => Signal::Message(Message::load_from_handle(handle)),
                 SignalKind::Unlink => {
                     // TODO unlink signal userdata
-                    Signal::Unlink { subject: 0 }
+                    let mut subject = 0u32;
+                    abi::signal::get_caps(handle, &mut subject as *mut u32 as u32);
+                    let subject = ProcessRef(subject);
+                    Signal::Unlink { subject }
                 }
             };
 
