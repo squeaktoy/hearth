@@ -52,15 +52,15 @@ pub trait Plugin: Send + Sync + 'static {
 }
 
 struct PluginWrapper {
-    plugin: Box<dyn Any>,
-    runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>) -> JoinHandle<()>>,
+    plugin: Box<dyn Any + Send>,
+    runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>) -> JoinHandle<()> + Send>,
 }
 
 /// Builder struct for a single Hearth [Runtime].
 pub struct RuntimeBuilder {
     config_file: toml::Table,
     plugins: HashMap<TypeId, PluginWrapper>,
-    runners: Vec<Box<dyn FnOnce(Arc<Runtime>) -> JoinHandle<()>>>,
+    runners: Vec<Box<dyn FnOnce(Arc<Runtime>) -> JoinHandle<()> + Send>>,
     services: HashSet<String>,
     lump_store: Arc<LumpStoreImpl>,
     asset_store: AssetStore,
