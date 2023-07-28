@@ -30,7 +30,7 @@ use hearth_core::tokio;
 use hearth_core::{async_trait, hearth_types};
 use hearth_macros::impl_wasm_linker;
 use hearth_types::wasm::WasmSpawnInfo;
-use hearth_types::{Flags, LumpId, ProcessLogLevel};
+use hearth_types::{Flags, LumpId, ProcessLogLevel, SignalKind};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use slab::Slab;
 use tokio::sync::{oneshot, Mutex};
@@ -262,6 +262,14 @@ impl SignalAbi {
             result = self.recv() => result,
             _ = tokio::time::sleep(duration) => Ok(u32::MAX),
         }
+    }
+
+    fn get_kind(&self, handle: u32) -> Result<u32> {
+        Ok(match self.get_signal(handle)? {
+            ContextSignal::Unlink { .. } => SignalKind::Unlink,
+            ContextSignal::Message(_) => SignalKind::Unlink,
+        }
+        .into())
     }
 
     fn get_data_len(&self, handle: u32) -> Result<u32> {
