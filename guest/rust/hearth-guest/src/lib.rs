@@ -150,6 +150,11 @@ impl ProcessRef {
         unsafe { abi::process::kill(self.0) }
     }
 
+    /// Links to this process.
+    pub fn link(&self) {
+        unsafe { abi::process::link(self.0) }
+    }
+
     /// Demotes this process handle to an owned process with fewer flags.
     pub fn demote(&self, new_flags: Flags) -> Process {
         let handle = unsafe { abi::process::copy(self.0, new_flags.bits()) };
@@ -347,6 +352,7 @@ mod abi {
             pub fn copy(cap: u32, new_flags: u32) -> u32;
             pub fn send(dst_cap: u32, data_ptr: u32, data_len: u32, caps_ptr: u32, caps_num: u32);
             pub fn kill(cap: u32);
+            pub fn link(cap: u32);
             pub fn free(cap: u32);
         }
     }
