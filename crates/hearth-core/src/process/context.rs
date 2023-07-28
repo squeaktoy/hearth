@@ -264,6 +264,23 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
         Ok(())
     }
 
+    pub fn link(&self, handle: usize) -> anyhow::Result<()> {
+        let target = self
+            .get_cap(handle)
+            .context("ProcessContext::link() target")?;
+
+        // TODO write unit test for this
+        if !target.flags.contains(Flags::LINK) {
+            bail!("capability does not permit link operation");
+        }
+
+        let self_cap = self.self_cap.as_ref().context("self cap was taken")?;
+
+        self.store.link(target.handle, self_cap.handle);
+
+        Ok(())
+    }
+
     /// Creates a new capability from an existing one, using a subset of the original's flags.
     pub fn make_capability(&mut self, handle: usize, new_flags: Flags) -> anyhow::Result<usize> {
         let original = self
