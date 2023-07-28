@@ -144,6 +144,36 @@ impl Into<u32> for ProcessLogLevel {
     }
 }
 
+/// A kind of guest-side signal.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+pub enum SignalKind {
+    Message,
+    Unlink,
+}
+
+impl TryFrom<u32> for SignalKind {
+    type Error = ();
+
+    fn try_from(other: u32) -> Result<Self, ()> {
+        use SignalKind::*;
+        match other {
+            0 => Ok(Message),
+            1 => Ok(Unlink),
+            _ => Err(()),
+        }
+    }
+}
+
+impl Into<u32> for SignalKind {
+    fn into(self) -> u32 {
+        use SignalKind::*;
+        match self {
+            Message => 0,
+            Unlink => 1,
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! impl_serialize_json_display {
     ($ty: ident) => {
