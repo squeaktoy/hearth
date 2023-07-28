@@ -144,9 +144,21 @@ impl Signal {
     pub fn recv() -> Self {
         unsafe {
             let handle = abi::signal::recv();
-            let msg = Message::load_from_handle(handle);
+            let kind = abi::signal::get_kind(handle);
+            let Ok(kind) = SignalKind::try_from(kind) else {
+                panic!("unknown signal kind {}", kind);
+            };
+
+            let signal = match kind {
+                SignalKind::Message => Signal::Message(Message::load_from_handle(handle)),
+                SignalKind::Unlink => {
+                    // TODO unlink signal userdata
+                    Signal::Unlink { subject: 0 }
+                }
+            };
+
             abi::signal::free(handle);
-            Signal::Message(msg)
+            signal
         }
     }
 
@@ -318,6 +330,7 @@ mod abi {
         extern "C" {
             pub fn recv() -> u32;
             pub fn recv_timeout(timeout_us: u64) -> u32;
+            pub fn get_kind(msg: u32) -> u32;
             pub fn get_data_len(msg: u32) -> u32;
             pub fn get_data(msg: u32, ptr: u32);
             pub fn get_caps_num(msg: u32) -> u32;
