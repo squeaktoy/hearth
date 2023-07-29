@@ -16,36 +16,76 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display, process::exit};
 
 use clap::{Parser, Subcommand};
 use hearth_types::*;
+use tokio::net::UnixStream;
+use yacexits::{EX_OK, EX_PROTOCOL};
 
 pub struct DaemonOffer {}
 
+pub struct CommandError {
+    message: String,
+    exit_code: u32,
+}
+
+trait ToCommandError<T, E> {
+    fn to_command_error<C: Display>(self, context: C, exit_code: u32) -> Result<T, CommandError>;
+}
+
+impl<T, E> ToCommandError<T, E> for Result<T, E>
+where
+    E: Display,
+{
+    fn to_command_error<C: Display>(self, context: C, exit_code: u32) -> Result<T, CommandError> {
+        match self {
+            Ok(ok) => Ok(ok),
+            Err(e) => Err(CommandError {
+                message: format!("{}: {}", context, e),
+                exit_code,
+            }),
+        }
+    }
+}
+
+impl<T> ToCommandError<T, ()> for Option<T> {
+    fn to_command_error<C: Display>(self, context: C, exit_code: u32) -> Result<T, CommandError> {
+        match self {
+            Some(val) => Ok(val),
+            None => Err(CommandError {
+                message: context.to_string(),
+                exit_code,
+            }),
+        }
+    }
+}
+
+pub type CommandResult<T> = Result<T, CommandError>;
+
 #[derive(Clone, Debug)]
-pub enum MaybeLocalPID {
+pub enum MaybeLocalPid {
     Global(ProcessId),
     Local(LocalProcessId),
 }
 
-impl std::str::FromStr for MaybeLocalPID {
+impl std::str::FromStr for MaybeLocalPid {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.parse::<ProcessId>() {
-            Ok(pid) => Ok(MaybeLocalPID::Global(pid)),
+            Ok(pid) => Ok(MaybeLocalPid::Global(pid)),
             Err(_) => match s.parse::<u32>() {
-                Ok(local_pid) => Ok(MaybeLocalPID::Local(LocalProcessId(local_pid))),
+                Ok(local_pid) => Ok(MaybeLocalPid::Local(LocalProcessId(local_pid))),
                 Err(_) => Err("Failed to parse LocalPID or GlobalPID".into()),
             },
         }
     }
 }
 
-impl MaybeLocalPID {
+impl MaybeLocalPid {
     fn to_global_pid(&self, peer: PeerId) -> ProcessId {
         match self {
-            MaybeLocalPID::Global(global_pid) => *global_pid,
+            MaybeLocalPid::Global(global_pid) => *global_pid,
             Self::Local(local_pid) => ProcessId::from_peer_process(peer, *local_pid),
         }
     }
@@ -65,21 +105,27 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub async fn run(self) {}
+    pub async fn run(self) -> CommandResult<()> {
+        Ok(())
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let args = Args::parse();
-    args.command.run().await;
+    match args.command.run().await {
+        Ok(_) => exit(EX_OK as i32),
+        Err(e) => {
+            eprintln!("ERROR: {}", e.message);
+            exit(e.exit_code as i32)
+        }
+    }
 }
 
-async fn get_daemon() -> DaemonOffer {
-    let _connection = hearth_ipc::connect()
+async fn get_daemon() -> CommandResult<UnixStream> {
+    hearth_ipc::connect()
         .await
-        .expect("Failed to connect to Hearth daemon");
-
-    DaemonOffer {}
+        .to_command_error("connecting to Hearth daemon", EX_PROTOCOL)
 }
 
 fn hash_map_to_ordered_vec<K: Copy + Ord, V>(map: HashMap<K, V>) -> Vec<(K, V)> {
