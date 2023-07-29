@@ -195,7 +195,7 @@ impl ProcessAbi {
                 data: memory.get_slice(data_ptr, data_len)?.to_vec(),
                 caps: memory
                     .get_memory_slice::<u32>(caps_ptr, caps_num)?
-                    .into_iter()
+                    .iter_mut()
                     .map(|cap| *cap as usize)
                     .collect(),
             },
@@ -458,7 +458,7 @@ impl WasmProcessSpawner {
                 continue;
             };
 
-            let Some(parent) = msg_caps.get(0).copied() else {
+            let Some(parent) = msg_caps.first().copied() else {
                 // TODO make this a process log
                 debug!("Spawn request has no return address");
                 continue;
