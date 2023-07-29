@@ -22,8 +22,8 @@ use std::sync::Arc;
 
 use crate::lump::LumpStoreImpl;
 use anyhow::{anyhow, Result};
-use hearth_types::LumpId;
 use async_trait::async_trait;
+use hearth_types::LumpId;
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error};
 

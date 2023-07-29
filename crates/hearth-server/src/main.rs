@@ -74,9 +74,7 @@ async fn main() {
         this_peer: SELF_PEER_ID,
     };
 
-    let config_path = args
-        .config
-        .unwrap_or_else(hearth_core::get_config_path);
+    let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
     let config_file = hearth_core::load_config(&config_path).unwrap();
 
     let mut builder = RuntimeBuilder::new(config_file);

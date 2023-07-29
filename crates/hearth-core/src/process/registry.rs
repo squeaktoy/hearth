@@ -74,8 +74,8 @@ impl<Store: ProcessStoreTrait> Registry<Store> {
 mod tests {
     use super::*;
 
-    use hearth_types::Flags;
     use crate::process::store::{tests::*, ProcessStore};
+    use hearth_types::Flags;
 
     fn make_registry() -> Registry<ProcessStore<MockProcessEntry>> {
         let store = make_store();
