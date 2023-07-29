@@ -117,7 +117,7 @@ impl Window {
         let window = WindowBuilder::new()
             .with_title("Hearth Client")
             .with_inner_size(winit::dpi::LogicalSize::new(128.0, 128.0))
-            .build(&event_loop)
+            .build(event_loop)
             .unwrap();
 
         let size = window.inner_size();

@@ -100,7 +100,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
 
     let config_path = args
         .config
-        .unwrap_or_else(|| hearth_core::get_config_path());
+        .unwrap_or_else(hearth_core::get_config_path);
     let config_file = hearth_core::load_config(&config_path).unwrap();
 
     let mut builder = RuntimeBuilder::new(config_file);
