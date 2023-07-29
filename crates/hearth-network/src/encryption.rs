@@ -117,7 +117,7 @@ mod tests {
     use rand::{rngs::OsRng, Rng};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    const TEST_DATA: &'static [u8] = b"According to all known laws of aviation, there is no way that a bee should be able to fly. Its wings are too small to get its fat little body off the ground. The bee, of course, flies anyway. Because bees don't care what humans think is impossible.";
+    const TEST_DATA: &[u8] = b"According to all known laws of aviation, there is no way that a bee should be able to fly. Its wings are too small to get its fat little body off the ground. The bee, of course, flies anyway. Because bees don't care what humans think is impossible.";
 
     fn generate_key() -> Key {
         let mut key = chacha20::Key::default();
@@ -149,7 +149,7 @@ mod tests {
         let (client, server) = tokio::io::duplex(2048);
         let mut encryptor = AsyncEncryptor::new(&key, server);
         let mut decryptor = AsyncDecryptor::new(&key, client);
-        encryptor.write(&TEST_DATA).await.unwrap();
+        encryptor.write(TEST_DATA).await.unwrap();
         let mut rx = vec![0u8; TEST_DATA.len()];
         decryptor.read_exact(&mut rx).await.unwrap();
         assert_eq!(TEST_DATA, rx);
