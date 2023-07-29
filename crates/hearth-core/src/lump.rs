@@ -52,11 +52,10 @@ impl LumpStoreImpl {
         );
 
         let mut store = self.store.write().await;
-        if !store.contains_key(&id) {
+        store.entry(id).or_insert_with(|| {
             debug!("Storing lump {}", id);
-            let lump = Lump { data };
-            store.insert(id, lump);
-        }
+            Lump { data }
+        });
 
         id
     }

@@ -371,7 +371,7 @@ mod tests {
         store: &Arc<ProcessStore<MockProcessEntry>>,
         flags: Flags,
     ) -> ProcessContext<ProcessStore<MockProcessEntry>> {
-        let (ctx, cap) = make_ctx_cap(&store, flags);
+        let (ctx, cap) = make_ctx_cap(store, flags);
         cap.free(store.as_ref());
         ctx
     }

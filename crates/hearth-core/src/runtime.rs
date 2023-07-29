@@ -217,8 +217,7 @@ impl RuntimeBuilder {
     pub fn get_plugin<T: Plugin>(&self) -> Option<&T> {
         self.plugins
             .get(&TypeId::of::<T>())
-            .map(|p| p.plugin.downcast_ref())
-            .flatten()
+            .and_then(|p| p.plugin.downcast_ref())
     }
 
     /// Retrieves a mutable reference to a plugin that has already been added.
@@ -227,8 +226,7 @@ impl RuntimeBuilder {
     pub fn get_plugin_mut<T: Plugin>(&mut self) -> Option<&mut T> {
         self.plugins
             .get_mut(&TypeId::of::<T>())
-            .map(|p| p.plugin.downcast_mut())
-            .flatten()
+            .and_then(|p| p.plugin.downcast_mut())
     }
 
     /// Consumes this builder and starts up the full [Runtime].
