@@ -187,7 +187,9 @@ impl<Store: ProcessStoreTrait> ExportsTable<Store> {
     pub fn revoke(&mut self, id: u32) -> bool {
         let slot = self.exports.get_mut(id as usize);
         let Some(cap) = slot else { return false };
-        let Some(old_cap) = cap.take() else { return false };
+        let Some(old_cap) = cap.take() else {
+            return false;
+        };
         old_cap.free(self.store.as_ref());
         true
     }

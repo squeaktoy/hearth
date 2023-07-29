@@ -58,7 +58,9 @@ async fn serve(root: PathBuf, mut ctx: Process, lumps: Arc<LumpStoreImpl>) {
 
         let response = on_request(&root, request, lumps.as_ref()).await;
         let response = serde_json::to_vec(&response).unwrap();
-        let Some(reply) = message.caps.first().copied() else { continue };
+        let Some(reply) = message.caps.first().copied() else {
+            continue;
+        };
 
         ctx.send(
             reply,

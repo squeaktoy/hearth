@@ -452,7 +452,11 @@ impl WasmProcessSpawner {
     async fn run(self, runtime: Arc<Runtime>, mut ctx: Process) {
         debug!("Listening to Wasm spawn requests");
         while let Some(signal) = ctx.recv().await {
-            let ContextSignal::Message(ContextMessage{ data: msg_data, caps: msg_caps }) = signal else {
+            let ContextSignal::Message(ContextMessage {
+                data: msg_data,
+                caps: msg_caps,
+            }) = signal
+            else {
                 // TODO make this a process log
                 warn!("Wasm spawner expected message but received: {:?}", signal);
                 continue;
