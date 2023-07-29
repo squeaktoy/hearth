@@ -132,10 +132,10 @@ impl TryFrom<u32> for ProcessLogLevel {
     }
 }
 
-impl Into<u32> for ProcessLogLevel {
-    fn into(self) -> u32 {
+impl From<ProcessLogLevel> for u32 {
+    fn from(val: ProcessLogLevel) -> Self {
         use ProcessLogLevel::*;
-        match self {
+        match val {
             Trace => 0,
             Debug => 1,
             Info => 2,
@@ -165,10 +165,10 @@ impl TryFrom<u32> for SignalKind {
     }
 }
 
-impl Into<u32> for SignalKind {
-    fn into(self) -> u32 {
+impl From<SignalKind> for u32 {
+    fn from(val: SignalKind) -> Self {
         use SignalKind::*;
-        match self {
+        match val {
             Message => 0,
             Unlink => 1,
         }
