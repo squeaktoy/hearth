@@ -16,7 +16,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use hearth_core::{
     async_trait,
@@ -72,9 +75,9 @@ async fn serve(root: PathBuf, mut ctx: Process, lumps: Arc<LumpStoreImpl>) {
     }
 }
 
-async fn on_request(root: &PathBuf, request: Request, lumps: &LumpStoreImpl) -> Response {
+async fn on_request(root: &Path, request: Request, lumps: &LumpStoreImpl) -> Response {
     let target = PathBuf::try_from(request.target).map_err(|_| Error::InvalidTarget)?;
-    let mut path = root.clone();
+    let mut path = root.to_path_buf();
     for component in target.components() {
         match component {
             std::path::Component::Normal(normal) => path.push(normal),
