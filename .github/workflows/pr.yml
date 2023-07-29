@@ -23,6 +23,11 @@ jobs:
       with:
         command: build
         args: --all-targets
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2.2.0
     - name: Test
       uses: actions-rs/cargo@v1
       with:
