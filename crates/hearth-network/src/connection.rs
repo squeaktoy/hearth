@@ -48,6 +48,7 @@ impl Connection {
             }
         });
 
+        #[allow(clippy::read_zero_byte_vec)]
         tokio::spawn(async move {
             let mut buf = Vec::new();
             loop {
