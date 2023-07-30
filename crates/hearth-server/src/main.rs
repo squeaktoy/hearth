@@ -16,22 +16,25 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{net::SocketAddr, ops::DerefMut};
 
 use clap::Parser;
+use hearth_core::process::Process;
+use hearth_core::runtime::Runtime;
 use hearth_core::{
     process::{
         context::{Capability, ContextMessage},
         factory::ProcessInfo,
-        ProcessStore,
+        Connection, ProcessStore,
     },
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
-use hearth_network::{auth::ServerAuthenticator, connection::Connection};
+use hearth_network::auth::ServerAuthenticator;
 use hearth_types::{wasm::WasmSpawnInfo, *};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::oneshot;
 use tracing::{debug, error, info};
 
 /// The constant peer ID for this peer (the server).
@@ -77,9 +80,14 @@ async fn main() {
     let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
     let config_file = hearth_core::load_config(&config_path).unwrap();
 
+    let (network_root_tx, network_root_rx) = oneshot::channel();
+    let mut init = hearth_init::InitPlugin::new();
+    init.add_hook("hearth.server.NetworkHook".into(), network_root_tx);
+
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
+    builder.add_plugin(init);
     let (runtime, join_handles) = builder.run(config).await;
 
     debug!("Loading init system module");
@@ -116,17 +124,10 @@ async fn main() {
         }
     };
 
-    info!("Binding to {:?}", args.bind);
-    if let Some(bind) = args.bind {
-        let listener = match TcpListener::bind(bind).await {
-            Ok(l) => l,
-            Err(err) => {
-                error!("Failed to listen: {:?}", err);
-                return;
-            }
-        };
-
-        listen(listener, runtime.process_store.clone(), authenticator);
+    if let Some(addr) = args.bind {
+        tokio::spawn(async move {
+            bind(network_root_rx, addr, runtime.clone(), authenticator).await;
+        });
     } else {
         info!("Server running in headless mode");
     }
@@ -140,31 +141,47 @@ async fn main() {
     }
 }
 
-fn listen(
-    listener: TcpListener,
-    store: Arc<ProcessStore>,
+async fn bind(
+    on_network_root: oneshot::Receiver<(Process, usize)>,
+    addr: SocketAddr,
+    runtime: Arc<Runtime>,
     authenticator: Arc<ServerAuthenticator>,
 ) {
-    debug!("Spawning listen thread");
-    tokio::spawn(async move {
-        info!("Listening");
-        loop {
-            let (socket, addr) = match listener.accept().await {
-                Ok(v) => v,
-                Err(err) => {
-                    error!("Listening error: {:?}", err);
-                    continue;
-                }
-            };
+    info!("Waiting for network root cap hook");
+    let network_root = on_network_root.await.unwrap();
+    let network_root = Arc::new(network_root);
 
-            info!("Connection from {:?}", addr);
-            let store = store.clone();
-            let authenticator = authenticator.clone();
-            tokio::task::spawn(async move {
-                on_accept(store, authenticator, socket, addr).await;
-            });
+    info!("Binding to {:?}", addr);
+    let listener = match TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(err) => {
+            error!("Failed to listen: {:?}", err);
+            return;
         }
-    });
+    };
+
+    info!("Listening");
+    loop {
+        let (socket, addr) = match listener.accept().await {
+            Ok(v) => v,
+            Err(err) => {
+                error!("Listening error: {:?}", err);
+                continue;
+            }
+        };
+
+        info!("Connection from {:?}", addr);
+        let store = runtime.process_store.clone();
+        let network_root = network_root.clone();
+        let authenticator = authenticator.clone();
+        tokio::task::spawn(async move {
+            on_accept(store, authenticator, socket, addr, move |conn| {
+                let (ctx, handle) = network_root.as_ref();
+                ctx.export_connection_root(*handle, conn).unwrap();
+            })
+            .await;
+        });
+    }
 }
 
 async fn on_accept(
@@ -172,6 +189,7 @@ async fn on_accept(
     authenticator: Arc<ServerAuthenticator>,
     mut client: TcpStream,
     addr: SocketAddr,
+    export_root: impl FnOnce(&mut Connection),
 ) {
     info!("Authenticating with client {:?}", addr);
     let session_key = match authenticator.login(&mut client).await {
@@ -190,9 +208,9 @@ async fn on_accept(
     let (client_rx, client_tx) = tokio::io::split(client);
     let client_rx = AsyncDecryptor::new(&client_key, client_rx);
     let client_tx = AsyncEncryptor::new(&server_key, client_tx);
-    let conn = Connection::new(client_rx, client_tx);
+    let conn = hearth_network::connection::Connection::new(client_rx, client_tx);
 
-    let (root_cap_tx, root_cap) = tokio::sync::oneshot::channel();
+    let (root_cap_tx, client_root) = tokio::sync::oneshot::channel();
     let on_root_cap = {
         let store = store.clone();
         move |root: Capability| {
@@ -203,15 +221,18 @@ async fn on_accept(
     };
 
     info!("Beginning connection");
-    let _conn = hearth_core::process::remote::Connection::new(
+    let conn = Connection::new(
         store.clone(),
         conn.op_rx,
         conn.op_tx,
         Some(Box::new(on_root_cap)),
     );
 
+    info!("Sending the client our root cap");
+    export_root(conn.lock().deref_mut());
+
     info!("Waiting for client's root cap...");
-    let root_cap = match root_cap.await {
+    let client_root = match client_root.await {
         Ok(cap) => cap,
         Err(err) => {
             eprintln!("Client's root cap was never received: {:?}", err);
@@ -219,5 +240,5 @@ async fn on_accept(
         }
     };
 
-    root_cap.free(store.as_ref());
+    client_root.free(store.as_ref());
 }
