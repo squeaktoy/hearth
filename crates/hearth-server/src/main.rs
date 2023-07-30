@@ -82,7 +82,7 @@ async fn main() {
 
     let (network_root_tx, network_root_rx) = oneshot::channel();
     let mut init = hearth_init::InitPlugin::new();
-    init.add_hook("hearth.server.NetworkHook".into(), network_root_tx);
+    init.add_hook("hearth.init.Server".into(), network_root_tx);
 
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
