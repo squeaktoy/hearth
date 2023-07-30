@@ -56,6 +56,10 @@ pub struct Args {
     /// The init system to run.
     #[clap(short, long)]
     pub init: PathBuf,
+
+    /// A path to the guest-side filesystem root.
+    #[clap(short, long)]
+    pub root: PathBuf,
 }
 
 fn main() {
@@ -113,6 +117,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
 
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(rend3_plugin);
     builder.add_plugin(init);
     let (runtime, join_handles) = builder.run(config).await;
