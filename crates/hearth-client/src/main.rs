@@ -52,6 +52,10 @@ pub struct Args {
     /// A configuration file to use if not the default one.
     #[clap(short, long)]
     pub config: Option<PathBuf>,
+
+    /// The init system to run.
+    #[clap(short, long)]
+    pub init: PathBuf,
 }
 
 fn main() {
@@ -104,12 +108,13 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     let config_file = hearth_core::load_config(&config_path).unwrap();
 
     let (network_root_tx, network_root_rx) = oneshot::channel();
-    let mut init = hearth_init::InitPlugin::new();
+    let mut init = hearth_init::InitPlugin::new(args.init);
     init.add_hook("hearth.init.Client".into(), network_root_tx);
 
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
     builder.add_plugin(rend3_plugin);
+    builder.add_plugin(init);
     let (runtime, join_handles) = builder.run(config).await;
 
     tokio::spawn(async move {
