@@ -24,15 +24,11 @@ use clap::Parser;
 use hearth_core::process::Process;
 use hearth_core::runtime::Runtime;
 use hearth_core::{
-    process::{
-        context::{Capability, ContextMessage},
-        factory::ProcessInfo,
-        Connection, ProcessStore,
-    },
+    process::{context::Capability, Connection, ProcessStore},
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
 use hearth_network::auth::ServerAuthenticator;
-use hearth_types::{wasm::WasmSpawnInfo, *};
+use hearth_types::*;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 use tracing::{debug, error, info};
@@ -81,7 +77,7 @@ async fn main() {
     let config_file = hearth_core::load_config(&config_path).unwrap();
 
     let (network_root_tx, network_root_rx) = oneshot::channel();
-    let mut init = hearth_init::InitPlugin::new();
+    let mut init = hearth_init::InitPlugin::new(args.init);
     init.add_hook("hearth.init.Server".into(), network_root_tx);
 
     let mut builder = RuntimeBuilder::new(config_file);
@@ -89,31 +85,6 @@ async fn main() {
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(init);
     let (runtime, join_handles) = builder.run(config).await;
-
-    debug!("Loading init system module");
-    let wasm_data = std::fs::read(args.init).unwrap();
-    let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
-
-    debug!("Running init system");
-    let mut parent = runtime.process_factory.spawn(ProcessInfo {}, Flags::SEND);
-    let wasm_spawner = parent
-        .get_service("hearth.cognito.WasmProcessSpawner")
-        .expect("Wasm spawner service not found");
-
-    let spawn_info = WasmSpawnInfo {
-        lump: wasm_lump,
-        entrypoint: None,
-    };
-
-    parent
-        .send(
-            wasm_spawner,
-            ContextMessage {
-                data: serde_json::to_vec(&spawn_info).unwrap(),
-                caps: vec![0],
-            },
-        )
-        .unwrap();
 
     debug!("Initializing IPC");
     let daemon_listener = match hearth_ipc::Listener::new().await {
