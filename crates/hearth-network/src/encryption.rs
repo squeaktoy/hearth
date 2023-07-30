@@ -149,7 +149,7 @@ mod tests {
         let (client, server) = tokio::io::duplex(2048);
         let mut encryptor = AsyncEncryptor::new(&key, server);
         let mut decryptor = AsyncDecryptor::new(&key, client);
-        encryptor.write(TEST_DATA).await.unwrap();
+        encryptor.write_all(TEST_DATA).await.unwrap();
         let mut rx = vec![0u8; TEST_DATA.len()];
         decryptor.read_exact(&mut rx).await.unwrap();
         assert_eq!(TEST_DATA, rx);
@@ -163,7 +163,7 @@ mod tests {
         let mut decryptor = AsyncDecryptor::new(&key, client);
 
         for chunk in TEST_DATA.chunks(7) {
-            encryptor.write(chunk).await.unwrap();
+            encryptor.write_all(chunk).await.unwrap();
         }
 
         let mut rx = vec![0u8; TEST_DATA.len()];
