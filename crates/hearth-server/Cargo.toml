@@ -9,8 +9,9 @@ clap = { version = "3.2", features = ["derive"] }
 hearth-cognito = { workspace = true }
 hearth-core = { workspace = true }
 hearth-ipc = { workspace = true }
+hearth-fs = { workspace = true }
 hearth-network = { workspace = true }
-hearth-rpc = { workspace = true }
-remoc = { workspace = true, features = ["full"] }
+hearth-types = { workspace = true }
+serde_json = { workspace = true }
 tokio = { version = "1.24", features = ["full"] }
 tracing = { workspace = true }

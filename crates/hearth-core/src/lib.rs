@@ -18,11 +18,12 @@
 
 use std::path::{Path, PathBuf};
 
-pub use hearth_rpc::remoc::rtc::async_trait;
+pub use async_trait::async_trait;
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::prelude::*;
 
 pub use anyhow;
+pub use hearth_types;
 pub use tokio;
 pub use tracing;
 
@@ -36,7 +37,7 @@ pub mod lump;
 pub mod process;
 
 /// Publish-subscribe utility struct for making pub-sub services.
-pub mod pubsub;
+// pub mod pubsub;
 
 /// Peer runtime building and execution.
 pub mod runtime;
@@ -47,7 +48,8 @@ pub fn init_logging() {
         .with_target("wgpu", Level::INFO)
         .with_target("wgpu_core", Level::WARN)
         .with_target("wgpu_hal", Level::WARN)
-        .with_default(Level::DEBUG);
+        .with_target("hearth", Level::DEBUG)
+        .with_default(Level::INFO);
 
     let format = tracing_subscriber::fmt::layer().compact();
 

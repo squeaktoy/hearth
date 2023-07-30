@@ -22,9 +22,8 @@ use std::sync::Arc;
 
 use crate::lump::LumpStoreImpl;
 use anyhow::{anyhow, Result};
-use hearth_rpc::{hearth_types, remoc};
+use async_trait::async_trait;
 use hearth_types::LumpId;
-use remoc::rtc::async_trait;
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error};
 
@@ -50,7 +49,7 @@ impl<T: AssetLoader> AssetPool<T> {
 
     async fn load_asset(&self, lump: &LumpId, data: &[u8]) -> Result<Arc<T::Asset>> {
         let assets = self.assets.read().await;
-        if let Some(asset) = assets.get(&lump) {
+        if let Some(asset) = assets.get(lump) {
             Ok(asset.to_owned())
         } else {
             // switch to write lock

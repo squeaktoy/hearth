@@ -23,10 +23,13 @@ use std::{
 };
 
 use clap::Parser;
-use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
-use hearth_network::auth::login;
+use hearth_core::{
+    hearth_types::PeerId,
+    process::context::Capability,
+    runtime::{RuntimeBuilder, RuntimeConfig},
+};
+use hearth_network::{auth::login, connection::Connection};
 use hearth_rend3::Rend3Plugin;
-use hearth_rpc::*;
 use tokio::net::TcpStream;
 use tracing::{debug, error, info};
 
@@ -91,6 +94,18 @@ fn main() {
 }
 
 async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
+    let new_id = PeerId(0); // TODO runtimes shouldn't need assigned peer IDs
+    info!("Assigned peer ID {:?}", new_id);
+    let config = RuntimeConfig { this_peer: new_id };
+
+    let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
+    let config_file = hearth_core::load_config(&config_path).unwrap();
+
+    let mut builder = RuntimeBuilder::new(config_file);
+    builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    builder.add_plugin(rend3_plugin);
+    let (runtime, join_handles) = builder.run(config).await;
+
     let server = match SocketAddr::from_str(&args.server) {
         Err(_) => {
             info!(
@@ -136,53 +151,36 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     let (server_rx, server_tx) = tokio::io::split(socket);
     let server_rx = AsyncDecryptor::new(&server_key, server_rx);
     let server_tx = AsyncEncryptor::new(&client_key, server_tx);
+    let conn = Connection::new(server_rx, server_tx);
 
-    use remoc::rch::base::{Receiver, Sender};
-    let cfg = remoc::Cfg::default();
-    let (conn, mut tx, mut rx): (_, Sender<ClientOffer>, Receiver<ServerOffer>) =
-        match remoc::Connect::io(cfg, server_rx, server_tx).await {
-            Ok(v) => v,
-            Err(err) => {
-                error!("Remoc connection failure: {:?}", err);
-                return;
+    let (root_cap_tx, root_cap) = tokio::sync::oneshot::channel();
+    let on_root_cap = {
+        let store = runtime.process_store.clone();
+        move |root: Capability| {
+            if let Err(dropped) = root_cap_tx.send(root) {
+                dropped.free(store.as_ref());
             }
-        };
-
-    debug!("Spawning Remoc connection thread");
-    let join_connection = tokio::spawn(conn);
-
-    debug!("Receiving server offer");
-    let offer = rx.recv().await.unwrap().unwrap();
-
-    info!("Assigned peer ID {:?}", offer.new_id);
-
-    let peer_info = PeerInfo { nickname: None };
-    let config = RuntimeConfig {
-        peer_provider: offer.peer_provider.clone(),
-        this_peer: offer.new_id,
-        info: peer_info,
+        }
     };
 
-    let config_path = args
-        .config
-        .unwrap_or_else(|| hearth_core::get_config_path());
-    let config_file = hearth_core::load_config(&config_path).unwrap();
+    info!("Beginning connection");
+    let _conn = hearth_core::process::remote::Connection::new(
+        runtime.process_store.clone(),
+        conn.op_rx,
+        conn.op_tx,
+        Some(Box::new(on_root_cap)),
+    );
 
-    let (runtime, join_handles) = {
-        // move into block to make this async fn Send
-        let mut builder = RuntimeBuilder::new(config_file);
-        builder.add_plugin(hearth_cognito::WasmPlugin::new());
-        builder.add_plugin(rend3_plugin);
-        builder.run(config)
+    info!("Waiting for server's root cap...");
+    let root_cap = match root_cap.await {
+        Ok(cap) => cap,
+        Err(err) => {
+            eprintln!("Server's root cap was never received: {:?}", err);
+            return;
+        }
     };
 
-    let peer_api = runtime.clone().serve_peer_api();
-
-    tx.send(ClientOffer {
-        peer_api: peer_api.to_owned(),
-    })
-    .await
-    .unwrap();
+    root_cap.free(runtime.process_store.as_ref());
 
     info!("Successfully connected!");
 
@@ -195,22 +193,10 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
         }
     };
 
-    let daemon_offer = DaemonOffer {
-        peer_provider: offer.peer_provider,
-        peer_id: offer.new_id,
-        process_factory: runtime.process_factory_client.clone(),
-    };
+    daemon_listener.listen();
 
-    hearth_ipc::listen(daemon_listener, daemon_offer);
-
-    tokio::select! {
-        result = join_connection => {
-            result.unwrap().unwrap();
-        }
-        _ = hearth_core::wait_for_interrupt() => {
-            info!("Ctrl+C hit; quitting client");
-        }
-    }
+    hearth_core::wait_for_interrupt().await;
+    info!("Ctrl+C hit; quitting client");
 
     debug!("Aborting runners");
     for join in join_handles {

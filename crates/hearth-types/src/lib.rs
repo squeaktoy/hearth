@@ -21,8 +21,17 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
+/// Filesystem native service protocol.
+pub mod fs;
+
 /// Paneling-related protocols and utilities.
 pub mod panels;
+
+/// Network/IPC protocol definitions.
+pub mod protocol;
+
+/// Registry protocol.
+pub mod registry;
 
 /// WebAssembly process protocols and utilities.
 pub mod wasm;
@@ -70,10 +79,6 @@ pub struct PeerId(pub u32);
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct LocalProcessId(pub u32);
 
-/// Process-local identifiers for loaded assets.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
-pub struct AssetId(pub u32);
-
 /// Identifier for a lump (digest of BLAKE3 cryptographic hash).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize, Pod, Zeroable)]
@@ -86,6 +91,18 @@ impl Display for LumpId {
         }
 
         Ok(())
+    }
+}
+
+bitflags::bitflags! {
+    /// The permission flags of a capability.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+    pub struct Flags: u32 {
+        const SEND = 1 << 0;
+        const KILL = 1 << 1;
+        const LINK = 1 << 2;
+        const REGISTER = 1 << 3;
+        const TRUSTED = 1 << 4;
     }
 }
 
@@ -115,15 +132,45 @@ impl TryFrom<u32> for ProcessLogLevel {
     }
 }
 
-impl Into<u32> for ProcessLogLevel {
-    fn into(self) -> u32 {
+impl From<ProcessLogLevel> for u32 {
+    fn from(val: ProcessLogLevel) -> Self {
         use ProcessLogLevel::*;
-        match self {
+        match val {
             Trace => 0,
             Debug => 1,
             Info => 2,
             Warning => 3,
             Error => 4,
+        }
+    }
+}
+
+/// A kind of guest-side signal.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+pub enum SignalKind {
+    Message,
+    Unlink,
+}
+
+impl TryFrom<u32> for SignalKind {
+    type Error = ();
+
+    fn try_from(other: u32) -> Result<Self, ()> {
+        use SignalKind::*;
+        match other {
+            0 => Ok(Message),
+            1 => Ok(Unlink),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<SignalKind> for u32 {
+    fn from(val: SignalKind) -> Self {
+        use SignalKind::*;
+        match val {
+            Message => 0,
+            Unlink => 1,
         }
     }
 }

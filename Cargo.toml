@@ -7,37 +7,30 @@ members = [
   "crates/hearth-cognito",
   "crates/hearth-core",
   "crates/hearth-ipc",
+  "crates/hearth-fs",
   "crates/hearth-macros",
   "crates/hearth-network",
   "crates/hearth-rend3",
-  "crates/hearth-rpc",
   "crates/hearth-server",
   "crates/hearth-types",
   "crates/hearth-wasm",
   "crates/rend3-alacritty",
-  "guest/rust/hearth-guest",
-  "guest/rust/hearth-test-wasm",
 ]
 
 [workspace.dependencies]
 bytemuck = "1.13"
 hearth-cognito = { path = "crates/hearth-cognito" }
 hearth-core = { path = "crates/hearth-core" }
-hearth-guest = { path = "guest/rust/hearth-guest" }
 hearth-ipc = { path = "crates/hearth-ipc" }
+hearth-fs = { path = "crates/hearth-fs" }
 hearth-macros = { path = "crates/hearth-macros" }
 hearth-network = { path = "crates/hearth-network" }
 hearth-rend3 = { path = "crates/hearth-rend3" }
-hearth-rpc = { path = "crates/hearth-rpc" }
 hearth-types = { path = "crates/hearth-types" }
 hearth-wasm = { path = "crates/hearth-wasm" }
+parking_lot = "0.12"
 serde_json = "1"
 tracing = "0.1.37"
-
-[workspace.dependencies.remoc]
-version = "0.10"
-default-features = false
-features = ["default-codec-bincode"]
 
 [workspace.dependencies.serde]
 version = "1"

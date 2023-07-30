@@ -16,28 +16,40 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use clap::Parser;
-use hearth_rpc::*;
+use serde::{Deserialize, Serialize};
 
-use crate::{get_peer_list, hash_map_to_ordered_vec, CommandResult};
+use crate::LumpId;
 
-/// Lists all peers currently participating in the space.
-#[derive(Debug, Parser)]
-pub struct ListPeers {}
-
-impl ListPeers {
-    pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
-        let peer_list = get_peer_list(&daemon).await?;
-
-        //must be updated as time goes on when more peer info is added
-        println!("{:>5} {:<10}", "Peer", "Nickname");
-        for (peer_id, peer_info) in hash_map_to_ordered_vec(peer_list) {
-            println!(
-                "{:>5} {:<10}",
-                peer_id.0,
-                peer_info.nickname.unwrap_or(String::from("None"))
-            );
-        }
-        Ok(())
-    }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Error {
+    NotFound,
+    DirectoryTraversal,
+    InvalidTarget,
+    InvalidRequest,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum RequestKind {
+    Get,
+    List,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Request {
+    pub target: String,
+    pub kind: RequestKind,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct FileInfo {
+    pub name: String,
+    // TODO more file properties like size or last modified?
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Success {
+    Get(LumpId),
+    List(Vec<FileInfo>),
+}
+
+pub type Response = Result<Success, Error>;

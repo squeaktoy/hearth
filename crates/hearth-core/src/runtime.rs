@@ -27,16 +27,15 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::Arc;
 
-use hearth_rpc::remoc::rtc::ServerShared;
-use hearth_rpc::*;
-use hearth_types::PeerId;
-use remoc::rtc::async_trait;
+use async_trait::async_trait;
+use hearth_types::{Flags, PeerId};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
-use crate::process::{Process, ProcessFactoryImpl, ProcessStoreImpl};
+use crate::process::factory::ProcessInfo;
 
 /// Interface trait for plugins to the Hearth runtime.
 ///
@@ -53,18 +52,21 @@ pub trait Plugin: Send + Sync + 'static {
 }
 
 struct PluginWrapper {
-    plugin: Box<dyn Any>,
-    runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>) -> JoinHandle<()>>,
+    plugin: Box<dyn Any + Send>,
+    runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>) -> JoinHandle<()> + Send>,
 }
 
 /// Builder struct for a single Hearth [Runtime].
 pub struct RuntimeBuilder {
     config_file: toml::Table,
     plugins: HashMap<TypeId, PluginWrapper>,
-    runners: Vec<Box<dyn FnOnce(Arc<Runtime>) -> JoinHandle<()>>>,
+    runners: Vec<Box<dyn FnOnce(Arc<Runtime>) -> JoinHandle<()> + Send>>,
     services: HashSet<String>,
     lump_store: Arc<LumpStoreImpl>,
     asset_store: AssetStore,
+    service_num: usize,
+    service_start_tx: UnboundedSender<String>,
+    service_start_rx: UnboundedReceiver<String>,
 }
 
 impl RuntimeBuilder {
@@ -72,6 +74,7 @@ impl RuntimeBuilder {
     pub fn new(config_file: toml::Table) -> Self {
         let lump_store = Arc::new(LumpStoreImpl::new());
         let asset_store = AssetStore::new(lump_store.clone());
+        let (service_start_tx, service_start_rx) = unbounded_channel();
 
         Self {
             config_file,
@@ -80,6 +83,9 @@ impl RuntimeBuilder {
             services: Default::default(),
             lump_store,
             asset_store,
+            service_num: 0,
+            service_start_tx,
+            service_start_rx,
         }
     }
 
@@ -151,29 +157,42 @@ impl RuntimeBuilder {
 
     /// Adds a service.
     ///
-    /// Logs an error and skips adding the service if the service name is
-    /// taken.
+    /// Logs a warning if the new service replaces another one.
     ///
     /// Behind the scenes this creates a runner that spawns the process and
     /// registers it as a service.
-    pub fn add_service(&mut self, name: String, process: impl Process) -> &mut Self {
+    pub fn add_service(
+        &mut self,
+        name: String,
+        info: ProcessInfo,
+        flags: Flags,
+        cb: impl FnOnce(Arc<Runtime>, crate::process::Process) + Send + 'static,
+    ) -> &mut Self {
         if self.services.contains(&name) {
             error!("Service name {} is taken", name);
             return self;
         }
 
+        let service_start_tx = self.service_start_tx.clone();
+        self.service_num += 1;
+
         self.services.insert(name.clone());
         self.runners.push(Box::new(move |runtime| {
             tokio::spawn(async move {
                 debug!("Spawning '{}' service", name);
-                let pid = runtime.process_store.spawn(process).await;
-                let result = runtime.process_store.register_service(pid, name).await;
-                match result {
-                    Ok(_) => {}
-                    Err(err) => {
-                        error!("Service registration error: {:?}", err);
-                    }
+                let process = runtime.process_factory.spawn(info, flags);
+                let self_cap = process
+                    .get_cap(0)
+                    .expect("freshly-spawned process has no self cap")
+                    .clone(runtime.process_store.as_ref());
+                if let Some(old_cap) = runtime.process_registry.insert(name.clone(), self_cap) {
+                    warn!("Service name {:?} was taken; replacing", name);
+                    old_cap.free(runtime.process_store.as_ref());
                 }
+
+                let _ = service_start_tx.send(name);
+
+                cb(runtime, process);
             })
         }));
 
@@ -198,8 +217,7 @@ impl RuntimeBuilder {
     pub fn get_plugin<T: Plugin>(&self) -> Option<&T> {
         self.plugins
             .get(&TypeId::of::<T>())
-            .map(|p| p.plugin.downcast_ref())
-            .flatten()
+            .and_then(|p| p.plugin.downcast_ref())
     }
 
     /// Retrieves a mutable reference to a plugin that has already been added.
@@ -208,46 +226,32 @@ impl RuntimeBuilder {
     pub fn get_plugin_mut<T: Plugin>(&mut self) -> Option<&mut T> {
         self.plugins
             .get_mut(&TypeId::of::<T>())
-            .map(|p| p.plugin.downcast_mut())
-            .flatten()
+            .and_then(|p| p.plugin.downcast_mut())
     }
 
     /// Consumes this builder and starts up the full [Runtime].
     ///
     /// This returns a shared pointer to the new runtime, as well as all of the
     /// [JoinHandles][JoinHandle] for the launched runners and plugins.
-    pub fn run(self, config: RuntimeConfig) -> (Arc<Runtime>, Vec<JoinHandle<()>>) {
-        debug!("Spawning lump store server");
+    pub async fn run(self, config: RuntimeConfig) -> (Arc<Runtime>, Vec<JoinHandle<()>>) {
+        use crate::process::*;
+
+        let process_store = Arc::new(ProcessStore::default());
+        let process_registry = Arc::new(Registry::new(process_store.clone()));
+        let process_factory = Arc::new(ProcessFactory::new(
+            process_store.clone(),
+            process_registry.clone(),
+            config.this_peer,
+        ));
+
         let lump_store = self.lump_store;
-        let (lump_store_server, lump_store_client) =
-            LumpStoreServerShared::new(lump_store.clone(), 1024);
-        tokio::spawn(async move {
-            lump_store_server.serve(true).await;
-        });
-
-        debug!("Spawning process store server");
-        let process_store = ProcessStoreImpl::new(config.this_peer);
-        let (process_store_server, process_store_client) =
-            ProcessStoreServerShared::new(process_store.clone(), 1024);
-        tokio::spawn(async move {
-            process_store_server.serve(true).await;
-        });
-
-        debug!("Spawning process factory server");
-        let process_factory = ProcessFactoryImpl::new(process_store.clone());
-        let (process_factory_server, process_factory_client) =
-            ProcessFactoryServerShared::new(Arc::new(process_factory), 1024);
-        tokio::spawn(async move {
-            process_factory_server.serve(true).await;
-        });
 
         let runtime = Arc::new(Runtime {
             asset_store: Arc::new(self.asset_store),
             lump_store,
-            lump_store_client,
             process_store,
-            process_store_client,
-            process_factory_client,
+            process_registry,
+            process_factory,
             config,
         });
 
@@ -266,27 +270,34 @@ impl RuntimeBuilder {
             join_handles.push(join);
         }
 
+        let service_num = self.service_num;
+        let mut service_rx = self.service_start_rx;
+        debug!("Waiting for {} services to start...", service_num);
+        for i in 0..service_num {
+            let name = service_rx.recv().await.expect(
+                "all instances of service_start_tx dropped while waiting for all services to start",
+            );
+
+            let left = service_num - i;
+            debug!("Service {:?} started, {} left", name, left);
+        }
+
+        debug!("All services started");
+
         (runtime, join_handles)
     }
 }
 
 /// Configuration info for a runtime.
 pub struct RuntimeConfig {
-    /// The provider to other peers on the network.
-    pub peer_provider: PeerProviderClient,
-
     /// The ID of this peer.
     pub this_peer: PeerId,
-
-    /// The [PeerInfo] for this peer.
-    pub info: PeerInfo,
 }
 
 /// An instance of a single Hearth runtime.
 ///
-/// This contains all of the resources that are used by plugins, processes,
-/// and network peers. A runtime can be built and started using
-/// [RuntimeBuilder].
+/// This contains all of the resources that are used by plugins and processes.
+/// A runtime can be built and started using [RuntimeBuilder].
 ///
 /// Note that Hearth uses Tokio for all of its asynchronous
 /// task execution and IO, so it's assumed that a Tokio runtime has already
@@ -301,43 +312,12 @@ pub struct Runtime {
     /// This runtime's lump store.
     pub lump_store: Arc<LumpStoreImpl>,
 
-    /// A clone-able client to this runtime's lump store.
-    pub lump_store_client: LumpStoreClient,
-
     /// This runtime's process store.
-    pub process_store: Arc<ProcessStoreImpl>,
+    pub process_store: Arc<crate::process::ProcessStore>,
 
-    /// A clone-able client to this runtime's process store.
-    pub process_store_client: ProcessStoreClient,
+    /// This runtime's process registry.
+    pub process_registry: Arc<crate::process::Registry>,
 
-    /// A clone-able client to the process store's factory.
-    pub process_factory_client: ProcessFactoryClient,
-}
-
-#[async_trait]
-impl PeerApi for Runtime {
-    async fn get_info(&self) -> CallResult<PeerInfo> {
-        Ok(self.config.info.clone())
-    }
-
-    async fn get_process_store(&self) -> CallResult<ProcessStoreClient> {
-        Ok(self.process_store_client.clone())
-    }
-
-    async fn get_lump_store(&self) -> CallResult<LumpStoreClient> {
-        Ok(self.lump_store_client.clone())
-    }
-}
-
-impl Runtime {
-    /// Spawns a new [PeerApiServer] for this runtime and returns a client to it.
-    pub fn serve_peer_api(self: Arc<Self>) -> PeerApiClient {
-        debug!("Serving runtime PeerApi");
-        let (server, client) = PeerApiServerShared::new(self, 1024);
-        tokio::spawn(async move {
-            server.serve(true).await;
-        });
-
-        client
-    }
+    /// This runtime's process factory.
+    pub process_factory: Arc<crate::process::ProcessFactory>,
 }

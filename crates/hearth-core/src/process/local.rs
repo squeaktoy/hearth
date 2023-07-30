@@ -16,28 +16,28 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use clap::Parser;
-use hearth_rpc::*;
-use yacexits::EX_PROTOCOL;
+use tokio::sync::mpsc::UnboundedSender;
 
-use crate::*;
+use super::store::{ProcessEntry, Signal};
 
-/// Kill a process
-#[derive(Debug, Parser)]
-pub struct Kill {
-    /// Take either a global or local process id
-    pub process: MaybeLocalPid,
+/// A local process entry in a process store.
+///
+/// This simply forwards signals through an async channel, to be used by other
+/// asynchronous tasks.
+pub struct LocalProcess {
+    /// The mailbox channel sender. Sends all incoming signals to this
+    /// process.
+    pub mailbox_tx: UnboundedSender<Signal>,
 }
 
-impl Kill {
-    pub async fn run(self, daemon: DaemonOffer) -> CommandResult<()> {
-        let (peer_id, local_pid) = self.process.to_global_pid(daemon.peer_id).split();
-        let mut ctx = PeerContext::new(&daemon, peer_id);
+impl ProcessEntry for LocalProcess {
+    type Data = ();
 
-        ctx.find_process(local_pid)
-            .await?
-            .kill()
-            .await
-            .to_command_error("killing process", EX_PROTOCOL)
+    fn on_insert(&self, _data: &Self::Data, _handle: usize) {}
+
+    fn on_signal(&self, _data: &Self::Data, signal: Signal) -> Option<Signal> {
+        self.mailbox_tx.send(signal).err().map(|err| err.0)
     }
+
+    fn on_remove(&self, _data: &Self::Data) {}
 }

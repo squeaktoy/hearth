@@ -16,18 +16,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, process::exit};
 
 use clap::{Parser, Subcommand};
-use hearth_rpc::{hearth_types::*, *};
-use std::process::exit;
-
-mod kill;
-mod list_peers;
-mod list_processes;
-mod run_mock_runtime;
-mod spawn_wasm;
+use hearth_types::*;
+use tokio::net::UnixStream;
 use yacexits::{EX_OK, EX_PROTOCOL};
+
+pub struct DaemonOffer {}
 
 pub struct CommandError {
     message: String,
@@ -95,99 +91,6 @@ impl MaybeLocalPid {
     }
 }
 
-pub struct PeerContext<'a> {
-    offer: &'a DaemonOffer,
-    peer_id: PeerId,
-    peer_api: Option<PeerApiClient>,
-    process_store: Option<ProcessStoreClient>,
-    lump_store: Option<LumpStoreClient>,
-}
-
-impl<'a> PeerContext<'a> {
-    pub fn new(offer: &'a DaemonOffer, peer_id: PeerId) -> Self {
-        Self {
-            offer,
-            peer_id,
-            peer_api: None,
-            process_store: None,
-            lump_store: None,
-        }
-    }
-
-    async fn get_peer_api(&mut self) -> CommandResult<PeerApiClient> {
-        if let Some(api) = self.peer_api.clone() {
-            Ok(api)
-        } else {
-            let api = self
-                .offer
-                .peer_provider
-                .find_peer(self.peer_id)
-                .await
-                .to_command_error("finding peer", EX_PROTOCOL)?;
-
-            Ok(self.peer_api.insert(api).clone())
-        }
-    }
-
-    async fn get_process_store(&mut self) -> CommandResult<ProcessStoreClient> {
-        if let Some(store) = self.process_store.clone() {
-            Ok(store)
-        } else {
-            let store = self
-                .get_peer_api()
-                .await?
-                .get_process_store()
-                .await
-                .to_command_error("retrieving process store", EX_PROTOCOL)?;
-
-            Ok(self.process_store.insert(store).clone())
-        }
-    }
-
-    async fn get_process_list(&mut self) -> CommandResult<HashMap<LocalProcessId, ProcessStatus>> {
-        self.get_process_store()
-            .await?
-            .follow_process_list()
-            .await
-            .to_command_error("following process list", EX_PROTOCOL)?
-            .take_initial()
-            .to_command_error("getting process list", EX_PROTOCOL)
-    }
-
-    async fn find_process(&mut self, local_pid: LocalProcessId) -> CommandResult<ProcessApiClient> {
-        self.get_process_store()
-            .await?
-            .find_process(local_pid)
-            .await
-            .to_command_error("finding process", EX_PROTOCOL)
-    }
-
-    async fn get_lump_store(&mut self) -> CommandResult<LumpStoreClient> {
-        if let Some(store) = self.lump_store.clone() {
-            Ok(store)
-        } else {
-            let store = self
-                .get_peer_api()
-                .await?
-                .get_lump_store()
-                .await
-                .to_command_error("retrieving lump store", EX_PROTOCOL)?;
-
-            Ok(self.lump_store.insert(store).clone())
-        }
-    }
-
-    async fn get_service_list(&mut self) -> CommandResult<HashMap<String, LocalProcessId>> {
-        self.get_process_store()
-            .await?
-            .follow_service_list()
-            .await
-            .to_command_error("following service list", EX_PROTOCOL)?
-            .take_initial()
-            .to_command_error("getting service list", EX_PROTOCOL)
-    }
-}
-
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -197,22 +100,13 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    ListPeers(list_peers::ListPeers),
-    ListProcesses(list_processes::ListProcesses),
-    RunMockRuntime(run_mock_runtime::RunMockRuntime),
-    SpawnWasm(spawn_wasm::SpawnWasm),
-    Kill(kill::Kill),
+    /// A dummy command.
+    Dummy,
 }
 
 impl Commands {
     pub async fn run(self) -> CommandResult<()> {
-        match self {
-            Commands::ListPeers(args) => args.run(get_daemon().await?).await,
-            Commands::ListProcesses(args) => args.run(get_daemon().await?).await,
-            Commands::SpawnWasm(args) => args.run(get_daemon().await?).await,
-            Commands::RunMockRuntime(args) => args.run().await,
-            Commands::Kill(args) => args.run(get_daemon().await?).await,
-        }
+        Ok(())
     }
 }
 
@@ -228,7 +122,7 @@ async fn main() {
     }
 }
 
-async fn get_daemon() -> CommandResult<DaemonOffer> {
+async fn get_daemon() -> CommandResult<UnixStream> {
     hearth_ipc::connect()
         .await
         .to_command_error("connecting to Hearth daemon", EX_PROTOCOL)
@@ -238,14 +132,4 @@ fn hash_map_to_ordered_vec<K: Copy + Ord, V>(map: HashMap<K, V>) -> Vec<(K, V)> 
     let mut vec = map.into_iter().collect::<Vec<(K, V)>>();
     vec.sort_by_cached_key(|k| k.0);
     vec
-}
-
-async fn get_peer_list(daemon: &DaemonOffer) -> CommandResult<HashMap<PeerId, PeerInfo>> {
-    daemon
-        .peer_provider
-        .follow_peer_list()
-        .await
-        .to_command_error("following peer lsit", EX_PROTOCOL)?
-        .take_initial()
-        .to_command_error("getting peer list", EX_PROTOCOL)
 }

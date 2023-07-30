@@ -19,9 +19,6 @@
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 
-use hearth_rpc::*;
-use hearth_types::LocalProcessId;
-use remoc::rch::{mpsc, watch};
 use tokio::net::{UnixListener, UnixStream};
 
 /// Returns the path of the Hearth IPC socket.
@@ -122,53 +119,26 @@ impl Listener {
         let path = sock_path.to_path_buf();
         Ok(Self { uds, path })
     }
-}
 
-/// Spawns a Tokio thread to respond to connections on the domain socket.
-pub fn listen(listener: Listener, offer: DaemonOffer) {
-    tokio::spawn(async move {
-        loop {
-            match listener.accept().await {
-                Ok((socket, addr)) => {
-                    tracing::debug!("Accepting IPC connection from {:?}", addr);
-                    let offer = offer.clone();
-                    tokio::spawn(async move {
-                        on_accept(socket, offer).await;
-                    });
-                }
-                Err(err) => {
-                    tracing::error!("IPC listen error: {:?}", err);
+    /// Spawns a Tokio thread to respond to connections on the domain socket.
+    pub fn listen(self) {
+        tokio::spawn(async move {
+            loop {
+                match self.accept().await {
+                    Ok((_socket, addr)) => {
+                        tracing::debug!("Accepting IPC connection from {:?}", addr);
+                    }
+                    Err(err) => {
+                        tracing::error!("IPC listen error: {:?}", err);
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 }
 
-async fn on_accept(socket: UnixStream, offer: DaemonOffer) {
-    let (sock_rx, sock_tx) = tokio::io::split(socket);
-
-    use hearth_rpc::remoc::{
-        rch::base::{Receiver, Sender},
-        Cfg, Connect,
-    };
-
-    let cfg = Cfg::default();
-    let (conn, mut tx, _rx): (_, Sender<DaemonOffer>, Receiver<()>) =
-        match Connect::io(cfg, sock_rx, sock_tx).await {
-            Ok(v) => v,
-            Err(err) => {
-                tracing::error!("Remoc connection failure: {:?}", err);
-                return;
-            }
-        };
-
-    tokio::spawn(conn);
-
-    tx.send(offer).await.unwrap();
-}
-
-/// Connects to the Hearth daemon and returns its offer.
-pub async fn connect() -> std::io::Result<DaemonOffer> {
+/// Connects to the Hearth daemon and returns a [UnixStream].
+pub async fn connect() -> std::io::Result<UnixStream> {
     use std::io::{Error, ErrorKind};
 
     let sock_path = match get_socket_path() {
@@ -181,96 +151,5 @@ pub async fn connect() -> std::io::Result<DaemonOffer> {
         }
     };
 
-    let socket = UnixStream::connect(&sock_path).await?;
-    let (sock_rx, sock_tx) = tokio::io::split(socket);
-
-    use hearth_rpc::remoc::{
-        rch::base::{Receiver, Sender},
-        Cfg, Connect,
-    };
-
-    let cfg = Cfg::default();
-    let (conn, _tx, mut rx): (_, Sender<()>, Receiver<DaemonOffer>) =
-        match Connect::io(cfg, sock_rx, sock_tx).await {
-            Ok(v) => v,
-            Err(err) => {
-                let kind = ErrorKind::NotFound;
-                let msg = format!("Remoc connection failure: {:?}", err);
-                tracing::error!(msg);
-                return Err(Error::new(kind, msg));
-            }
-        };
-
-    tokio::spawn(conn);
-
-    match rx.recv().await {
-        Ok(Some(offer)) => Ok(offer),
-        Ok(None) => {
-            let kind = ErrorKind::ConnectionReset;
-            let msg = "Daemon unexpectedly hung up while waiting for offer";
-            tracing::error!(msg);
-            return Err(Error::new(kind, msg));
-        }
-        Err(err) => {
-            let kind = ErrorKind::InvalidData;
-            let msg = format!(
-                "Remoc chmxu error while waiting for daemon offer: {:?}",
-                err
-            );
-            tracing::error!(msg);
-            return Err(Error::new(kind, msg));
-        }
-    }
-}
-
-/// Utility struct for creating and interacting with out-of-runtime processes.
-pub struct RemoteProcess {
-    /// The process ID for this process.
-    pub pid: LocalProcessId,
-
-    /// A sender for outgoing messages to other processes.
-    ///
-    /// Each [Message::pid] field represents the ID of the destination process.
-    pub outgoing: mpsc::Sender<Message>,
-
-    /// A receiver for incoming messages to this process.
-    ///
-    /// Each [Message::pid] field represents the ID of the sender process.
-    pub mailbox: mpsc::Receiver<Message>,
-
-    /// A receiver for the watch channel.
-    ///
-    /// Will be set to false when this process is killed.
-    pub is_alive: watch::Receiver<bool>,
-
-    /// A sender for log events.
-    pub log: mpsc::Sender<ProcessLogEvent>,
-}
-
-impl RemoteProcess {
-    /// Creates a new remote process on an IPC daemon.
-    ///
-    /// Calling interface functions on the daemon may return error values.
-    pub async fn new(daemon: &DaemonOffer, info: ProcessInfo) -> CallResult<Self> {
-        let (mailbox_tx, mailbox) = mpsc::channel(1024);
-        let (is_alive_tx, is_alive) = watch::channel(true);
-        let (log_tx, log) = mpsc::channel(1024);
-
-        let base = ProcessBase {
-            info,
-            mailbox: mailbox_tx,
-            is_alive: is_alive_tx,
-            log,
-        };
-
-        let offer = daemon.process_factory.spawn(base).await?;
-
-        Ok(Self {
-            pid: offer.pid,
-            outgoing: offer.outgoing,
-            mailbox,
-            is_alive,
-            log: log_tx,
-        })
-    }
+    UnixStream::connect(&sock_path).await
 }

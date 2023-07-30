@@ -1,11 +1,9 @@
 [package]
-name = "hearth-guest"
+name = "hearth-fs"
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
-hearth-types = { workspace = true }
-lazy_static = "1.4"
-serde = { workspace = true }
+hearth-core = { workspace = true }
 serde_json = { workspace = true }
