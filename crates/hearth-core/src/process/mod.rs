@@ -39,6 +39,9 @@ pub type ProcessFactory = factory::ProcessFactory<ProcessStore>;
 /// The default local process using [ProcessStore].
 pub type Process = factory::Process<ProcessStore>;
 
+/// The default connection using [ProcessStore].
+pub type Connection = remote::Connection<ProcessStore>;
+
 #[derive(Default)]
 pub struct AnyProcessData {
     pub local: <LocalProcess as ProcessEntry>::Data,

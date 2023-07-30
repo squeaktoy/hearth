@@ -24,7 +24,10 @@ use hearth_types::Flags;
 use slab::Slab;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use super::store::{Message, ProcessStoreTrait, Signal};
+use super::{
+    remote::{Connection, RemoteProcess},
+    store::{Message, ProcessStoreTrait, Signal},
+};
 
 /// A capability within a process store, storing both a handle and its
 /// permission flags.
@@ -333,6 +336,24 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
         self.caps
             .get(handle)
             .with_context(|| format!("invalid handle {}", handle))
+    }
+}
+
+impl<Store> ProcessContext<Store>
+where
+    Store: ProcessStoreTrait + Send + Sync + 'static,
+    Store::Entry: From<RemoteProcess>,
+{
+    /// Exports a given capability in this process as the root cap in a connection.
+    pub fn export_connection_root(
+        &self,
+        handle: usize,
+        conn: &mut Connection<Store>,
+    ) -> anyhow::Result<()> {
+        let cap = self.get_cap(handle)?;
+        let cap = cap.clone(self.store.as_ref());
+        conn.export_root(cap);
+        Ok(())
     }
 }
 

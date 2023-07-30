@@ -18,19 +18,21 @@
 
 use std::{
     net::{SocketAddr, ToSocketAddrs},
+    ops::DerefMut,
     path::PathBuf,
     str::FromStr,
+    sync::Arc,
 };
 
 use clap::Parser;
 use hearth_core::{
     hearth_types::PeerId,
-    process::context::Capability,
-    runtime::{RuntimeBuilder, RuntimeConfig},
+    process::{context::Capability, Process},
+    runtime::{Runtime, RuntimeBuilder, RuntimeConfig},
 };
 use hearth_network::{auth::login, connection::Connection};
 use hearth_rend3::Rend3Plugin;
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, sync::oneshot};
 use tracing::{debug, error, info};
 
 mod window;
@@ -101,18 +103,56 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
     let config_file = hearth_core::load_config(&config_path).unwrap();
 
+    let (network_root_tx, network_root_rx) = oneshot::channel();
+    let mut init = hearth_init::InitPlugin::new();
+    init.add_hook("hearth.init.Client".into(), network_root_tx);
+
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
     builder.add_plugin(rend3_plugin);
     let (runtime, join_handles) = builder.run(config).await;
 
-    let server = match SocketAddr::from_str(&args.server) {
+    tokio::spawn(async move {
+        connect(network_root_rx, runtime, args.server, args.password).await;
+    });
+
+    debug!("Initializing IPC");
+    let daemon_listener = match hearth_ipc::Listener::new().await {
+        Ok(l) => l,
+        Err(err) => {
+            tracing::error!("IPC listener setup error: {:?}", err);
+            return;
+        }
+    };
+
+    daemon_listener.listen();
+
+    hearth_core::wait_for_interrupt().await;
+    info!("Ctrl+C hit; quitting client");
+
+    debug!("Aborting runners");
+    for join in join_handles {
+        join.abort();
+    }
+}
+
+async fn connect(
+    on_network_root: oneshot::Receiver<(Process, usize)>,
+    runtime: Arc<Runtime>,
+    server: String,
+    password: String,
+) {
+    info!("Waiting for network root cap hook");
+    let network_root = on_network_root.await.unwrap();
+
+    info!("Resolving {}", server);
+    let server = match SocketAddr::from_str(&server) {
         Err(_) => {
             info!(
                 "Failed to parse \'{}\' to SocketAddr, attempting DNS resolution",
-                args.server
+                server
             );
-            match args.server.to_socket_addrs() {
+            match server.to_socket_addrs() {
                 Err(err) => {
                     error!("Failed to resolve IP: {:?}", err);
                     return;
@@ -136,7 +176,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     };
 
     info!("Authenticating");
-    let session_key = match login(&mut socket, args.password.as_bytes()).await {
+    let session_key = match login(&mut socket, password.as_bytes()).await {
         Ok(key) => key,
         Err(err) => {
             error!("Failed to authenticate with server: {:?}", err);
@@ -164,12 +204,18 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     };
 
     info!("Beginning connection");
-    let _conn = hearth_core::process::remote::Connection::new(
+    let conn = hearth_core::process::remote::Connection::new(
         runtime.process_store.clone(),
         conn.op_rx,
         conn.op_tx,
         Some(Box::new(on_root_cap)),
     );
+
+    info!("Sending the server our root cap");
+    let (root_ctx, root_handle) = network_root;
+    root_ctx
+        .export_connection_root(root_handle, conn.lock().deref_mut())
+        .unwrap();
 
     info!("Waiting for server's root cap...");
     let root_cap = match root_cap.await {
@@ -183,23 +229,4 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     root_cap.free(runtime.process_store.as_ref());
 
     info!("Successfully connected!");
-
-    debug!("Initializing IPC");
-    let daemon_listener = match hearth_ipc::Listener::new().await {
-        Ok(l) => l,
-        Err(err) => {
-            tracing::error!("IPC listener setup error: {:?}", err);
-            return;
-        }
-    };
-
-    daemon_listener.listen();
-
-    hearth_core::wait_for_interrupt().await;
-    info!("Ctrl+C hit; quitting client");
-
-    debug!("Aborting runners");
-    for join in join_handles {
-        join.abort();
-    }
 }
