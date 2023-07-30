@@ -16,15 +16,20 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use hearth_core::{
     async_trait,
-    hearth_types::Flags,
-    process::{context::ContextSignal, factory::ProcessInfo, Process},
+    hearth_types::{wasm::WasmSpawnInfo, Flags},
+    process::{
+        context::{ContextMessage, ContextSignal},
+        factory::ProcessInfo,
+        Process,
+    },
     runtime::{Plugin, Runtime, RuntimeBuilder},
     tokio::{spawn, sync::oneshot::Sender},
 };
+use tracing::debug;
 
 struct Hook {
     service: String,
@@ -32,6 +37,7 @@ struct Hook {
 }
 
 pub struct InitPlugin {
+    init_path: PathBuf,
     hooks: Vec<Hook>,
 }
 
@@ -64,12 +70,40 @@ impl Plugin for InitPlugin {
         }
     }
 
-    async fn run(&mut self, runtime: Arc<Runtime>) {}
+    async fn run(&mut self, runtime: Arc<Runtime>) {
+        debug!("Loading init system module");
+        let wasm_data = std::fs::read(self.init_path.clone()).unwrap();
+        let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
+
+        debug!("Running init system");
+        let mut parent = runtime.process_factory.spawn(ProcessInfo {}, Flags::SEND);
+        let wasm_spawner = parent
+            .get_service("hearth.cognito.WasmProcessSpawner")
+            .expect("Wasm spawner service not found");
+
+        let spawn_info = WasmSpawnInfo {
+            lump: wasm_lump,
+            entrypoint: None,
+        };
+
+        parent
+            .send(
+                wasm_spawner,
+                ContextMessage {
+                    data: serde_json::to_vec(&spawn_info).unwrap(),
+                    caps: vec![0],
+                },
+            )
+            .unwrap();
+    }
 }
 
 impl InitPlugin {
-    pub fn new() -> Self {
-        Self { hooks: Vec::new() }
+    pub fn new(init_path: PathBuf) -> Self {
+        Self {
+            init_path,
+            hooks: Vec::new(),
+        }
     }
 
     pub fn add_hook(&mut self, service: String, callback: Sender<(Process, usize)>) {
