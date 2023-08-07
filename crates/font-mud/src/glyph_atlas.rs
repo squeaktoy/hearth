@@ -13,12 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{FontError, FontResult, GlyphShapeError};
-use crate::glyph_bitmap::{GlyphBitmap, GlyphMtsdf};
-use glam::{UVec2, Vec2};
+use glam::{uvec2, UVec2, Vec2};
 use msdfgen::Range;
 use rect_packer::Packer;
 use ttf_parser::{Face, GlyphId};
+
+use crate::{
+    error::{FontError, FontResult, GlyphShapeError},
+    glyph_bitmap::{GlyphBitmap, GlyphShape},
+};
 
 #[derive(Copy, Clone, Debug)]
 pub struct GlyphVertex {
@@ -30,11 +33,13 @@ pub struct GlyphInfo {
     pub position: UVec2,
     pub size: UVec2,
     pub anchor: Vec2,
+    pub shape: GlyphShape,
     pub vertices: [GlyphVertex; 4],
 }
 
 pub struct GlyphAtlas {
-    pub bitmap: GlyphBitmap,
+    pub width: u32,
+    pub height: u32,
     pub glyphs: Vec<Option<GlyphInfo>>,
 }
 
@@ -46,10 +51,10 @@ impl GlyphAtlas {
     /// turns a face into a glyph atlas.
     /// all fonts have some glyph shape errors for some reason, we pass those through, as we treat them as non-fatal errors.
     pub fn new(face: &Face) -> FontResult<(GlyphAtlas, Vec<GlyphShapeError>)> {
-        let mut glyphs = vec![];
+        let mut glyphs = Vec::with_capacity(face.number_of_glyphs() as usize);
         let mut glyph_shape_errors = vec![];
         for c in 0..face.number_of_glyphs() {
-            let glyph = GlyphMtsdf::generate(
+            let glyph = GlyphShape::new(
                 face.units_per_em() as f64,
                 Self::PX_PER_EM,
                 Self::RANGE,
@@ -73,72 +78,66 @@ impl GlyphAtlas {
                 }
             }
         }
-        let mut packer = Self::generate_packer(&glyphs);
-        let width = packer.config().width as u32;
-        let height = packer.config().height as u32;
-        let texture_size = Vec2::new(width as f32, height as f32);
-        let mut bitmap = GlyphBitmap::new(width, height);
-        let mut glyph_info = vec![];
-        for glyph in glyphs {
-            match glyph {
-                None => {
-                    glyph_info.push(None);
+
+        let (atlas_size, packed) = Self::pack(&glyphs);
+        let texture_size = atlas_size.as_vec2();
+
+        let glyphs: Vec<_> = packed
+            .into_iter()
+            .zip(glyphs.into_iter())
+            .map(|glyph| {
+                if let (Some(position), Some(glyph)) = glyph {
+                    let scale = (1.0 / glyph.px_per_em) as f32;
+                    let offset = glyph.anchor - 0.5 * scale;
+
+                    let tex_offset = position.as_vec2() / texture_size;
+                    let size = Vec2::new(glyph.width as f32, glyph.height as f32) - 1.0;
+                    let v1 = Vec2::ZERO;
+                    let v2 = Vec2::new(size.x, 0.0);
+                    let v3 = Vec2::new(0.0, size.y);
+                    let v4 = size;
+
+                    Some(GlyphInfo {
+                        position,
+                        size: UVec2::new(glyph.width, glyph.height),
+                        anchor: offset,
+                        shape: glyph,
+                        vertices: [
+                            GlyphVertex {
+                                position: v1 * scale - offset,
+                                tex_coords: v1 / texture_size + tex_offset,
+                            },
+                            GlyphVertex {
+                                position: v2 * scale - offset,
+                                tex_coords: v2 / texture_size + tex_offset,
+                            },
+                            GlyphVertex {
+                                position: v3 * scale - offset,
+                                tex_coords: v3 / texture_size + tex_offset,
+                            },
+                            GlyphVertex {
+                                position: v4 * scale - offset,
+                                tex_coords: v4 / texture_size + tex_offset,
+                            },
+                        ],
+                    })
+                } else {
+                    None
                 }
-                Some(glyph) => {
-                    if let Some(rect) = packer.pack(glyph.width as i32, glyph.height as i32, false)
-                    {
-                        glyph.copy_to(&mut bitmap, rect.x as u32, rect.y as u32);
-
-                        let scale = (1.0 / glyph.px_per_em) as f32;
-                        let offset = glyph.anchor - 0.5 * scale;
-
-                        let position = Vec2::new(rect.x as f32, rect.y as f32) + 0.5;
-                        let position = position / texture_size;
-
-                        let size = Vec2::new(glyph.width as f32, glyph.height as f32) - 1.0;
-                        let v1 = Vec2::ZERO;
-                        let v2 = Vec2::new(size.x, 0.0);
-                        let v3 = Vec2::new(0.0, size.y);
-                        let v4 = size;
-
-                        glyph_info.push(Some(GlyphInfo {
-                            position: UVec2::new(rect.x as u32, rect.y as u32),
-                            size: UVec2::new(glyph.width, glyph.height),
-                            anchor: offset,
-                            vertices: [
-                                GlyphVertex {
-                                    position: v1 * scale - offset,
-                                    tex_coords: v1 / texture_size + position,
-                                },
-                                GlyphVertex {
-                                    position: v2 * scale - offset,
-                                    tex_coords: v2 / texture_size + position,
-                                },
-                                GlyphVertex {
-                                    position: v3 * scale - offset,
-                                    tex_coords: v3 / texture_size + position,
-                                },
-                                GlyphVertex {
-                                    position: v4 * scale - offset,
-                                    tex_coords: v4 / texture_size + position,
-                                },
-                            ],
-                        }))
-                    }
-                }
-            }
-        }
+            })
+            .collect();
 
         Ok((
             GlyphAtlas {
-                bitmap,
-                glyphs: glyph_info,
+                width: atlas_size.x,
+                height: atlas_size.y,
+                glyphs,
             },
             glyph_shape_errors,
         ))
     }
 
-    fn generate_packer(glyphs: &Vec<Option<GlyphMtsdf>>) -> Packer {
+    fn pack(glyphs: &Vec<Option<GlyphShape>>) -> (UVec2, Vec<Option<UVec2>>) {
         let mut config = rect_packer::Config {
             width: 256,
             height: 256,
@@ -148,36 +147,51 @@ impl GlyphAtlas {
 
         let mut packer = Packer::new(config);
         let mut last_switched_width = false;
-        loop {
-            let mut flag = true;
-            for glyph in glyphs {
-                match glyph {
-                    None => {}
-                    Some(glyph) => {
-                        match packer.pack(glyph.width as i32, glyph.height as i32, false) {
-                            None => {
-                                match last_switched_width {
-                                    true => {
-                                        last_switched_width = false;
-                                        config.height *= 2;
-                                    }
-                                    false => {
-                                        last_switched_width = true;
-                                        config.width *= 2;
-                                    }
-                                }
-                                packer = Packer::new(config);
-                                flag = false;
-                                break;
-                            }
-                            Some(_) => {}
-                        }
-                    }
+
+        let packed = loop {
+            let mut out_of_room = false;
+            let mut packed = Vec::with_capacity(glyphs.len());
+
+            for glyph in glyphs.iter() {
+                let Some(glyph) = glyph else {
+                    packed.push(None);
+                    continue;
+                };
+
+                let Some(rect) = packer.pack(glyph.width as i32, glyph.height as i32, false) else {
+                    out_of_room = true;
+                    break;
+                };
+
+                let position = uvec2(rect.x as u32, rect.y as u32);
+                packed.push(Some(position));
+            }
+
+            if out_of_room {
+                if last_switched_width {
+                    config.height *= 2;
+                } else {
+                    config.width *= 2;
                 }
+
+                last_switched_width = !last_switched_width;
+                packer = Packer::new(config);
+            } else {
+                break packed;
             }
-            if flag {
-                return Packer::new(config);
-            }
+        };
+
+        (uvec2(config.width as u32, config.height as u32), packed)
+    }
+
+    pub fn generate_full(&self) -> GlyphBitmap {
+        let mut bitmap = GlyphBitmap::new(self.width, self.height);
+
+        for glyph in self.glyphs.iter().flatten() {
+            let glyph_bitmap = glyph.shape.generate();
+            glyph_bitmap.copy_to(&mut bitmap, glyph.position.x, glyph.position.y);
         }
+
+        bitmap
     }
 }

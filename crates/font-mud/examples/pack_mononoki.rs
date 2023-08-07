@@ -20,7 +20,7 @@ fn main() {
     let ttf_src = include_bytes!("../../../resources/mononoki/mononoki-Regular.ttf");
     let face = ttf_parser::Face::parse(ttf_src, 0).unwrap();
     let (glyph_atlas, _glyph_shape_errors) = GlyphAtlas::new(&face).unwrap();
-    let bitmap = &glyph_atlas.bitmap;
+    let bitmap = glyph_atlas.generate_full();
     let output = File::create("mononoki.png").unwrap();
     let mut encoder = png::Encoder::new(output, bitmap.width, bitmap.height);
     encoder.set_color(png::ColorType::Rgba);
