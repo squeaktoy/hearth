@@ -82,7 +82,7 @@ impl DemoInner {
 
         let fonts = ttf_srcs.map(|src| {
             let face = owned_ttf_parser::OwnedFace::from_vec(src, 0).unwrap();
-            let face_atlas = FaceAtlas::new(face, &renderer.device, &renderer.queue);
+            let face_atlas = FaceAtlas::new(face, &renderer.device, renderer.queue.to_owned());
             Arc::new(face_atlas)
         });
 

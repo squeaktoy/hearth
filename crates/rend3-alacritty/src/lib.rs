@@ -13,9 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::sync::{Arc, RwLock, RwLockReadGuard, Weak};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, Weak};
 
 use alacritty_terminal::ansi::{Color, CursorShape, NamedColor};
 use alacritty_terminal::term::cell::Flags as CellFlags;
@@ -150,52 +151,77 @@ pub struct FaceAtlas {
     pub face: OwnedFace,
     pub atlas: GlyphAtlas,
     pub texture: Texture,
+    pub queue: Arc<Queue>,
+    pub touched: Mutex<HashSet<u16>>,
 }
 
 impl FaceAtlas {
     /// Create a new atlas from a face. Note that this takes time to complete.
-    pub fn new(face: OwnedFace, device: &Device, queue: &Queue) -> Self {
+    pub fn new(face: OwnedFace, device: &Device, queue: Arc<Queue>) -> Self {
         let (atlas, _errors) = GlyphAtlas::new(face.as_face_ref()).unwrap();
 
-        let width = atlas.bitmap.width;
-        let height = atlas.bitmap.height;
-
         let size = Extent3d {
-            width,
-            height,
+            width: atlas.width,
+            height: atlas.height,
             depth_or_array_layers: 1,
         };
 
-        let texture = device.create_texture(&TextureDescriptor {
-            label: Some("AlacrittyRoutine::glyph_texture"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8Unorm,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-        });
-
-        queue.write_texture(
-            ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: Origin3d::ZERO,
-                aspect: TextureAspect::All,
+        let texture = device.create_texture_with_data(
+            &queue,
+            &TextureDescriptor {
+                label: Some("AlacrittyRoutine::glyph_texture"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Rgba8Unorm,
+                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
             },
-            atlas.bitmap.data_bytes(),
-            ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(width * 4),
-                rows_per_image: std::num::NonZeroU32::new(height),
-            },
-            size,
+            &vec![0u8; (atlas.width * atlas.height * 4) as usize],
         );
 
         Self {
             face,
             atlas,
             texture,
+            queue,
+            touched: Default::default(),
+        }
+    }
+
+    /// Generate and upload a glyph bitmap for each glyph that hasn't already been.
+    pub fn touch(&self, glyphs: &[u16]) {
+        let mut touched = self.touched.lock().unwrap();
+        for glyph in glyphs {
+            if touched.insert(*glyph) {
+                let glyph = self.atlas.glyphs.get(*glyph as usize);
+                let Some(Some(glyph)) = glyph else { continue };
+                let bitmap = glyph.shape.generate();
+
+                self.queue.write_texture(
+                    ImageCopyTexture {
+                        texture: &self.texture,
+                        mip_level: 0,
+                        origin: Origin3d {
+                            x: glyph.position.x,
+                            y: glyph.position.y,
+                            z: 0,
+                        },
+                        aspect: TextureAspect::All,
+                    },
+                    bitmap.data_bytes(),
+                    ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: std::num::NonZeroU32::new(glyph.size.x * 4),
+                        rows_per_image: std::num::NonZeroU32::new(glyph.size.y),
+                    },
+                    Extent3d {
+                        width: glyph.size.x,
+                        height: glyph.size.y,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
         }
     }
 }
@@ -478,6 +504,7 @@ impl Terminal {
             }
         }
 
+        let mut touched = FontSet::<Vec<u16>>::default();
         let mut glyph_meshes = FontSet::<(Vec<GlyphVertex>, Vec<u32>)>::default();
 
         for (offset, style, glyph, color) in cells {
@@ -489,6 +516,8 @@ impl Terminal {
                 Some(b) => b,
                 None => continue,
             };
+
+            touched.get_mut(style).push(glyph as u16);
 
             vertices.extend(bitmap.vertices.iter().map(|v| GlyphVertex {
                 position: v.position * scale + offset,
@@ -505,6 +534,14 @@ impl Terminal {
                 index + 3,
             ]);
         }
+
+        self.config
+            .fonts
+            .as_ref()
+            .zip(touched)
+            .for_each(|(font, touched)| {
+                font.touch(&touched);
+            });
 
         self.glyph_meshes
             .as_mut()

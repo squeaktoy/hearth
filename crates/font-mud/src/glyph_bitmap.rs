@@ -13,29 +13,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::ops::Deref;
-
-use crate::error::{FontError, FontResult, GlyphShapeError};
 use glam::Vec2;
-use msdfgen::{Bitmap, FillRule, FontExt, MsdfGeneratorConfig, Range, Rgba};
+use msdfgen::{Bitmap, FillRule, FontExt, MsdfGeneratorConfig, Range, Rgba, Shape};
 use ttf_parser::{Face, GlyphId};
 
-pub struct GlyphMtsdf {
-    pub bitmap: GlyphBitmap,
+use crate::error::{FontError, FontResult, GlyphShapeError};
+
+pub struct GlyphShape {
     pub anchor: Vec2,
     pub px_per_em: f64,
+    pub shape: Shape,
+    pub width: u32,
+    pub height: u32,
+    pub framing: msdfgen::Framing<f64>,
 }
 
-impl Deref for GlyphMtsdf {
-    type Target = GlyphBitmap;
-
-    fn deref(&self) -> &GlyphBitmap {
-        &self.bitmap
-    }
-}
-
-impl GlyphMtsdf {
-    pub fn generate(
+impl GlyphShape {
+    pub fn new(
         units_per_em: f64,
         px_per_em: f64,
         range: Range<f64>,
@@ -43,7 +37,6 @@ impl GlyphMtsdf {
         face: &Face,
         glyph: GlyphId,
     ) -> FontResult<Self> {
-        let config: MsdfGeneratorConfig = MsdfGeneratorConfig::default();
         let mut shape = face
             .glyph_shape(glyph)
             .ok_or(FontError::GlyphShape(GlyphShapeError(glyph)))?;
@@ -63,31 +56,48 @@ impl GlyphMtsdf {
                     height: height as usize,
                     range,
                 })?;
+
+        let anchor =
+            Vec2::new(framing.translate.x as f32, framing.translate.y as f32) / units_per_em as f32;
+
+        Ok(Self {
+            anchor,
+            framing,
+            px_per_em,
+            shape,
+            width,
+            height,
+        })
+    }
+
+    pub fn generate(&self) -> GlyphBitmap {
+        let config: MsdfGeneratorConfig = MsdfGeneratorConfig::default();
+        let width = self.width;
+        let height = self.height;
+        let framing = &self.framing;
+        let shape = &self.shape;
         let mut bitmap = Bitmap::<Rgba<f32>>::new(width, height);
         shape.generate_mtsdf(&mut bitmap, framing, config);
         shape.correct_sign(&mut bitmap, framing, FillRule::default());
         shape.correct_msdf_error(&mut bitmap, framing, config);
 
-        Ok(Self {
-            bitmap: GlyphBitmap {
-                data: bitmap
-                    .pixels()
-                    .iter()
-                    .map(|p| {
-                        fn conv(f: f32) -> u32 {
-                            (f * 256.0).round() as u8 as _
-                        }
+        let data = bitmap
+            .pixels()
+            .iter()
+            .map(|p| {
+                fn conv(f: f32) -> u32 {
+                    (f * 256.0).round() as u8 as _
+                }
 
-                        (conv(p.r) << 24) | (conv(p.g) << 16) | (conv(p.b) << 8) | conv(p.a)
-                    })
-                    .collect(),
-                width,
-                height,
-            },
-            anchor: Vec2::new(framing.translate.x as f32, framing.translate.y as f32)
-                / units_per_em as f32,
-            px_per_em: px_per_em * framing.scale.x / px_per_unit,
-        })
+                (conv(p.r) << 24) | (conv(p.g) << 16) | (conv(p.b) << 8) | conv(p.a)
+            })
+            .collect();
+
+        GlyphBitmap {
+            data,
+            width,
+            height,
+        }
     }
 }
 
