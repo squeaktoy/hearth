@@ -191,7 +191,7 @@ unfeasible.
 - [ ] implement an asset reaper for unused assets
 - [ ] implement message-sending between processes on different peers
 - [ ] implement a process supervision tree in `hearth-guest`
-- [ ] asynchronous MSDF glyph loading for large fonts
+- [x] asynchronous MSDF glyph loading for large fonts
 - [ ] support IPC on Windows using an appropriate alternative to Unix domain sockets
 - [ ] complete the WebAssembly host call APIs
 - [ ] complete `hearth-console`
