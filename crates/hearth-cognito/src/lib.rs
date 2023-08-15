@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use hearth_core::anyhow::{self, bail, Context};
-use hearth_core::asset::{AssetLoader, AssetStore};
+use hearth_core::asset::AssetLoader;
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_core::process::context::{ContextMessage, ContextSignal};
 use hearth_core::process::factory::{ProcessInfo, ProcessLogEvent};
@@ -33,7 +33,7 @@ use hearth_types::wasm::WasmSpawnInfo;
 use hearth_types::{Flags, LumpId, ProcessLogLevel, SignalKind};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use slab::Slab;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
 use wasmtime::*;
 
@@ -556,10 +556,8 @@ impl AssetLoader for WasmModuleLoader {
 
 pub struct WasmPlugin {
     engine: Arc<Engine>,
-    asset_store_tx: Vec<oneshot::Sender<Arc<AssetStore>>>,
 }
 
-#[async_trait]
 impl Plugin for WasmPlugin {
     fn build(&mut self, builder: &mut RuntimeBuilder) {
         let mut linker = Linker::new(&self.engine);
@@ -586,17 +584,15 @@ impl Plugin for WasmPlugin {
         });
     }
 
-    async fn run(&mut self, runtime: Arc<Runtime>) {
-        for tx in self.asset_store_tx.drain(..) {
-            let _ = tx.send(runtime.asset_store.to_owned());
-        }
-
-        // TODO make this time slice duration configurable
-        let duration = std::time::Duration::from_micros(100);
-        loop {
-            tokio::time::sleep(duration).await;
-            self.engine.increment_epoch();
-        }
+    fn finish(self, _builder: &mut RuntimeBuilder) {
+        tokio::spawn(async move {
+            // TODO make this time slice duration configurable
+            let duration = std::time::Duration::from_micros(100);
+            loop {
+                tokio::time::sleep(duration).await;
+                self.engine.increment_epoch();
+            }
+        });
     }
 }
 
@@ -611,7 +607,6 @@ impl WasmPlugin {
 
         Self {
             engine: Arc::new(engine),
-            asset_store_tx: Vec::new(),
         }
     }
 }
