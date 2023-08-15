@@ -18,8 +18,7 @@
 
 use std::sync::Arc;
 
-use hearth_core::async_trait;
-use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
+use hearth_core::runtime::{Plugin, RuntimeBuilder};
 use rend3::graph::RenderGraph;
 use rend3::types::{Camera, SampleCount};
 use rend3::util::output::OutputFrame;
@@ -63,14 +62,13 @@ pub struct Rend3Plugin {
     pub frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
 }
 
-#[async_trait]
 impl Plugin for Rend3Plugin {
-    fn build(&mut self, _builder: &mut RuntimeBuilder) {}
-
-    async fn run(&mut self, _runtime: Arc<Runtime>) {
-        while let Some(frame) = self.frame_request_rx.recv().await {
-            self.draw(frame);
-        }
+    fn finish(mut self, _builder: &mut RuntimeBuilder) {
+        tokio::spawn(async move {
+            while let Some(frame) = self.frame_request_rx.recv().await {
+                self.draw(frame);
+            }
+        });
     }
 }
 
