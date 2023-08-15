@@ -102,8 +102,8 @@ impl FsPlugin {
     async fn serve(&self, mut ctx: Process, lumps: Arc<LumpStoreImpl>) {
         while let Some(signal) = ctx.recv().await {
             let ContextSignal::Message(message) = signal else {
-            panic!("expected message signal; got {:?}", signal);
-        };
+                panic!("expected message signal; got {:?}", signal);
+            };
 
             // TODO share this code with hearth-cognito in hearth-core
             let request: Request = match serde_json::from_slice(&message.data) {
@@ -124,8 +124,8 @@ impl FsPlugin {
             let response = on_request(&self.root, request, lumps.as_ref()).await;
             let response = serde_json::to_vec(&response).unwrap();
             let Some(reply) = message.caps.first().copied() else {
-            continue;
-        };
+                continue;
+            };
 
             ctx.send(
                 reply,
