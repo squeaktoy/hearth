@@ -84,7 +84,7 @@ async fn main() {
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(init);
-    let (runtime, join_handles) = builder.run(config).await;
+    let runtime = builder.run(config).await;
 
     debug!("Initializing IPC");
     let daemon_listener = match hearth_ipc::Listener::new().await {
@@ -107,9 +107,6 @@ async fn main() {
     hearth_core::wait_for_interrupt().await;
 
     info!("Interrupt received; exiting server");
-    for join in join_handles {
-        join.abort();
-    }
 }
 
 async fn bind(
