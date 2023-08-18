@@ -117,7 +117,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(rend3_plugin);
     builder.add_plugin(init);
-    let (runtime, join_handles) = builder.run(config).await;
+    let runtime = builder.run(config).await;
 
     tokio::spawn(async move {
         connect(network_root_rx, runtime, args.server, args.password).await;
@@ -136,11 +136,6 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
 
     hearth_core::wait_for_interrupt().await;
     info!("Ctrl+C hit; quitting client");
-
-    debug!("Aborting runners");
-    for join in join_handles {
-        join.abort();
-    }
 }
 
 async fn connect(

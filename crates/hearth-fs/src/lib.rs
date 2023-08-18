@@ -22,7 +22,6 @@ use std::{
 };
 
 use hearth_core::{
-    async_trait,
     hearth_types::{fs::*, Flags, ProcessLogLevel},
     lump::LumpStoreImpl,
     process::{
@@ -30,52 +29,9 @@ use hearth_core::{
         factory::{ProcessInfo, ProcessLogEvent},
         Process,
     },
-    runtime::{Plugin, Runtime, RuntimeBuilder},
+    runtime::{Plugin, RuntimeBuilder},
     tracing::warn,
 };
-
-async fn serve(root: PathBuf, mut ctx: Process, lumps: Arc<LumpStoreImpl>) {
-    while let Some(signal) = ctx.recv().await {
-        let ContextSignal::Message(message) = signal else {
-            panic!("expected message signal; got {:?}", signal);
-        };
-
-        // TODO share this code with hearth-cognito in hearth-core
-        let request: Request = match serde_json::from_slice(&message.data) {
-            Ok(message) => message,
-            Err(err) => {
-                ctx.log(ProcessLogEvent {
-                    level: ProcessLogLevel::Error,
-                    module: "WasmProcessSpawner".to_string(),
-                    content: format!("Failed to parse WasmSpawnInfo: {:?}", err),
-                });
-
-                warn!("Failed to parse WasmSpawnInfo: {:?}", err);
-
-                continue;
-            }
-        };
-
-        let response = on_request(&root, request, lumps.as_ref()).await;
-        let response = serde_json::to_vec(&response).unwrap();
-        let Some(reply) = message.caps.first().copied() else {
-            continue;
-        };
-
-        ctx.send(
-            reply,
-            ContextMessage {
-                data: response,
-                caps: vec![],
-            },
-        )
-        .unwrap();
-
-        for unused in message.caps {
-            ctx.delete_capability(unused).unwrap();
-        }
-    }
-}
 
 async fn on_request(root: &Path, request: Request, lumps: &LumpStoreImpl) -> Response {
     let target = PathBuf::try_from(request.target).map_err(|_| Error::InvalidTarget)?;
@@ -123,28 +79,66 @@ pub struct FsPlugin {
     root: PathBuf,
 }
 
-#[async_trait]
 impl Plugin for FsPlugin {
-    fn build(&mut self, builder: &mut RuntimeBuilder) {
-        let root = self.root.clone();
-
+    fn finish(self, builder: &mut RuntimeBuilder) {
         builder.add_service(
             "hearth.fs.Filesystem".into(),
             ProcessInfo {},
             Flags::SEND,
             move |runtime, process| {
                 hearth_core::tokio::spawn(async move {
-                    serve(root, process, runtime.lump_store.clone()).await;
+                    self.serve(process, runtime.lump_store.clone()).await;
                 });
             },
         );
     }
-
-    async fn run(&mut self, _runtime: Arc<Runtime>) {}
 }
 
 impl FsPlugin {
     pub fn new(root: PathBuf) -> Self {
         Self { root }
+    }
+
+    async fn serve(&self, mut ctx: Process, lumps: Arc<LumpStoreImpl>) {
+        while let Some(signal) = ctx.recv().await {
+            let ContextSignal::Message(message) = signal else {
+                panic!("expected message signal; got {:?}", signal);
+            };
+
+            // TODO share this code with hearth-cognito in hearth-core
+            let request: Request = match serde_json::from_slice(&message.data) {
+                Ok(message) => message,
+                Err(err) => {
+                    ctx.log(ProcessLogEvent {
+                        level: ProcessLogLevel::Error,
+                        module: "WasmProcessSpawner".to_string(),
+                        content: format!("Failed to parse WasmSpawnInfo: {:?}", err),
+                    });
+
+                    warn!("Failed to parse WasmSpawnInfo: {:?}", err);
+
+                    continue;
+                }
+            };
+
+            let response = on_request(&self.root, request, lumps.as_ref()).await;
+            let response = serde_json::to_vec(&response).unwrap();
+            let Some(reply) = message.caps.first().copied() else {
+                continue;
+            };
+
+            ctx.send(
+                reply,
+                ContextMessage {
+                    data: response,
+                    caps: vec![],
+                },
+            )
+            .unwrap();
+
+            for unused in message.caps {
+                ctx.delete_capability(unused).unwrap();
+            }
+        }
     }
 }

@@ -24,13 +24,11 @@
 
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
-use std::future::Future;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use hearth_types::Flags;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
@@ -40,27 +38,30 @@ use crate::process::factory::ProcessInfo;
 /// Interface trait for plugins to the Hearth runtime.
 ///
 /// Each plugin first builds onto a runtime using its `build` function and an
-/// in-progress [RuntimeBuilder]. After all plugins are added, the runtime
-/// starts, and the `run` method is called with a handle to the new runtime.
+/// in-progress [RuntimeBuilder]. During this phase, plugins can mutably access
+/// other plugins that have already been added. When all the plugins have been
+/// added, the final phase of runtime building begins. Each plugin's `run`
+/// method takes ownership of the plugin and finishes adding onto the
+/// [RuntimeBuilder] using the complete configuration for that plugin.
 #[async_trait]
-pub trait Plugin: Send + Sync + 'static {
+pub trait Plugin: Sized + Send + Sync + 'static {
     /// Builds a runtime using this plugin. See [RuntimeBuilder] for more info.
-    fn build(&mut self, builder: &mut RuntimeBuilder);
+    fn build(&mut self, _builder: &mut RuntimeBuilder) {}
 
-    /// Runs this plugin using an instantiated [Runtime].
-    async fn run(&mut self, runtime: Arc<Runtime>);
+    /// Finishes building this runtime before the runtime starts. See [RuntimeBuilder] for more info.
+    fn finish(self, _builder: &mut RuntimeBuilder) {}
 }
 
 struct PluginWrapper {
     plugin: Box<dyn Any + Send>,
-    runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>) -> JoinHandle<()> + Send>,
+    finish: Box<dyn FnOnce(Box<dyn Any>, &mut RuntimeBuilder) + Send>,
 }
 
 /// Builder struct for a single Hearth [Runtime].
 pub struct RuntimeBuilder {
     config_file: toml::Table,
     plugins: HashMap<TypeId, PluginWrapper>,
-    runners: Vec<Box<dyn FnOnce(Arc<Runtime>) -> JoinHandle<()> + Send>>,
+    runners: Vec<Box<dyn FnOnce(Arc<Runtime>) + Send>>,
     services: HashSet<String>,
     lump_store: Arc<LumpStoreImpl>,
     asset_store: AssetStore,
@@ -105,7 +106,11 @@ impl RuntimeBuilder {
     /// Adds a plugin to the runtime.
     ///
     /// Plugins may use their [Plugin::build] method to add other plugins,
-    /// asset loaders, runners, or anything else.
+    /// asset loaders, runners, or anything else. Then, plugins may configure
+    /// already-added plugins using [RuntimeBuilder::get_plugin] and
+    /// [RuntimeBuilder::get_plugin_mut]. After all plugins have been added
+    /// and before the runtime is started, [Plugin::finish] is called with
+    /// each plugin to complete the plugin's building.
     pub fn add_plugin<T: Plugin>(&mut self, mut plugin: T) -> &mut Self {
         let name = std::any::type_name::<T>();
         debug!("Adding {} plugin", name);
@@ -122,12 +127,10 @@ impl RuntimeBuilder {
             id,
             PluginWrapper {
                 plugin: Box::new(plugin),
-                runner: Box::new(move |plugin, runtime| {
-                    let mut plugin = plugin.downcast::<T>().unwrap();
-                    tokio::spawn(async move {
-                        debug!("Running {} plugin", name);
-                        plugin.run(runtime).await;
-                    })
+                finish: Box::new(move |plugin, builder| {
+                    let plugin = plugin.downcast::<T>().unwrap();
+                    debug!("Finishing {} plugin", name);
+                    plugin.finish(builder);
                 }),
             },
         );
@@ -137,21 +140,15 @@ impl RuntimeBuilder {
 
     /// Adds a runner to the runtime.
     ///
-    /// Runners are simple async functions that are spawned when the runtime is
-    /// started and are passed a handle to the new runtime. This may be used
-    /// for long-running event processing code or other functionality that
-    /// lasts the runtime's lifetime.
-    pub fn add_runner<F, R>(&mut self, cb: F) -> &mut Self
+    /// Runners are functions that are spawned when the runtime is started and
+    /// are passed a handle to the new runtime. This may be used to spawn tasks
+    /// to handle long-running event processing code or other functionality
+    /// that lasts the runtime's lifetime.
+    pub fn add_runner<F>(&mut self, cb: F) -> &mut Self
     where
-        F: FnOnce(Arc<Runtime>) -> R + Send + Sync + 'static,
-        R: Future<Output = ()> + Send,
+        F: FnOnce(Arc<Runtime>) + Send + 'static,
     {
-        self.runners.push(Box::new(|runner| {
-            tokio::spawn(async move {
-                cb(runner).await;
-            })
-        }));
-
+        self.runners.push(Box::new(cb));
         self
     }
 
@@ -177,7 +174,7 @@ impl RuntimeBuilder {
         self.service_num += 1;
 
         self.services.insert(name.clone());
-        self.runners.push(Box::new(move |runtime| {
+        self.add_runner(move |runtime| {
             tokio::spawn(async move {
                 debug!("Spawning '{}' service", name);
                 let process = runtime.process_factory.spawn(info, flags);
@@ -193,8 +190,8 @@ impl RuntimeBuilder {
                 let _ = service_start_tx.send(name);
 
                 cb(runtime, process);
-            })
-        }));
+            });
+        });
 
         self
     }
@@ -231,9 +228,22 @@ impl RuntimeBuilder {
 
     /// Consumes this builder and starts up the full [Runtime].
     ///
-    /// This returns a shared pointer to the new runtime, as well as all of the
-    /// [JoinHandles][JoinHandle] for the launched runners and plugins.
-    pub async fn run(self, config: RuntimeConfig) -> (Arc<Runtime>, Vec<JoinHandle<()>>) {
+    /// This returns a shared pointer to the new runtime.
+    pub async fn run(mut self, config: RuntimeConfig) -> Arc<Runtime> {
+        debug!("Finishing plugins");
+        loop {
+            let plugins = std::mem::take(&mut self.plugins);
+
+            if plugins.is_empty() {
+                break;
+            }
+
+            for (_id, wrapper) in plugins {
+                let PluginWrapper { plugin, finish } = wrapper;
+                finish(plugin, &mut self);
+            }
+        }
+
         use crate::process::*;
 
         let process_store = Arc::new(ProcessStore::default());
@@ -254,19 +264,9 @@ impl RuntimeBuilder {
             config,
         });
 
-        let mut join_handles = Vec::new();
-
-        debug!("Running plugins");
-        for (_id, wrapper) in self.plugins {
-            let PluginWrapper { plugin, runner } = wrapper;
-            let join = runner(plugin, runtime.clone());
-            join_handles.push(join);
-        }
-
         debug!("Running runners");
         for runner in self.runners {
-            let join = runner(runtime.clone());
-            join_handles.push(join);
+            runner(runtime.clone());
         }
 
         let service_num = self.service_num;
@@ -283,7 +283,7 @@ impl RuntimeBuilder {
 
         debug!("All services started");
 
-        (runtime, join_handles)
+        runtime
     }
 }
 

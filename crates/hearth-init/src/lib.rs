@@ -16,17 +16,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 use hearth_core::{
-    async_trait,
     hearth_types::{wasm::WasmSpawnInfo, Flags},
     process::{
         context::{ContextMessage, ContextSignal},
         factory::ProcessInfo,
         Process,
     },
-    runtime::{Plugin, Runtime, RuntimeBuilder},
+    runtime::{Plugin, RuntimeBuilder},
     tokio::{spawn, sync::oneshot::Sender},
 };
 use tracing::debug;
@@ -41,9 +40,8 @@ pub struct InitPlugin {
     hooks: Vec<Hook>,
 }
 
-#[async_trait]
 impl Plugin for InitPlugin {
-    fn build(&mut self, builder: &mut RuntimeBuilder) {
+    fn finish(mut self, builder: &mut RuntimeBuilder) {
         for hook in std::mem::take(&mut self.hooks) {
             builder.add_service(
                 hook.service,
@@ -68,33 +66,35 @@ impl Plugin for InitPlugin {
                 },
             );
         }
-    }
 
-    async fn run(&mut self, runtime: Arc<Runtime>) {
-        debug!("Loading init system module");
-        let wasm_data = std::fs::read(self.init_path.clone()).unwrap();
-        let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
+        builder.add_runner(move |runtime| {
+            spawn(async move {
+                debug!("Loading init system module");
+                let wasm_data = std::fs::read(self.init_path.clone()).unwrap();
+                let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
 
-        debug!("Running init system");
-        let mut parent = runtime.process_factory.spawn(ProcessInfo {}, Flags::SEND);
-        let wasm_spawner = parent
-            .get_service("hearth.cognito.WasmProcessSpawner")
-            .expect("Wasm spawner service not found");
+                debug!("Running init system");
+                let mut parent = runtime.process_factory.spawn(ProcessInfo {}, Flags::SEND);
+                let wasm_spawner = parent
+                    .get_service("hearth.cognito.WasmProcessSpawner")
+                    .expect("Wasm spawner service not found");
 
-        let spawn_info = WasmSpawnInfo {
-            lump: wasm_lump,
-            entrypoint: None,
-        };
+                let spawn_info = WasmSpawnInfo {
+                    lump: wasm_lump,
+                    entrypoint: None,
+                };
 
-        parent
-            .send(
-                wasm_spawner,
-                ContextMessage {
-                    data: serde_json::to_vec(&spawn_info).unwrap(),
-                    caps: vec![0],
-                },
-            )
-            .unwrap();
+                parent
+                    .send(
+                        wasm_spawner,
+                        ContextMessage {
+                            data: serde_json::to_vec(&spawn_info).unwrap(),
+                            caps: vec![0],
+                        },
+                    )
+                    .unwrap();
+            });
+        });
     }
 }
 
