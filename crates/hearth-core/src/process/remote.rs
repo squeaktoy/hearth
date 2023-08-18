@@ -576,7 +576,6 @@ pub mod tests {
                 let factory = ProcessFactory::new(
                     conn.store.to_owned(),
                     registry,
-                    hearth_types::PeerId(peer_id),
                 );
                 let (conn, conn_rx) = conn.spawn();
                 let ctx = factory.spawn(ProcessInfo {}, Flags::all());

@@ -26,7 +26,6 @@ use std::{
 
 use clap::Parser;
 use hearth_core::{
-    hearth_types::PeerId,
     process::{context::Capability, Process},
     runtime::{Runtime, RuntimeBuilder, RuntimeConfig},
 };
@@ -104,9 +103,7 @@ fn main() {
 }
 
 async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
-    let new_id = PeerId(0); // TODO runtimes shouldn't need assigned peer IDs
-    info!("Assigned peer ID {:?}", new_id);
-    let config = RuntimeConfig { this_peer: new_id };
+    let config = RuntimeConfig {};
 
     let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
     let config_file = hearth_core::load_config(&config_path).unwrap();

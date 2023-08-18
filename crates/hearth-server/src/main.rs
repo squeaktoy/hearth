@@ -28,13 +28,9 @@ use hearth_core::{
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
 use hearth_network::auth::ServerAuthenticator;
-use hearth_types::*;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 use tracing::{debug, error, info};
-
-/// The constant peer ID for this peer (the server).
-pub const SELF_PEER_ID: PeerId = PeerId(0);
 
 /// The Hearth virtual space server program.
 #[derive(Parser, Debug)]
@@ -69,9 +65,7 @@ async fn main() {
     let authenticator = Arc::new(authenticator);
 
     debug!("Initializing runtime");
-    let config = RuntimeConfig {
-        this_peer: SELF_PEER_ID,
-    };
+    let config = RuntimeConfig {};
 
     let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
     let config_file = hearth_core::load_config(&config_path).unwrap();

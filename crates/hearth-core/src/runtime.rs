@@ -28,7 +28,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hearth_types::{Flags, PeerId};
+use hearth_types::Flags;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
@@ -241,7 +241,6 @@ impl RuntimeBuilder {
         let process_factory = Arc::new(ProcessFactory::new(
             process_store.clone(),
             process_registry.clone(),
-            config.this_peer,
         ));
 
         let lump_store = self.lump_store;
@@ -289,10 +288,7 @@ impl RuntimeBuilder {
 }
 
 /// Configuration info for a runtime.
-pub struct RuntimeConfig {
-    /// The ID of this peer.
-    pub this_peer: PeerId,
-}
+pub struct RuntimeConfig {}
 
 /// An instance of a single Hearth runtime.
 ///

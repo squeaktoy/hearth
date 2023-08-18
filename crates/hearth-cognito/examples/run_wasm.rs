@@ -2,7 +2,7 @@ use hearth_core::{
     process::factory::ProcessInfo,
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
-use hearth_types::{wasm::WasmSpawnInfo, Flags, PeerId};
+use hearth_types::{wasm::WasmSpawnInfo, Flags};
 use tracing::info;
 
 #[tokio::main]
@@ -14,9 +14,7 @@ async fn main() {
         .expect("expected path to .wasm file");
     let wasm_data = std::fs::read(wasm_path).unwrap();
 
-    let config = RuntimeConfig {
-        this_peer: PeerId(0),
-    };
+    let config = RuntimeConfig {};
 
     let config_path = hearth_core::get_config_path();
     let config_file = hearth_core::load_config(&config_path).unwrap();

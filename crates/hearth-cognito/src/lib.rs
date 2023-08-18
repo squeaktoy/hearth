@@ -405,7 +405,7 @@ impl WasmProcess {
         match self
             .run_inner(runtime, ctx)
             .await
-            .with_context(|| format!("error in Wasm process {}", pid))
+            .with_context(|| format!("error in Wasm process {}", pid.0))
         {
             Ok(()) => {}
             Err(err) => {

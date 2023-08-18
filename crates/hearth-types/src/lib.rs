@@ -37,47 +37,7 @@ pub mod registry;
 pub mod wasm;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-pub struct ProcessId(pub u64);
-
-impl Display for ProcessId {
-    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
-        let (peer_id, local_pid) = self.split();
-        write!(fmt, "{}.{}", peer_id.0, local_pid.0)
-    }
-}
-
-impl std::str::FromStr for ProcessId {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (peer_id, local_pid) = s
-            .split_once('.')
-            .ok_or("Input string does not contain a period")?;
-
-        let peer_id = PeerId(peer_id.parse::<u32>().map_err(|x| x.to_string())?);
-        let local_pid = LocalProcessId(local_pid.parse::<u32>().map_err(|x| x.to_string())?);
-
-        Ok(ProcessId::from_peer_process(peer_id, local_pid))
-    }
-}
-
-impl ProcessId {
-    pub fn split(self) -> (PeerId, LocalProcessId) {
-        let peer = (self.0 >> 32) as u32;
-        let pid = self.0 as u32;
-        (PeerId(peer), LocalProcessId(pid))
-    }
-
-    pub fn from_peer_process(peer: PeerId, pid: LocalProcessId) -> Self {
-        Self(((peer.0 as u64) << 32) | (pid.0 as u64))
-    }
-}
-
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-pub struct PeerId(pub u32);
-
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-pub struct LocalProcessId(pub u32);
+pub struct ProcessId(pub u32);
 
 /// Identifier for a lump (digest of BLAKE3 cryptographic hash).
 #[repr(C)]
@@ -185,19 +145,4 @@ macro_rules! impl_serialize_json_display {
             }
         }
     };
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pid_conversion() {
-        let tests = &[(0, 0), (420, 69), (100000, 100000)];
-        for (peer, pid) in tests.iter() {
-            let peer = PeerId(*peer);
-            let pid = LocalProcessId(*pid);
-            assert_eq!((peer, pid), ProcessId::from_peer_process(peer, pid).split());
-        }
-    }
 }
