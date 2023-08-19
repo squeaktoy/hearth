@@ -19,7 +19,6 @@
 use std::{collections::HashMap, fmt::Display, process::exit};
 
 use clap::{Parser, Subcommand};
-use hearth_types::*;
 use tokio::net::UnixStream;
 use yacexits::{EX_OK, EX_PROTOCOL};
 
@@ -62,34 +61,6 @@ impl<T> ToCommandError<T, ()> for Option<T> {
 }
 
 pub type CommandResult<T> = Result<T, CommandError>;
-
-#[derive(Clone, Debug)]
-pub enum MaybeLocalPid {
-    Global(ProcessId),
-    Local(LocalProcessId),
-}
-
-impl std::str::FromStr for MaybeLocalPid {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.parse::<ProcessId>() {
-            Ok(pid) => Ok(MaybeLocalPid::Global(pid)),
-            Err(_) => match s.parse::<u32>() {
-                Ok(local_pid) => Ok(MaybeLocalPid::Local(LocalProcessId(local_pid))),
-                Err(_) => Err("Failed to parse LocalPID or GlobalPID".into()),
-            },
-        }
-    }
-}
-
-impl MaybeLocalPid {
-    fn to_global_pid(&self, peer: PeerId) -> ProcessId {
-        match self {
-            MaybeLocalPid::Global(global_pid) => *global_pid,
-            Self::Local(local_pid) => ProcessId::from_peer_process(peer, *local_pid),
-        }
-    }
-}
 
 /// Command-line interface (CLI) for interacting with a Hearth daemon over IPC.
 #[derive(Debug, Parser)]
