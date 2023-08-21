@@ -573,11 +573,7 @@ pub mod tests {
             let init_side = |peer_id| {
                 let conn = ConnectionEnv::new_unspawned();
                 let registry = Arc::new(Registry::new(conn.store.to_owned()));
-                let factory = ProcessFactory::new(
-                    conn.store.to_owned(),
-                    registry,
-                    hearth_types::PeerId(peer_id),
-                );
+                let factory = ProcessFactory::new(conn.store.to_owned(), registry);
                 let (conn, conn_rx) = conn.spawn();
                 let ctx = factory.spawn(ProcessInfo {}, Flags::all());
                 (conn, conn_rx, ctx)

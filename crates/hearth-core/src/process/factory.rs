@@ -19,7 +19,7 @@
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-use hearth_types::{Flags, LocalProcessId, PeerId, ProcessId, ProcessLogLevel};
+use hearth_types::{Flags, ProcessId, ProcessLogLevel};
 use parking_lot::RwLock;
 use slab::Slab;
 use tokio::sync::mpsc::unbounded_channel;
@@ -52,7 +52,6 @@ pub(crate) struct ProcessWrapper {
 pub struct ProcessFactory<Store: ProcessStoreTrait> {
     store: Arc<Store>,
     registry: Arc<Registry<Store>>,
-    peer: PeerId,
     processes: RwLock<Slab<ProcessWrapper>>,
 }
 
@@ -71,11 +70,10 @@ where
     Store::Entry: From<LocalProcess>,
 {
     /// Creates a new process factory.
-    pub fn new(store: Arc<Store>, registry: Arc<Registry<Store>>, peer: PeerId) -> Self {
+    pub fn new(store: Arc<Store>, registry: Arc<Registry<Store>>) -> Self {
         Self {
             store,
             registry,
-            peer,
             processes: Default::default(),
         }
     }
@@ -87,7 +85,7 @@ where
         let handle = self.store.insert(entry.into());
         let self_cap = Capability::new(handle, flags);
 
-        let pid = LocalProcessId(self.processes.write().insert(ProcessWrapper {
+        let pid = ProcessId(self.processes.write().insert(ProcessWrapper {
             info: info.clone(),
             cap: self_cap.clone(self.store.as_ref()),
         }) as u32);
@@ -95,13 +93,13 @@ where
         let ctx = ProcessContext::new(self.store.to_owned(), self_cap, mailbox);
 
         Process {
-            pid: ProcessId::from_peer_process(self.peer, pid),
+            pid,
             ctx,
             registry: self.registry.clone(),
         }
     }
 
-    pub(crate) fn get_pid_wrapper(&self, pid: LocalProcessId) -> Option<ProcessWrapper> {
+    pub(crate) fn get_pid_wrapper(&self, pid: ProcessId) -> Option<ProcessWrapper> {
         self.processes
             .read()
             .get(pid.0 as usize)
