@@ -7,4 +7,4 @@ license = "AGPL-3.0-or-later"
 [dependencies]
 anyhow = "1"
 bytemuck = { workspace = true }
-wasmtime = "5.0.0"
+wasmtime = { workspace = true }

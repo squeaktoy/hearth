@@ -12,7 +12,7 @@ hearth-wasm = { workspace = true }
 serde_json = { workspace = true }
 slab = "0.4.8"
 tracing = { workspace = true }
-wasmtime = "11"
+wasmtime = { workspace = true }
 
 [dev-dependencies]
 hearth-types = { workspace = true }
