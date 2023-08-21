@@ -33,7 +33,9 @@ hearth-wasm = { path = "crates/hearth-wasm" }
 parking_lot = "0.12"
 serde_json = "1"
 tracing = "0.1.37"
+wasmtime = "11"
 
 [workspace.dependencies.serde]
-version = "1"
+version = "1.0.103, < 1.0.171"
+default-features = false
 features = ["derive"]
