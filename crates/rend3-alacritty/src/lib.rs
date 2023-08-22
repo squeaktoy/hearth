@@ -32,6 +32,9 @@ use rend3::Renderer;
 use wgpu::util::DeviceExt;
 use wgpu::*;
 
+pub use alacritty_terminal;
+pub use owned_ttf_parser;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct CameraUniform {
