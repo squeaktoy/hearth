@@ -27,14 +27,15 @@ use hearth_core::process::factory::{ProcessInfo, ProcessLogEvent};
 use hearth_core::process::Process;
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_core::tokio;
+use hearth_core::utils::*;
 use hearth_core::{async_trait, hearth_types};
 use hearth_macros::impl_wasm_linker;
 use hearth_types::wasm::WasmSpawnInfo;
-use hearth_types::{Flags, LumpId, ProcessLogLevel, SignalKind};
+use hearth_types::{Flags, LumpId, SignalKind};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use slab::Slab;
 use tokio::sync::Mutex;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 use wasmtime::*;
 
 /// Implements the `hearth::log` ABI module.
@@ -448,97 +449,63 @@ pub struct WasmProcessSpawner {
     linker: Arc<Linker<ProcessData>>,
 }
 
-impl WasmProcessSpawner {
-    async fn run(self, runtime: Arc<Runtime>, mut ctx: Process) {
-        debug!("Listening to Wasm spawn requests");
-        while let Some(signal) = ctx.recv().await {
-            let ContextSignal::Message(ContextMessage {
-                data: msg_data,
-                caps: msg_caps,
-            }) = signal
-            else {
-                // TODO make this a process log
-                warn!("Wasm spawner expected message but received: {:?}", signal);
-                continue;
-            };
+#[async_trait]
+impl RequestResponseProcess for WasmProcessSpawner {
+    type Request = WasmSpawnInfo;
+    type Response = ();
 
-            let Some(parent) = msg_caps.first().copied() else {
-                // TODO make this a process log
-                debug!("Spawn request has no return address");
-                continue;
-            };
+    async fn on_request(
+        &mut self,
+        request: RequestInfo<'_, WasmSpawnInfo>,
+    ) -> ResponseInfo<Self::Response> {
+        let RequestInfo {
+            ctx, data, runtime, ..
+        } = request;
 
-            let message: WasmSpawnInfo = match serde_json::from_slice(&msg_data) {
-                Ok(message) => message,
-                Err(err) => {
-                    ctx.log(ProcessLogEvent {
-                        level: ProcessLogLevel::Error,
-                        module: "WasmProcessSpawner".to_string(),
-                        content: format!("Failed to parse WasmSpawnInfo: {:?}", err),
-                    });
+        let module = runtime
+            .asset_store
+            .load_asset::<WasmModuleLoader>(&data.lump)
+            .await
+            .context("loading Wasm module");
 
-                    warn!("Failed to parse WasmSpawnInfo: {:?}", err);
-
-                    continue;
-                }
-            };
-
-            debug!("Spawning Wasm module lump {}", message.lump);
-
-            match runtime
-                .asset_store
-                .load_asset::<WasmModuleLoader>(&message.lump)
-                .await
-            {
-                Err(err) => {
-                    ctx.log(ProcessLogEvent {
-                        level: ProcessLogLevel::Error,
-                        module: "WasmProcessSpawner".to_string(),
-                        content: format!("Failed to load Wasm module: {:?}", err),
-                    });
-
-                    warn!("Failed to load Wasm module {}: {:?}", message.lump, err);
-                }
-                Ok(module) => {
-                    debug!("Spawning module {}", message.lump);
-                    let info = ProcessInfo {};
-                    let flags = Flags::SEND | Flags::KILL;
-                    let child = runtime.process_factory.spawn(info, flags);
-                    let child_cap = ctx.copy_self_capability(&child);
-                    let result = ctx.send(
-                        parent,
-                        ContextMessage {
-                            data: vec![],
-                            caps: vec![child_cap],
-                        },
-                    );
-
-                    // TODO make run_inner to catch errors safely
-                    ctx.delete_capability(child_cap).unwrap();
-
-                    let runtime = runtime.to_owned();
-                    let engine = self.engine.to_owned();
-                    let linker = self.linker.to_owned();
-                    tokio::spawn(async move {
-                        WasmProcess {
-                            engine,
-                            linker,
-                            module,
-                            entrypoint: message.entrypoint,
-                            this_lump: message.lump,
-                        }
-                        .run(runtime, child)
-                        .await;
-                    });
-
-                    match result {
-                        Ok(()) => {}
-                        Err(err) => error!("Replying child cap to parent error: {:?}", err),
-                    }
-                }
+        let module = match module {
+            Ok(module) => module,
+            Err(err) => {
+                error!("failed to load Wasm module: {:?}", err);
+                return ().into();
             }
+        };
+
+        debug!("Spawning module {}", data.lump);
+        let info = ProcessInfo {};
+        let flags = Flags::SEND | Flags::KILL;
+        let child = request.runtime.process_factory.spawn(info, flags);
+        let child_cap = ctx.copy_self_capability(&child);
+
+        let runtime = runtime.to_owned();
+        let engine = self.engine.to_owned();
+        let linker = self.linker.to_owned();
+        tokio::spawn(async move {
+            WasmProcess {
+                engine,
+                linker,
+                module,
+                entrypoint: data.entrypoint,
+                this_lump: data.lump,
+            }
+            .run(runtime, child)
+            .await;
+        });
+
+        ResponseInfo {
+            data: (),
+            caps: vec![child_cap],
         }
     }
+}
+
+impl RequestResponseService for WasmProcessSpawner {
+    const NAME: &'static str = "hearth.cognito.WasmProcessSpawner";
 }
 
 pub struct WasmModuleLoader {
@@ -563,21 +530,10 @@ impl Plugin for WasmPlugin {
         let mut linker = Linker::new(&self.engine);
         ProcessData::add_to_linker(&mut linker);
 
-        let spawner = WasmProcessSpawner {
+        builder.add_plugin(WasmProcessSpawner {
             engine: self.engine.to_owned(),
             linker: Arc::new(linker),
-        };
-
-        builder.add_service(
-            "hearth.cognito.WasmProcessSpawner".into(),
-            ProcessInfo {},
-            Flags::SEND,
-            |runtime, process| {
-                tokio::spawn(async move {
-                    spawner.run(runtime, process).await;
-                });
-            },
-        );
+        });
 
         builder.add_asset_loader(WasmModuleLoader {
             engine: self.engine.to_owned(),
