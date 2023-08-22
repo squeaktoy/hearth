@@ -106,16 +106,16 @@ pub async fn run_request_response_process<T>(
 {
     while let Some(signal) = ctx.recv().await {
         let ContextSignal::Message(msg) = signal else {
-                        // TODO make this a process log
-                        warn!("{:?} expected message but received: {:?}", label, signal);
-                        continue;
-                    };
+            // TODO make this a process log
+            warn!("{:?} expected message but received: {:?}", label, signal);
+            continue;
+        };
 
         let Some(reply) = msg.caps.first().copied() else {
-                        // TODO make this a process log
-                        debug!("Request to {:?} has no reply address", label);
-                        continue;
-                    };
+            // TODO make this a process log
+            debug!("Request to {:?} has no reply address", label);
+            continue;
+        };
 
         let free_caps = |ctx: &mut Process| {
             for cap in msg.caps.iter() {
