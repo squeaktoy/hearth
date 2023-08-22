@@ -27,7 +27,7 @@ use hearth_core::process::factory::{ProcessInfo, ProcessLogEvent};
 use hearth_core::process::Process;
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_core::tokio;
-use hearth_core::utils::{RequestInfo, RequestResponseService};
+use hearth_core::utils::*;
 use hearth_core::{async_trait, hearth_types};
 use hearth_macros::impl_wasm_linker;
 use hearth_types::wasm::WasmSpawnInfo;
@@ -450,43 +450,37 @@ pub struct WasmProcessSpawner {
 }
 
 #[async_trait]
-impl RequestResponseService for WasmProcessSpawner {
-    const NAME: &'static str = "hearth.cognito.WasmProcessSpawner";
+impl RequestResponseProcess for WasmProcessSpawner {
     type Request = WasmSpawnInfo;
     type Response = ();
 
     async fn on_request(
         &mut self,
         request: RequestInfo<'_, WasmSpawnInfo>,
-    ) -> anyhow::Result<Self::Response> {
+    ) -> ResponseInfo<Self::Response> {
         let RequestInfo {
-            ctx,
-            data,
-            reply,
-            runtime,
-            ..
+            ctx, data, runtime, ..
         } = request;
 
         let module = runtime
             .asset_store
             .load_asset::<WasmModuleLoader>(&data.lump)
             .await
-            .context("loading Wasm module")?;
+            .context("loading Wasm module");
+
+        let module = match module {
+            Ok(module) => module,
+            Err(err) => {
+                error!("failed to load Wasm module: {:?}", err);
+                return ().into();
+            }
+        };
 
         debug!("Spawning module {}", data.lump);
         let info = ProcessInfo {};
         let flags = Flags::SEND | Flags::KILL;
         let child = request.runtime.process_factory.spawn(info, flags);
         let child_cap = ctx.copy_self_capability(&child);
-        let result = ctx.send(
-            reply,
-            ContextMessage {
-                data: vec![],
-                caps: vec![child_cap],
-            },
-        );
-
-        ctx.delete_capability(child_cap)?;
 
         let runtime = runtime.to_owned();
         let engine = self.engine.to_owned();
@@ -503,13 +497,15 @@ impl RequestResponseService for WasmProcessSpawner {
             .await;
         });
 
-        match result {
-            Ok(()) => {}
-            Err(err) => error!("Replying child cap to parent error: {:?}", err),
+        ResponseInfo {
+            data: (),
+            caps: vec![child_cap],
         }
-
-        Ok(())
     }
+}
+
+impl RequestResponseService for WasmProcessSpawner {
+    const NAME: &'static str = "hearth.cognito.WasmProcessSpawner";
 }
 
 pub struct WasmModuleLoader {
