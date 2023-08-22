@@ -40,16 +40,39 @@ pub struct RequestInfo<'a, T> {
     pub data: T,
 }
 
+pub struct ResponseInfo<T> {
+    pub data: T,
+    pub caps: Vec<usize>,
+}
+
+impl<T> From<T> for ResponseInfo<T> {
+    fn from(data: T) -> Self {
+        Self { data, caps: vec![] }
+    }
+}
+
+impl<O, E> From<E> for ResponseInfo<Result<O, E>> {
+    fn from(err: E) -> Self {
+        Self {
+            data: Err(err),
+            caps: vec![],
+        }
+    }
+}
+
 #[async_trait]
-pub trait RequestResponseService: Send + 'static {
-    const NAME: &'static str;
+pub trait RequestResponseProcess: Send + 'static {
     type Request: for<'a> Deserialize<'a> + Send;
     type Response: Serialize;
 
     async fn on_request(
         &mut self,
         request: RequestInfo<'_, Self::Request>,
-    ) -> anyhow::Result<Self::Response>;
+    ) -> ResponseInfo<Self::Response>;
+}
+
+pub trait RequestResponseService: RequestResponseProcess {
+    const NAME: &'static str;
 }
 
 impl<T> Plugin for T
@@ -57,86 +80,84 @@ where
     T: RequestResponseService + Send + Sync,
 {
     fn finish(self, builder: &mut RuntimeBuilder) {
-        add_request_response_service(builder, Self::NAME, self);
+        builder.add_service(
+            Self::NAME.to_string(),
+            ProcessInfo {},
+            Flags::SEND,
+            move |runtime, ctx| {
+                tokio::spawn(run_request_response_process(
+                    runtime,
+                    ctx,
+                    Self::NAME.to_string(),
+                    self,
+                ));
+            },
+        );
     }
 }
 
-pub fn add_request_response_service<T>(
-    builder: &mut RuntimeBuilder,
-    name: impl ToString,
-    mut service: T,
+pub async fn run_request_response_process<T>(
+    runtime: Arc<Runtime>,
+    mut ctx: Process,
+    label: String,
+    mut process: T,
 ) where
-    T: RequestResponseService,
+    T: RequestResponseProcess,
 {
-    let name = name.to_string();
-    builder.add_service(
-        name.clone(),
-        ProcessInfo {},
-        Flags::SEND,
-        move |runtime, mut ctx| {
-            tokio::spawn(async move {
-                while let Some(signal) = ctx.recv().await {
-                    let ContextSignal::Message(msg) = signal else {
+    while let Some(signal) = ctx.recv().await {
+        let ContextSignal::Message(msg) = signal else {
                         // TODO make this a process log
-                        warn!("{:?} expected message but received: {:?}", name, signal);
+                        warn!("{:?} expected message but received: {:?}", label, signal);
                         continue;
                     };
 
-                    let Some(reply) = msg.caps.first().copied() else {
+        let Some(reply) = msg.caps.first().copied() else {
                         // TODO make this a process log
-                        debug!("Request to {:?} has no reply address", name);
+                        debug!("Request to {:?} has no reply address", label);
                         continue;
                     };
 
-                    let free_caps = |ctx: &mut Process| {
-                        for cap in msg.caps.iter() {
-                            ctx.delete_capability(*cap).unwrap();
-                        }
-                    };
+        let free_caps = |ctx: &mut Process| {
+            for cap in msg.caps.iter() {
+                ctx.delete_capability(*cap).unwrap();
+            }
+        };
 
-                    let data: T::Request = match serde_json::from_slice(&msg.data) {
-                        Ok(request) => request,
-                        Err(err) => {
-                            // TODO make this a process log
-                            debug!("Failed to parse {}: {:?}", type_name::<T::Request>(), err);
+        let data: T::Request = match serde_json::from_slice(&msg.data) {
+            Ok(request) => request,
+            Err(err) => {
+                // TODO make this a process log
+                debug!("Failed to parse {}: {:?}", type_name::<T::Request>(), err);
 
-                            free_caps(&mut ctx);
-                            continue;
-                        }
-                    };
+                free_caps(&mut ctx);
+                continue;
+            }
+        };
 
-                    let request = RequestInfo {
-                        reply,
-                        cap_args: &msg.caps[1..],
-                        ctx: &mut ctx,
-                        runtime: &runtime,
-                        data,
-                    };
+        let request = RequestInfo {
+            reply,
+            cap_args: &msg.caps[1..],
+            ctx: &mut ctx,
+            runtime: &runtime,
+            data,
+        };
 
-                    let response = match service.on_request(request).await {
-                        Ok(response) => response,
-                        Err(err) => {
-                            // TODO make this a process log
-                            debug!("Request to {:?} failed: {:?}", name, err);
-                            free_caps(&mut ctx);
-                            continue;
-                        }
-                    };
+        let response = process.on_request(request).await;
+        let response_data = serde_json::to_vec(&response.data).unwrap();
 
-                    let response_data = serde_json::to_vec(&response).unwrap();
+        ctx.send(
+            reply,
+            ContextMessage {
+                data: response_data,
+                caps: response.caps.clone(),
+            },
+        )
+        .unwrap();
 
-                    ctx.send(
-                        reply,
-                        ContextMessage {
-                            data: response_data,
-                            caps: vec![],
-                        },
-                    )
-                    .unwrap();
+        free_caps(&mut ctx);
 
-                    free_caps(&mut ctx);
-                }
-            });
-        },
-    );
+        for cap in response.caps {
+            ctx.delete_capability(cap).unwrap();
+        }
+    }
 }
