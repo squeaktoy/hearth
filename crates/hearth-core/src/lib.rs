@@ -42,6 +42,9 @@ pub mod process;
 /// Peer runtime building and execution.
 pub mod runtime;
 
+/// Utilities for host-side runtime management.
+pub mod utils;
+
 /// Helper function to set up console logging with reasonable defaults.
 pub fn init_logging() {
     let filter = tracing_subscriber::filter::Targets::new()
