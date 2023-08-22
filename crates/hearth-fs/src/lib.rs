@@ -18,37 +18,32 @@
 
 use std::path::PathBuf;
 
-use hearth_core::{
-    anyhow, async_trait,
-    hearth_types::fs::*,
-    utils::{RequestInfo, RequestResponseService},
-};
+use hearth_core::{async_trait, hearth_types::fs::*, utils::*};
 
 pub struct FsPlugin {
     root: PathBuf,
 }
 
 #[async_trait]
-impl RequestResponseService for FsPlugin {
-    const NAME: &'static str = "hearth.fs.Filesystem";
+impl RequestResponseProcess for FsPlugin {
     type Request = Request;
     type Response = Response;
 
-    async fn on_request(&mut self, request: RequestInfo<'_, Request>) -> anyhow::Result<Response> {
+    async fn on_request(&mut self, request: RequestInfo<'_, Request>) -> ResponseInfo<Response> {
         let target = match PathBuf::try_from(request.data.target) {
             Ok(target) => target,
-            Err(_) => return Ok(Err(Error::InvalidTarget)),
+            Err(_) => return Error::InvalidTarget.into(),
         };
 
         let mut path = self.root.to_path_buf();
         for component in target.components() {
             match component {
                 std::path::Component::Normal(normal) => path.push(normal),
-                _ => return Ok(Err(Error::DirectoryTraversal)),
+                _ => return Error::DirectoryTraversal.into(),
             }
         }
 
-        match request.data.kind {
+        let success = match request.data.kind {
             RequestKind::Get => {
                 let contents = match std::fs::read(path) {
                     Ok(contents) => contents,
@@ -57,7 +52,7 @@ impl RequestResponseService for FsPlugin {
 
                 let lump = request.runtime.lump_store.add_lump(contents.into()).await;
 
-                Ok(Ok(Success::Get(lump)))
+                Success::Get(lump)
             }
             RequestKind::List => {
                 let dirs = match std::fs::read_dir(path) {
@@ -76,10 +71,19 @@ impl RequestResponseService for FsPlugin {
                     })
                     .collect();
 
-                Ok(Ok(Success::List(dirs)))
+                Success::List(dirs)
             }
+        };
+
+        ResponseInfo {
+            data: Ok(success),
+            caps: vec![],
         }
     }
+}
+
+impl RequestResponseService for FsPlugin {
+    const NAME: &'static str = "hearth.fs.Filesystem";
 }
 
 impl FsPlugin {
