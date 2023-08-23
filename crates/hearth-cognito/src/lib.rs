@@ -426,6 +426,13 @@ impl WasmProcess {
             .await
             .context("instantiating Wasm instance")?;
 
+        let init = instance.get_typed_func::<(), ()>(&mut store, "_hearth_init");
+        if let Ok(init) = init {
+            init.call_async(&mut store, ())
+                .await
+                .context("calling Wasm init function")?;
+        }
+
         if let Some(entrypoint) = self.entrypoint {
             let cb = instance
                 .get_typed_func::<u32, ()>(&mut store, "_hearth_spawn_by_index")
