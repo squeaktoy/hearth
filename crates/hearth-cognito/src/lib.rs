@@ -272,7 +272,7 @@ impl SignalAbi {
     fn get_kind(&self, handle: u32) -> Result<u32> {
         Ok(match self.get_signal(handle)? {
             ContextSignal::Unlink { .. } => SignalKind::Unlink,
-            ContextSignal::Message(_) => SignalKind::Unlink,
+            ContextSignal::Message(_) => SignalKind::Message,
         }
         .into())
     }
