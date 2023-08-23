@@ -272,7 +272,7 @@ impl SignalAbi {
     fn get_kind(&self, handle: u32) -> Result<u32> {
         Ok(match self.get_signal(handle)? {
             ContextSignal::Unlink { .. } => SignalKind::Unlink,
-            ContextSignal::Message(_) => SignalKind::Unlink,
+            ContextSignal::Message(_) => SignalKind::Message,
         }
         .into())
     }
@@ -425,6 +425,13 @@ impl WasmProcess {
             .instantiate_async(&mut store, &self.module)
             .await
             .context("instantiating Wasm instance")?;
+
+        let init = instance.get_typed_func::<(), ()>(&mut store, "_hearth_init");
+        if let Ok(init) = init {
+            init.call_async(&mut store, ())
+                .await
+                .context("calling Wasm init function")?;
+        }
 
         if let Some(entrypoint) = self.entrypoint {
             let cb = instance
