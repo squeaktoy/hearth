@@ -88,6 +88,18 @@ its design principles.
 Read more about Hearth's design and architecture in its
 [design document](/DESIGN.md).
 
+# Use Cases
+
+Hearth is a flexible, non-application-specific platform with countless
+opportunities to specialize. Here are some ideas to spark your imagination:
+- **Education**: Teach students in an environment that can be tailored to the curriculum content on the fly.
+- **Data visualization**: Interact with dynamic statistical data spatially and collaboratively, not just visually on your desktop.
+- **Co-working**: Need a low-cost, remote-friendly office for your team members to share? Hearth has you covered.
+- **Meetings**: Bring your presentations and your audiences together in the same 3D space.
+- **Game development**: Rapidly prototype and test 3D video games without needing to restart the engine.
+- **VR development**: Create to your heart's desire without ever having to take your headset off.
+- **Plain old escapism**: Hearth is self-hosted, free software and the potentials for cultural and artistic expression in whole new virtual worlds are endless.
+
 # Setup and Installation
 
 To run Hearth you must build it from source. Hearth is written in Rust, so to
@@ -177,6 +189,7 @@ component separately.
 - [ ] define guest-to-host WebAssembly APIs for logging, lump loading, and message transmission
 - [x] create a native service for spawning WebAssembly processes
 - [x] integrate rend3 and winit into `hearth-client`
+- [ ] use WebSockets (optionally over TLS) for networking
 
 ## Phase 2: Alpha
 
