@@ -37,7 +37,7 @@ use alacritty_terminal::{
     tty::Pty,
     Term,
 };
-use glam::{IVec2, UVec2, Vec2};
+use glam::{IVec2, Quat, UVec2, Vec2, Vec3};
 use mio_extras::channel::Sender as MioSender;
 use owned_ttf_parser::AsFaceRef;
 use wgpu::{
@@ -73,9 +73,18 @@ pub struct TerminalConfig {
     pub colors: Colors,
 }
 
+/// Dynamic terminal appearance and settings configuration.
+#[derive(Clone, Debug)]
+pub struct TerminalState {
+    pub position: Vec3,
+    pub orientation: Quat,
+    pub half_size: Vec2,
+}
+
 /// Private terminal mutable state.
-struct TerminalState {
+struct TerminalInner {
     grid_size: UVec2,
+    state: TerminalState,
 }
 
 /// A CPU-side wrapper around terminal functionality.
@@ -85,14 +94,14 @@ pub struct Terminal {
     _term_loop: JoinHandle<(EventLoop<Pty, Listener>, State)>,
     term_channel: FairMutex<MioSender<Msg>>,
     should_quit: AtomicBool,
-    state: FairMutex<TerminalState>,
+    inner: FairMutex<TerminalInner>,
     units_per_em: f32,
     font_baselines: FontSet<f32>,
     cell_size: Vec2,
 }
 
 impl Terminal {
-    pub fn new(config: TerminalConfig) -> Arc<Self> {
+    pub fn new(config: TerminalConfig, initial_state: TerminalState) -> Arc<Self> {
         let face_metrics = config.fonts.as_ref().map(|face| {
             let face = face.face.as_face_ref();
             let units_per_em = face.units_per_em() as f32;
@@ -117,7 +126,11 @@ impl Terminal {
             .map(|(ascender, height, _descender)| (cell_height - height) / 2.0 + ascender);
 
         let cell_size = Vec2::new(cell_width, cell_height);
-        let grid_size = UVec2::new(200, 75);
+
+        let units_per_em = 0.04;
+        let grid_size = (initial_state.half_size * 2.0 / cell_size / units_per_em)
+            .ceil()
+            .as_uvec2();
 
         let size_info = alacritty_terminal::term::SizeInfo::new(
             grid_size.x as f32,
@@ -154,7 +167,10 @@ impl Terminal {
         let term_loop = EventLoop::new(term.clone(), term_listener, pty, false, false);
         let term_channel = term_loop.channel();
 
-        let state = TerminalState { grid_size };
+        let inner = TerminalInner {
+            grid_size,
+            state: initial_state,
+        };
 
         let term = Self {
             config,
@@ -162,8 +178,8 @@ impl Terminal {
             _term_loop: term_loop.spawn(),
             term_channel: FairMutex::new(term_channel),
             should_quit: AtomicBool::new(false),
-            state: FairMutex::new(state),
-            units_per_em: 0.04,
+            inner: FairMutex::new(inner),
+            units_per_em,
             cell_size,
             font_baselines,
         };
@@ -180,10 +196,42 @@ impl Terminal {
         term
     }
 
+    pub fn update(&self, state: TerminalState) {
+        let mut inner = self.inner.lock();
+
+        let grid_size = (state.half_size * 2.0 / self.cell_size / self.units_per_em)
+            .floor()
+            .as_uvec2();
+
+        if inner.grid_size != grid_size {
+            inner.grid_size = grid_size;
+
+            let size_info = alacritty_terminal::term::SizeInfo::new(
+                grid_size.x as f32,
+                grid_size.y as f32,
+                1.0,
+                1.0,
+                0.0,
+                0.0,
+                false,
+            );
+
+            self.term_channel
+                .lock()
+                .send(Msg::Resize(size_info))
+                .unwrap();
+
+            self.term.lock().resize(size_info);
+        }
+
+        inner.state = state;
+    }
+
     pub fn update_draw_state(&self, draw: &mut TerminalDrawState) {
-        let state = self.state.lock();
-        let grid_size = state.grid_size;
-        drop(state); // get off the mutex
+        let inner = self.inner.lock();
+        let grid_size = inner.grid_size;
+        let state = inner.state.clone();
+        drop(inner); // get off the mutex
 
         let colors = self.config.colors.clone();
         let fonts = self.config.fonts.clone();
@@ -193,6 +241,7 @@ impl Terminal {
             colors,
             fonts,
             units_per_em,
+            state,
             grid_size,
             self.cell_size,
             font_baselines,
@@ -288,6 +337,7 @@ pub struct TerminalCanvas {
     overlay_indices: Vec<u32>,
     glyphs: Vec<(Vec2, FontStyle, u16, u32)>,
     units_per_em: f32,
+    state: TerminalState,
     grid_size: UVec2,
     cell_size: Vec2,
     font_baselines: FontSet<f32>,
@@ -298,6 +348,7 @@ impl TerminalCanvas {
         colors: Colors,
         fonts: FontSet<Arc<FaceAtlas>>,
         units_per_em: f32,
+        state: TerminalState,
         grid_size: UVec2,
         cell_size: Vec2,
         font_baselines: FontSet<f32>,
@@ -311,6 +362,7 @@ impl TerminalCanvas {
             overlay_indices: Vec::new(),
             glyphs: Vec::new(),
             units_per_em,
+            state,
             grid_size,
             cell_size,
             font_baselines,

@@ -17,8 +17,9 @@ use std::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 
 use alacritty_terminal::term::color::{Colors, Rgb};
+use glam::Vec2;
 use rend3::types::TextureHandle;
-use rend3_alacritty::terminal::{Terminal, TerminalConfig};
+use rend3_alacritty::terminal::{Terminal, TerminalConfig, TerminalState};
 use rend3_alacritty::text::{FaceAtlas, FontSet};
 use rend3_alacritty::TerminalStore;
 use rend3_routine::base::BaseRenderGraphIntermediateState;
@@ -42,6 +43,8 @@ pub struct DemoInner {
     orbit_distance: f32,
     mouse_pos: PhysicalPosition<f64>,
     is_orbiting: bool,
+    state: TerminalState,
+    is_resizing: bool,
 }
 
 impl DemoInner {
@@ -66,8 +69,14 @@ impl DemoInner {
         let mut colors = Colors::default();
         Self::load_colors(&mut colors);
 
+        let state = TerminalState {
+            position: glam::Vec3::ZERO,
+            orientation: glam::Quat::IDENTITY,
+            half_size: Vec2::new(1.2, 0.9),
+        };
+
         let config = TerminalConfig { fonts, colors };
-        let terminal = Terminal::new(config.clone());
+        let terminal = Terminal::new(config.clone(), state.clone());
         let mut store = TerminalStore::new(config, renderer, surface_format);
         store.insert_terminal(&terminal);
 
@@ -96,7 +105,9 @@ impl DemoInner {
             orbit_pitch: 0.0,
             orbit_yaw: 0.0,
             orbit_distance: 3.0,
+            state,
             is_orbiting: false,
+            is_resizing: false,
             mouse_pos: Default::default(),
         }
     }
@@ -271,6 +282,14 @@ impl rend3_framework::App for Demo {
                     ElementState::Released => inner.is_orbiting = false,
                 },
                 WindowEvent::MouseInput {
+                    state,
+                    button: MouseButton::Right,
+                    ..
+                } => match state {
+                    ElementState::Pressed => inner.is_resizing = true,
+                    ElementState::Released => inner.is_resizing = false,
+                },
+                WindowEvent::MouseInput {
                     state: ElementState::Pressed,
                     button: MouseButton::Middle,
                     ..
@@ -280,18 +299,25 @@ impl rend3_framework::App for Demo {
                     inner.orbit_distance = 3.0;
                 }
                 WindowEvent::CursorMoved { position, .. } => {
-                    let yaw_delta = (position.x - inner.mouse_pos.x) as f32;
-                    let pitch_delta = (position.y - inner.mouse_pos.y) as f32;
+                    let dx = (position.x - inner.mouse_pos.x) as f32;
+                    let dy = (position.y - inner.mouse_pos.y) as f32;
                     inner.mouse_pos = position;
 
                     if inner.is_orbiting {
                         let yaw_factor = -0.003;
                         let pitch_factor = -0.003;
 
-                        inner.orbit_yaw += yaw_delta * yaw_factor;
+                        inner.orbit_yaw += dx * yaw_factor;
 
-                        inner.orbit_pitch = (inner.orbit_pitch + pitch_delta * pitch_factor)
+                        inner.orbit_pitch = (inner.orbit_pitch + dy * pitch_factor)
                             .clamp(-FRAC_PI_2 * 0.99, FRAC_PI_2 * 0.99);
+                    } else if inner.is_resizing {
+                        let factor = 0.01;
+                        inner.state.half_size = (inner.state.half_size
+                            + Vec2::new(dx, dy) * factor)
+                            .clamp(Vec2::new(0.1, 0.1), Vec2::new(4.0, 4.0));
+
+                        inner.terminal.update(inner.state.clone());
                     }
                 }
                 WindowEvent::MouseWheel { delta, .. } => {
