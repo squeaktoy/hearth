@@ -37,7 +37,7 @@ use alacritty_terminal::{
     tty::Pty,
     Term,
 };
-use glam::Vec2;
+use glam::{IVec2, UVec2, Vec2};
 use mio_extras::channel::Sender as MioSender;
 use owned_ttf_parser::AsFaceRef;
 use wgpu::{
@@ -73,19 +73,61 @@ pub struct TerminalConfig {
     pub colors: Colors,
 }
 
+/// Private terminal mutable state.
+struct TerminalState {
+    grid_size: UVec2,
+}
+
 /// A CPU-side wrapper around terminal functionality.
 pub struct Terminal {
     config: TerminalConfig,
     term: Arc<FairMutex<Term<Listener>>>,
     _term_loop: JoinHandle<(EventLoop<Pty, Listener>, State)>,
-    term_channel: Arc<FairMutex<MioSender<Msg>>>,
+    term_channel: FairMutex<MioSender<Msg>>,
     should_quit: AtomicBool,
+    state: FairMutex<TerminalState>,
+    units_per_em: f32,
+    font_baselines: FontSet<f32>,
+    cell_size: Vec2,
 }
 
 impl Terminal {
     pub fn new(config: TerminalConfig) -> Arc<Self> {
-        let term_size =
-            alacritty_terminal::term::SizeInfo::new(100.0, 75.0, 1.0, 1.0, 0.0, 0.0, false);
+        let face_metrics = config.fonts.as_ref().map(|face| {
+            let face = face.face.as_face_ref();
+            let units_per_em = face.units_per_em() as f32;
+            let ascender = face.ascender() as f32 / units_per_em;
+            let height = face.height() as f32 / units_per_em;
+            let descender = face.descender() as f32 / units_per_em;
+            let height = height.max(ascender + descender);
+            (ascender, height, descender)
+        });
+
+        let cell_height = face_metrics.regular.1;
+
+        let face = config.fonts.regular.face.as_face_ref();
+        let units_per_em = face.units_per_em() as f32;
+        let cell_width = face
+            .glyph_index('M')
+            .and_then(|id| face.glyph_hor_advance(id))
+            .map(|adv| adv as f32 / units_per_em)
+            .unwrap_or(1.0);
+
+        let font_baselines = face_metrics
+            .map(|(ascender, height, _descender)| (cell_height - height) / 2.0 + ascender);
+
+        let cell_size = Vec2::new(cell_width, cell_height);
+        let grid_size = UVec2::new(200, 75);
+
+        let size_info = alacritty_terminal::term::SizeInfo::new(
+            grid_size.x as f32,
+            grid_size.y as f32,
+            1.0,
+            1.0,
+            0.0,
+            0.0,
+            false,
+        );
 
         let (sender, term_events) = channel();
 
@@ -102,22 +144,28 @@ impl Terminal {
 
         let term_listener = Listener::new(sender.clone());
 
-        let term = Term::new(&term_config, term_size, term_listener);
+        let term = Term::new(&term_config, size_info, term_listener);
         let term = FairMutex::new(term);
         let term = Arc::new(term);
 
-        let pty = alacritty_terminal::tty::new(&term_config.pty_config, &term_size, None).unwrap();
+        let pty = alacritty_terminal::tty::new(&term_config.pty_config, &size_info, None).unwrap();
 
         let term_listener = Listener::new(sender);
         let term_loop = EventLoop::new(term.clone(), term_listener, pty, false, false);
         let term_channel = term_loop.channel();
 
+        let state = TerminalState { grid_size };
+
         let term = Self {
             config,
             term,
             _term_loop: term_loop.spawn(),
-            term_channel: Arc::new(FairMutex::new(term_channel)),
+            term_channel: FairMutex::new(term_channel),
             should_quit: AtomicBool::new(false),
+            state: FairMutex::new(state),
+            units_per_em: 0.04,
+            cell_size,
+            font_baselines,
         };
 
         let term = Arc::new(term);
@@ -133,12 +181,28 @@ impl Terminal {
     }
 
     pub fn update_draw_state(&self, draw: &mut TerminalDrawState) {
+        let state = self.state.lock();
+        let grid_size = state.grid_size;
+        drop(state); // get off the mutex
+
         let colors = self.config.colors.clone();
-        let mut canvas = TerminalCanvas::new(colors, self.config.fonts.clone());
+        let fonts = self.config.fonts.clone();
+        let font_baselines = self.font_baselines.clone();
+        let units_per_em = self.units_per_em;
+        let mut canvas = TerminalCanvas::new(
+            colors,
+            fonts,
+            units_per_em,
+            grid_size,
+            self.cell_size,
+            font_baselines,
+        );
+
         let term = self.term.lock();
         let content = term.renderable_content();
         canvas.update_from_content(content);
         drop(term); // get off the mutex
+
         canvas.apply_to_state(draw);
     }
 
@@ -149,8 +213,7 @@ impl Terminal {
     pub fn send_input(&self, input: &str) {
         let bytes = input.as_bytes();
         let cow = std::borrow::Cow::Owned(bytes.to_owned());
-        let sender = self.term_channel.lock();
-        sender.send(Msg::Input(cow)).unwrap();
+        self.term_channel.lock().send(Msg::Input(cow)).unwrap();
     }
 
     fn on_event(&self, event: Event) {
@@ -224,10 +287,21 @@ pub struct TerminalCanvas {
     overlay_vertices: Vec<SolidVertex>,
     overlay_indices: Vec<u32>,
     glyphs: Vec<(Vec2, FontStyle, u16, u32)>,
+    units_per_em: f32,
+    grid_size: UVec2,
+    cell_size: Vec2,
+    font_baselines: FontSet<f32>,
 }
 
 impl TerminalCanvas {
-    pub fn new(colors: Colors, fonts: FontSet<Arc<FaceAtlas>>) -> Self {
+    pub fn new(
+        colors: Colors,
+        fonts: FontSet<Arc<FaceAtlas>>,
+        units_per_em: f32,
+        grid_size: UVec2,
+        cell_size: Vec2,
+        font_baselines: FontSet<f32>,
+    ) -> Self {
         Self {
             colors,
             fonts,
@@ -236,6 +310,10 @@ impl TerminalCanvas {
             overlay_vertices: Vec::new(),
             overlay_indices: Vec::new(),
             glyphs: Vec::new(),
+            units_per_em,
+            grid_size,
+            cell_size,
+            font_baselines,
         }
     }
 
@@ -257,9 +335,10 @@ impl TerminalCanvas {
         let mut touched = FontSet::<Vec<u16>>::default();
         let mut glyph_meshes = FontSet::<(Vec<GlyphVertex>, Vec<u32>)>::default();
 
-        let scale = 1.0 / 37.5;
         for (offset, style, glyph, color) in self.glyphs.iter().copied() {
             let (vertices, indices) = &mut glyph_meshes.get_mut(style);
+            let baseline = *self.font_baselines.get(style) * self.units_per_em;
+            let offset = offset + Vec2::new(0.0, -baseline);
 
             let index = vertices.len() as u32;
             let atlas = &self.fonts.get(style).atlas;
@@ -271,7 +350,7 @@ impl TerminalCanvas {
             touched.get_mut(style).push(glyph);
 
             vertices.extend(bitmap.vertices.iter().map(|v| GlyphVertex {
-                position: v.position * scale + offset,
+                position: v.position * self.units_per_em + offset,
                 tex_coords: v.tex_coords,
                 color,
             }));
@@ -341,8 +420,8 @@ impl TerminalCanvas {
         }*/
 
         let bg = self.color_to_u32(bg);
-        let tl = self.grid_to_pos(col, row - 1);
-        let br = self.grid_to_pos(col + 1, row);
+        let tl = self.grid_to_pos(col, row);
+        let br = self.grid_to_pos(col + 1, row + 1);
         self.draw_solid_rect(tl, br, bg);
     }
 
@@ -354,8 +433,8 @@ impl TerminalCanvas {
         match cursor.shape {
             CursorShape::Hidden => {}
             _ => {
-                let tl = self.grid_to_pos(col, row - 1);
-                let br = self.grid_to_pos(col + 1, row);
+                let tl = self.grid_to_pos(col, row);
+                let br = self.grid_to_pos(col + 1, row + 1);
                 self.draw_solid_rect(tl, br, cursor_color);
             }
         }
@@ -393,9 +472,9 @@ impl TerminalCanvas {
     }
 
     pub fn grid_to_pos(&self, x: i32, y: i32) -> Vec2 {
-        let col = x as f32 / 50.0 - 1.0;
-        let row = (y as f32 + 1.0) / -37.5 + 1.0;
-        Vec2::new(col, row)
+        let mut pos = IVec2::new(x, y).as_vec2() - self.grid_size.as_vec2() / 2.0;
+        pos.y = -pos.y;
+        pos * self.cell_size * self.units_per_em
     }
 
     pub fn color_to_rgb(&self, color: Color) -> Rgb {
