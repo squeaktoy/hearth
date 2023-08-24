@@ -13,43 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use alacritty_terminal::config::PtyConfig;
-use alacritty_terminal::event::{Event as TermEvent, EventListener};
-use alacritty_terminal::event_loop::{
-    EventLoop as TermEventLoop, Msg as TermMsg, State as TermState,
-};
-use alacritty_terminal::sync::FairMutex;
+use std::sync::Arc;
+
 use alacritty_terminal::term::color::{Colors, Rgb};
-use alacritty_terminal::tty::Pty;
-use alacritty_terminal::Term;
-use mio_extras::channel::Sender as MioSender;
 use rend3::types::TextureHandle;
-use rend3_alacritty::{FaceAtlas, FontSet, Terminal, TerminalConfig, TerminalStore};
+use rend3_alacritty::terminal::{Terminal, TerminalConfig};
+use rend3_alacritty::text::{FaceAtlas, FontSet};
+use rend3_alacritty::TerminalStore;
 use rend3_routine::base::BaseRenderGraphIntermediateState;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
 
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, RwLock};
-use std::thread::JoinHandle;
-
 const SAMPLE_COUNT: rend3::types::SampleCount = rend3::types::SampleCount::One;
-
-pub struct TermListener {
-    sender: Sender<TermEvent>,
-}
-
-impl TermListener {
-    pub fn new(sender: Sender<TermEvent>) -> Self {
-        Self { sender }
-    }
-}
-
-impl EventListener for TermListener {
-    fn send_event(&self, event: TermEvent) {
-        self.sender.send(event).unwrap();
-    }
-}
 
 fn load_skybox_image(data: &mut Vec<u8>, image: &[u8]) {
     let decoded = image::load_from_memory(image).unwrap().into_rgba8();
@@ -58,12 +33,7 @@ fn load_skybox_image(data: &mut Vec<u8>, image: &[u8]) {
 
 pub struct DemoInner {
     store: TerminalStore,
-    term_loop: JoinHandle<(TermEventLoop<Pty, TermListener>, TermState)>,
-    term_channel: MioSender<TermMsg>,
-    term_events: Receiver<TermEvent>,
-    term: Arc<FairMutex<Term<TermListener>>>,
-    term_render: Arc<RwLock<Terminal>>,
-    colors: Colors,
+    terminal: Arc<Terminal>,
     skybox: TextureHandle,
 }
 
@@ -86,40 +56,13 @@ impl DemoInner {
             Arc::new(face_atlas)
         });
 
-        let config = Arc::new(TerminalConfig { fonts });
-
-        let mut store = TerminalStore::new(config, renderer, surface_format);
-
-        let term_size =
-            alacritty_terminal::term::SizeInfo::new(100.0, 75.0, 1.0, 1.0, 0.0, 0.0, false);
-
-        let (sender, term_events) = channel();
-
-        let shell = alacritty_terminal::config::Program::Just("/usr/bin/fish".into());
-
-        let term_config = alacritty_terminal::config::Config {
-            pty_config: PtyConfig {
-                shell: Some(shell),
-                working_directory: None,
-                hold: false,
-            },
-            ..Default::default()
-        };
-
-        let term_listener = TermListener::new(sender.clone());
-
-        let term = Term::new(&term_config, term_size, term_listener);
-        let term = FairMutex::new(term);
-        let term = Arc::new(term);
-
-        let pty = alacritty_terminal::tty::new(&term_config.pty_config, &term_size, None).unwrap();
-
-        let term_listener = TermListener::new(sender);
-        let term_loop = TermEventLoop::new(term.clone(), term_listener, pty, false, false);
-        let term_channel = term_loop.channel();
-
         let mut colors = Colors::default();
         Self::load_colors(&mut colors);
+
+        let config = TerminalConfig { fonts, colors };
+        let terminal = Terminal::new(config.clone());
+        let mut store = TerminalStore::new(config, renderer, surface_format);
+        store.insert_terminal(&terminal);
 
         // load skybox
         let mut data = Vec::new();
@@ -140,13 +83,8 @@ impl DemoInner {
         });
 
         Self {
-            term_render: store.create_terminal(),
+            terminal,
             store,
-            term,
-            term_loop: term_loop.spawn(),
-            term_channel,
-            term_events,
-            colors,
             skybox,
         }
     }
@@ -239,7 +177,7 @@ impl DemoInner {
         if input.state == winit::event::ElementState::Pressed {
             if let Some(keycode) = input.virtual_keycode {
                 if let Some(input) = Self::virtual_keycode_to_string(keycode) {
-                    self.send_input(input);
+                    self.terminal.send_input(input);
                 }
             }
         }
@@ -255,13 +193,7 @@ impl DemoInner {
         }
 
         let string = c.to_string();
-        self.send_input(string.as_str());
-    }
-
-    pub fn send_input(&mut self, input: &str) {
-        let bytes = input.as_bytes();
-        let cow = std::borrow::Cow::Owned(bytes.to_owned());
-        self.term_channel.send(TermMsg::Input(cow)).unwrap();
+        self.terminal.send_input(string.as_str());
     }
 }
 
@@ -333,39 +265,16 @@ impl rend3_framework::App for Demo {
                 _ => {}
             },
             Event::MainEventsCleared => {
-                while let Ok(event) = inner.term_events.try_recv() {
-                    match event {
-                        TermEvent::ColorRequest(index, format) => {
-                            let color = inner.colors[index].unwrap_or(Rgb {
-                                r: 255,
-                                g: 0,
-                                b: 255,
-                            });
-
-                            inner.send_input(&format(color));
-                        }
-                        TermEvent::PtyWrite(text) => inner.send_input(&text),
-                        TermEvent::Exit => {
-                            control_flow(ControlFlow::Exit);
-                            return;
-                        }
-                        _ => {}
-                    }
+                if inner.terminal.should_quit() {
+                    control_flow(ControlFlow::Exit);
+                } else {
+                    window.request_redraw();
                 }
-
-                window.request_redraw();
             }
             Event::RedrawRequested(_) => {
                 let frame = rend3::util::output::OutputFrame::Surface {
                     surface: Arc::clone(surface.unwrap()),
                 };
-
-                let term = inner.term.lock();
-                inner
-                    .term_render
-                    .write()
-                    .unwrap()
-                    .update(&term, &inner.colors);
 
                 let routine = inner.store.create_routine();
 
