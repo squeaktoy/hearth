@@ -37,7 +37,7 @@ use alacritty_terminal::{
     tty::Pty,
     Term,
 };
-use glam::{IVec2, Quat, UVec2, Vec2, Vec3};
+use glam::{IVec2, Mat4, Quat, UVec2, Vec2, Vec3};
 use mio_extras::channel::Sender as MioSender;
 use owned_ttf_parser::AsFaceRef;
 use wgpu::{
@@ -287,6 +287,7 @@ impl Terminal {
 /// A ready-to-render terminal state.
 pub struct TerminalDrawState {
     pub device: Arc<Device>,
+    pub model: Mat4,
     pub camera_buffer: Buffer,
     pub camera_bind_group: BindGroup,
     pub bg_mesh: DynamicMesh<SolidVertex>,
@@ -313,6 +314,7 @@ impl TerminalDrawState {
         });
 
         Self {
+            model: Mat4::IDENTITY,
             camera_buffer,
             camera_bind_group,
             bg_mesh: DynamicMesh::new(&device),
@@ -440,6 +442,9 @@ impl TerminalCanvas {
         state
             .overlay_mesh
             .update(&state.device, &self.overlay_vertices, &self.overlay_indices);
+
+        state.model =
+            Mat4::from_translation(self.state.position) * Mat4::from_quat(self.state.orientation);
     }
 
     pub fn draw_cell(&mut self, cell: Indexed<&Cell>) {

@@ -266,7 +266,7 @@ impl TerminalStore {
         terminal: &'a TerminalDrawState,
         vp: glam::Mat4,
     ) {
-        let model = glam::Mat4::IDENTITY;
+        let model = terminal.model;
 
         self.queue.write_buffer(
             &terminal.camera_buffer,
