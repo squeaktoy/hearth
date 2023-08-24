@@ -73,6 +73,7 @@ impl DemoInner {
             position: glam::Vec3::ZERO,
             orientation: glam::Quat::IDENTITY,
             half_size: Vec2::new(1.2, 0.9),
+            opacity: 0.8,
         };
 
         let config = TerminalConfig { fonts, colors };

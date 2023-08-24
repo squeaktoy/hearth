@@ -79,6 +79,7 @@ pub struct TerminalState {
     pub position: Vec3,
     pub orientation: Quat,
     pub half_size: Vec2,
+    pub opacity: f32,
 }
 
 /// Private terminal mutable state.
@@ -467,11 +468,14 @@ impl TerminalCanvas {
             }
         }
 
-        /*if bg == Color::Named(NamedColor::Background) {
-            return;
-        }*/
+        let bg = if bg == Color::Named(NamedColor::Background) {
+            let base = self.color_to_u32(bg);
+            let alpha = (self.state.opacity * 255.0) as u8;
+            ((alpha as u32) << 24) | (base & 0x00ffffff)
+        } else {
+            self.color_to_u32(bg)
+        };
 
-        let bg = self.color_to_u32(bg);
         let tl = self.grid_to_pos(col, row);
         let br = self.grid_to_pos(col + 1, row + 1);
         self.draw_solid_rect(tl, br, bg);
