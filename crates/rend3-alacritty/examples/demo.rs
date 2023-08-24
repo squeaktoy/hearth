@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 
 use alacritty_terminal::term::color::{Colors, Rgb};
@@ -21,7 +22,8 @@ use rend3_alacritty::terminal::{Terminal, TerminalConfig};
 use rend3_alacritty::text::{FaceAtlas, FontSet};
 use rend3_alacritty::TerminalStore;
 use rend3_routine::base::BaseRenderGraphIntermediateState;
-use winit::event::{Event, WindowEvent};
+use winit::dpi::PhysicalPosition;
+use winit::event::{ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::ControlFlow;
 
 const SAMPLE_COUNT: rend3::types::SampleCount = rend3::types::SampleCount::One;
@@ -35,6 +37,11 @@ pub struct DemoInner {
     store: TerminalStore,
     terminal: Arc<Terminal>,
     skybox: TextureHandle,
+    orbit_pitch: f32,
+    orbit_yaw: f32,
+    orbit_distance: f32,
+    mouse_pos: PhysicalPosition<f64>,
+    is_orbiting: bool,
 }
 
 impl DemoInner {
@@ -86,6 +93,11 @@ impl DemoInner {
             terminal,
             store,
             skybox,
+            orbit_pitch: 0.0,
+            orbit_yaw: 0.0,
+            orbit_distance: 3.0,
+            is_orbiting: false,
+            mouse_pos: Default::default(),
         }
     }
 
@@ -223,18 +235,6 @@ impl rend3_framework::App for Demo {
             .lock()
             .set_background_texture(Some(inner.skybox.clone()));
 
-        renderer.set_camera_data(rend3::types::Camera {
-            projection: rend3::types::CameraProjection::Perspective {
-                vfov: 60.0,
-                near: 0.1,
-            },
-            view: glam::Mat4::look_at_rh(
-                glam::Vec3::new(-0.5, 0.5, 2.0),
-                glam::Vec3::ZERO,
-                glam::Vec3::new(0.0, 1.0, 0.0),
-            ),
-        });
-
         self.inner = Some(inner);
     }
 
@@ -262,6 +262,47 @@ impl rend3_framework::App for Demo {
                 WindowEvent::ReceivedCharacter(c) => {
                     inner.on_received_character(c);
                 }
+                WindowEvent::MouseInput {
+                    state,
+                    button: MouseButton::Left,
+                    ..
+                } => match state {
+                    ElementState::Pressed => inner.is_orbiting = true,
+                    ElementState::Released => inner.is_orbiting = false,
+                },
+                WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    button: MouseButton::Middle,
+                    ..
+                } => {
+                    inner.orbit_pitch = 0.0;
+                    inner.orbit_yaw = 0.0;
+                    inner.orbit_distance = 3.0;
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    let yaw_delta = (position.x - inner.mouse_pos.x) as f32;
+                    let pitch_delta = (position.y - inner.mouse_pos.y) as f32;
+                    inner.mouse_pos = position;
+
+                    if inner.is_orbiting {
+                        let yaw_factor = -0.003;
+                        let pitch_factor = -0.003;
+
+                        inner.orbit_yaw += yaw_delta * yaw_factor;
+
+                        inner.orbit_pitch = (inner.orbit_pitch + pitch_delta * pitch_factor)
+                            .clamp(-FRAC_PI_2 * 0.99, FRAC_PI_2 * 0.99);
+                    }
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    let delta = match delta {
+                        MouseScrollDelta::LineDelta(_hori, vert) => vert * 30.0,
+                        MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+                    };
+
+                    let factor = -0.01;
+                    inner.orbit_distance = (inner.orbit_distance + delta * factor).clamp(1.0, 20.0);
+                }
                 _ => {}
             },
             Event::MainEventsCleared => {
@@ -272,6 +313,22 @@ impl rend3_framework::App for Demo {
                 }
             }
             Event::RedrawRequested(_) => {
+                let eye = glam::Quat::from_rotation_y(inner.orbit_yaw)
+                    * glam::Quat::from_rotation_x(inner.orbit_pitch)
+                    * (glam::Vec3::Z * inner.orbit_distance);
+
+                renderer.set_camera_data(rend3::types::Camera {
+                    projection: rend3::types::CameraProjection::Perspective {
+                        vfov: 60.0,
+                        near: 0.1,
+                    },
+                    view: glam::Mat4::look_at_rh(
+                        eye,
+                        glam::Vec3::ZERO,
+                        glam::Vec3::new(0.0, 1.0, 0.0),
+                    ),
+                });
+
                 let frame = rend3::util::output::OutputFrame::Surface {
                     surface: Arc::clone(surface.unwrap()),
                 };
