@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, Weak};
 
 use alacritty_terminal::ansi::{Color, CursorShape, NamedColor};
 use alacritty_terminal::term::cell::Flags as CellFlags;
-use alacritty_terminal::term::color::{Colors, Rgb};
+use alacritty_terminal::term::color::{Colors, Rgb, COUNT};
 use alacritty_terminal::Term;
 use bytemuck::{Pod, Zeroable};
 use font_mud::glyph_atlas::GlyphAtlas;
@@ -382,15 +382,55 @@ impl Terminal {
     ) {
         let mut cells: Vec<(glam::Vec2, FontStyle, usize, u32)> = Vec::new();
 
+        let content = term.renderable_content();
+
+        let mut colors = colors.clone();
+        for idx in 0..COUNT {
+            if let Some(color) = content.colors[idx] {
+                colors[idx] = Some(color);
+            }
+        }
+
         let color_to_rgb = |color| -> u32 {
             let rgb = match color {
                 Color::Named(name) => colors[name].unwrap(),
                 Color::Spec(rgb) => rgb,
-                Color::Indexed(index) => colors[index as usize].unwrap_or(Rgb {
-                    r: 255,
-                    g: 0,
-                    b: 255,
-                }),
+                Color::Indexed(index) => {
+                    if let Some(color) = colors[index as usize] {
+                        color
+                    } else if let Some(gray) = index.checked_sub(232) {
+                        let value = gray * 10 + 8;
+                        Rgb {
+                            r: value,
+                            g: value,
+                            b: value,
+                        }
+                    } else if let Some(cube_idx) = index.checked_sub(16) {
+                        let r = cube_idx / 36;
+                        let g = (cube_idx / 6) % 6;
+                        let b = cube_idx % 6;
+
+                        let c = |c| {
+                            if c == 0 {
+                                0
+                            } else {
+                                c * 40 + 55
+                            }
+                        };
+
+                        Rgb {
+                            r: c(r),
+                            g: c(g),
+                            b: c(b),
+                        }
+                    } else {
+                        Rgb {
+                            r: 0xff,
+                            g: 0x00,
+                            b: 0xff,
+                        }
+                    }
+                }
             };
 
             0xff000000 | ((rgb.b as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.r as u32)
@@ -408,7 +448,7 @@ impl Terminal {
         let mut overlay_vertices = Vec::new();
         let mut overlay_indices = Vec::new();
 
-        let content = term.renderable_content();
+        
         for cell in content.display_iter {
             if cell.flags.contains(CellFlags::HIDDEN) {
                 continue;
@@ -420,14 +460,18 @@ impl Terminal {
             let mut fg = cell.fg;
             let mut bg = cell.bg;
 
-            if cell.flags.contains(CellFlags::INVERSE) {
+            let is_full_block = cell.c == '▀';
+
+            if cell.flags.contains(CellFlags::INVERSE) ^ is_full_block {
                 std::mem::swap(&mut fg, &mut bg);
             }
 
-            let style = FontStyle::from_cell_flags(cell.flags);
-            let face = self.config.fonts.get(style).face.as_face_ref();
-            if let Some(glyph) = face.glyph_index(cell.c) {
-                cells.push((pos, style, glyph.0 as usize, color_to_rgb(fg)));
+            if !is_full_block {
+                let style = FontStyle::from_cell_flags(cell.flags);
+                let face = self.config.fonts.get(style).face.as_face_ref();
+                if let Some(glyph) = face.glyph_index(cell.c) {
+                    cells.push((pos, style, glyph.0 as usize, color_to_rgb(fg)));
+                }
             }
 
             if bg == Color::Named(NamedColor::Background) {
