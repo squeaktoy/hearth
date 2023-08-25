@@ -77,7 +77,8 @@ impl DemoInner {
             colors,
         };
 
-        let config = TerminalConfig { fonts };
+        let command = None; // autoselect shell
+        let config = TerminalConfig { fonts, command };
         let terminal = Terminal::new(config.clone(), state.clone());
         let mut store = TerminalStore::new(config, renderer, surface_format);
         store.insert_terminal(&terminal);

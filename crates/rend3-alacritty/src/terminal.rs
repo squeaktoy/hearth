@@ -70,6 +70,28 @@ impl EventListener for Listener {
 #[derive(Clone)]
 pub struct TerminalConfig {
     pub fonts: FontSet<Arc<FaceAtlas>>,
+
+    /// The command that this terminal will run.
+    ///
+    /// Defaults to a platform-specific shell.
+    pub command: Option<String>,
+}
+
+impl TerminalConfig {
+    fn unwrap_command(&self) -> String {
+        match self.command.to_owned() {
+            Some(command) => command,
+            None => match std::env::consts::OS {
+                "dragonfly" | "freebsd" | "haiku" | "linux" | "macos" | "netbsd" | "openbsd"
+                | "redox" | "solaris" | "unix" => {
+                    std::env::var("SHELL").expect("Couldn't get system shell: `$SHELL` not set. ")
+                }
+                "windows" => std::env::var("COMSPEC")
+                    .expect("Couldn't get system shell: `%COMSPEC%` not set. "),
+                _ => todo!("OS {} is unrecognized", std::env::consts::OS),
+            },
+        }
+    }
 }
 
 /// Dynamic terminal appearance and settings configuration.
@@ -145,7 +167,8 @@ impl Terminal {
 
         let (sender, term_events) = channel();
 
-        let shell = alacritty_terminal::config::Program::Just("/usr/bin/fish".into());
+        let command = config.unwrap_command();
+        let shell = alacritty_terminal::config::Program::Just(command);
 
         let term_config = alacritty_terminal::config::Config {
             pty_config: PtyConfig {
