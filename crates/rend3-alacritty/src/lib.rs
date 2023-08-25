@@ -13,546 +13,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashSet;
-use std::marker::PhantomData;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, Weak};
+use std::sync::{Arc, Weak};
 
-use alacritty_terminal::ansi::{Color, CursorShape, NamedColor};
-use alacritty_terminal::term::cell::Flags as CellFlags;
-use alacritty_terminal::term::color::{Colors, Rgb};
-use alacritty_terminal::Term;
-use bytemuck::{Pod, Zeroable};
-use font_mud::glyph_atlas::GlyphAtlas;
-use owned_ttf_parser::{AsFaceRef, OwnedFace};
 use rend3::graph::{
     RenderGraph, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets, RenderTargetHandle,
 };
 use rend3::Renderer;
-use wgpu::util::DeviceExt;
+
+use terminal::TerminalDrawState;
 use wgpu::*;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct CameraUniform {
-    pub mvp: glam::Mat4,
-}
+/// Terminal-related logic and helpers.
+pub mod terminal;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct SolidVertex {
-    pub position: glam::Vec2,
-    pub color: u32,
-}
+/// Text management.
+pub mod text;
 
-impl SolidVertex {
-    pub const LAYOUT: VertexBufferLayout<'static> = VertexBufferLayout {
-        array_stride: std::mem::size_of::<Self>() as BufferAddress,
-        step_mode: VertexStepMode::Vertex,
-        attributes: &[
-            VertexAttribute {
-                offset: 0,
-                format: VertexFormat::Float32x2,
-                shader_location: 0,
-            },
-            VertexAttribute {
-                offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
-                format: VertexFormat::Unorm8x4,
-                shader_location: 1,
-            },
-        ],
-    };
-}
+/// GPU-side logic and helpers.
+pub mod gpu;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct GlyphVertex {
-    pub position: glam::Vec2,
-    pub tex_coords: glam::Vec2,
-    pub color: u32,
-}
-
-impl GlyphVertex {
-    pub const LAYOUT: VertexBufferLayout<'static> = VertexBufferLayout {
-        array_stride: std::mem::size_of::<Self>() as BufferAddress,
-        step_mode: VertexStepMode::Vertex,
-        attributes: &[
-            VertexAttribute {
-                offset: 0,
-                format: VertexFormat::Float32x2,
-                shader_location: 0,
-            },
-            VertexAttribute {
-                offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
-                format: VertexFormat::Float32x2,
-                shader_location: 1,
-            },
-            VertexAttribute {
-                offset: std::mem::size_of::<[f32; 4]>() as BufferAddress,
-                format: VertexFormat::Unorm8x4,
-                shader_location: 2,
-            },
-        ],
-    };
-}
-
-struct DynamicMesh<T> {
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
-    index_num: u32,
-    _data: PhantomData<T>,
-}
-
-impl<T: Pod> DynamicMesh<T> {
-    pub fn new(device: &Device) -> Self {
-        Self {
-            vertex_buffer: device.create_buffer(&BufferDescriptor {
-                label: Some("AlacrittyRoutine vertex buffer"),
-                size: 0,
-                mapped_at_creation: false,
-                usage: BufferUsages::VERTEX,
-            }),
-            index_buffer: device.create_buffer(&BufferDescriptor {
-                label: Some("AlacrittyRoutine vertex buffer"),
-                size: 0,
-                mapped_at_creation: false,
-                usage: BufferUsages::INDEX,
-            }),
-            index_num: 0,
-            _data: PhantomData,
-        }
-    }
-
-    pub fn update(&mut self, device: &Device, vertices: &[T], indices: &[u32]) {
-        self.vertex_buffer = device.create_buffer_init(&util::BufferInitDescriptor {
-            label: Some("AlacrittyRoutine vertex buffer"),
-            contents: bytemuck::cast_slice(vertices),
-            usage: BufferUsages::VERTEX,
-        });
-
-        self.index_buffer = device.create_buffer_init(&util::BufferInitDescriptor {
-            label: Some("AlacrittyRoutine index buffer"),
-            contents: bytemuck::cast_slice(indices),
-            usage: BufferUsages::INDEX,
-        });
-
-        self.index_num = indices.len() as u32;
-    }
-
-    pub fn draw<'a>(&'a self, rpass: &mut RenderPass<'a>) {
-        rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        rpass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
-        rpass.draw_indexed(0..self.index_num, 0, 0..1);
-    }
-}
-
-/// A font face and its MSDF glyph atlas.
-pub struct FaceAtlas {
-    pub face: OwnedFace,
-    pub atlas: GlyphAtlas,
-    pub texture: Texture,
-    pub queue: Arc<Queue>,
-    pub touched: Mutex<HashSet<u16>>,
-}
-
-impl FaceAtlas {
-    /// Create a new atlas from a face. Note that this takes time to complete.
-    pub fn new(face: OwnedFace, device: &Device, queue: Arc<Queue>) -> Self {
-        let (atlas, _errors) = GlyphAtlas::new(face.as_face_ref()).unwrap();
-
-        let size = Extent3d {
-            width: atlas.width,
-            height: atlas.height,
-            depth_or_array_layers: 1,
-        };
-
-        let texture = device.create_texture_with_data(
-            &queue,
-            &TextureDescriptor {
-                label: Some("AlacrittyRoutine::glyph_texture"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: TextureDimension::D2,
-                format: TextureFormat::Rgba8Unorm,
-                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            },
-            &vec![0u8; (atlas.width * atlas.height * 4) as usize],
-        );
-
-        Self {
-            face,
-            atlas,
-            texture,
-            queue,
-            touched: Default::default(),
-        }
-    }
-
-    /// Generate and upload a glyph bitmap for each glyph that hasn't already been.
-    pub fn touch(&self, glyphs: &[u16]) {
-        let mut touched = self.touched.lock().unwrap();
-        for glyph in glyphs {
-            if touched.insert(*glyph) {
-                let glyph = self.atlas.glyphs.get(*glyph as usize);
-                let Some(Some(glyph)) = glyph else { continue };
-                let bitmap = glyph.shape.generate();
-
-                self.queue.write_texture(
-                    ImageCopyTexture {
-                        texture: &self.texture,
-                        mip_level: 0,
-                        origin: Origin3d {
-                            x: glyph.position.x,
-                            y: glyph.position.y,
-                            z: 0,
-                        },
-                        aspect: TextureAspect::All,
-                    },
-                    bitmap.data_bytes(),
-                    ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: std::num::NonZeroU32::new(glyph.size.x * 4),
-                        rows_per_image: std::num::NonZeroU32::new(glyph.size.y),
-                    },
-                    Extent3d {
-                        width: glyph.size.x,
-                        height: glyph.size.y,
-                        depth_or_array_layers: 1,
-                    },
-                );
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FontStyle {
-    Regular,
-    Italic,
-    Bold,
-    BoldItalic,
-}
-
-impl FontStyle {
-    pub fn from_cell_flags(flags: CellFlags) -> Self {
-        if flags.contains(CellFlags::BOLD_ITALIC) {
-            Self::BoldItalic
-        } else if flags.contains(CellFlags::ITALIC) {
-            Self::Italic
-        } else if flags.contains(CellFlags::BOLD) {
-            Self::Bold
-        } else {
-            Self::Regular
-        }
-    }
-}
-
-/// Generic container for all font faces used in a terminal. Eases
-/// the writing of code manipulating all faces at once.
-#[derive(Clone, Debug, Default)]
-pub struct FontSet<T> {
-    pub regular: T,
-    pub italic: T,
-    pub bold: T,
-    pub bold_italic: T,
-}
-
-impl<T> FontSet<T> {
-    pub fn map<O>(self, f: impl Fn(T) -> O) -> FontSet<O> {
-        FontSet {
-            regular: f(self.regular),
-            italic: f(self.italic),
-            bold: f(self.bold),
-            bold_italic: f(self.bold_italic),
-        }
-    }
-
-    pub fn for_each(self, mut f: impl FnMut(T)) {
-        f(self.regular);
-        f(self.italic);
-        f(self.bold);
-        f(self.bold_italic);
-    }
-
-    pub fn get(&self, style: FontStyle) -> &T {
-        match style {
-            FontStyle::Regular => &self.regular,
-            FontStyle::Italic => &self.italic,
-            FontStyle::Bold => &self.bold,
-            FontStyle::BoldItalic => &self.bold_italic,
-        }
-    }
-
-    pub fn get_mut(&mut self, style: FontStyle) -> &mut T {
-        match style {
-            FontStyle::Regular => &mut self.regular,
-            FontStyle::Italic => &mut self.italic,
-            FontStyle::Bold => &mut self.bold,
-            FontStyle::BoldItalic => &mut self.bold_italic,
-        }
-    }
-
-    pub fn zip<O>(self, other: FontSet<O>) -> FontSet<(T, O)> {
-        FontSet {
-            regular: (self.regular, other.regular),
-            italic: (self.italic, other.italic),
-            bold: (self.bold, other.bold),
-            bold_italic: (self.bold_italic, other.bold_italic),
-        }
-    }
-
-    pub fn as_ref(&self) -> FontSet<&T> {
-        FontSet {
-            regular: &self.regular,
-            italic: &self.italic,
-            bold: &self.bold,
-            bold_italic: &self.bold_italic,
-        }
-    }
-
-    pub fn as_mut(&mut self) -> FontSet<&mut T> {
-        FontSet {
-            regular: &mut self.regular,
-            italic: &mut self.italic,
-            bold: &mut self.bold,
-            bold_italic: &mut self.bold_italic,
-        }
-    }
-}
-
-/// CPU-side terminal rendering options.
-pub struct TerminalConfig {
-    pub fonts: FontSet<Arc<FaceAtlas>>,
-}
-
-/// A single render-able terminal. Paired with an [AlacrittyRoutine].
-pub struct Terminal {
-    device: Arc<Device>,
-    config: Arc<TerminalConfig>,
-    camera_buffer: Buffer,
-    camera_bind_group: BindGroup,
-    bg_mesh: DynamicMesh<SolidVertex>,
-    glyph_meshes: FontSet<DynamicMesh<GlyphVertex>>,
-    overlay_mesh: DynamicMesh<SolidVertex>,
-}
-
-impl Terminal {
-    pub fn new(
-        device: Arc<Device>,
-        config: Arc<TerminalConfig>,
-        camera_bgl: &BindGroupLayout,
-    ) -> Self {
-        let camera_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("Alacritty terminal camera buffer"),
-            size: std::mem::size_of::<CameraUniform>() as BufferAddress,
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("Alacritty terminal camera bind group"),
-            layout: camera_bgl,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-        });
-
-        Self {
-            config,
-            camera_buffer,
-            camera_bind_group,
-            bg_mesh: DynamicMesh::new(&device),
-            glyph_meshes: FontSet {
-                regular: DynamicMesh::new(&device),
-                italic: DynamicMesh::new(&device),
-                bold: DynamicMesh::new(&device),
-                bold_italic: DynamicMesh::new(&device),
-            },
-            overlay_mesh: DynamicMesh::new(&device),
-            device,
-        }
-    }
-
-    pub fn update<T: alacritty_terminal::event::EventListener>(
-        &mut self,
-        term: &Term<T>,
-        colors: &Colors,
-    ) {
-        let mut cells: Vec<(glam::Vec2, FontStyle, usize, u32)> = Vec::new();
-
-        let color_to_rgb = |color| -> u32 {
-            let rgb = match color {
-                Color::Named(name) => colors[name].unwrap(),
-                Color::Spec(rgb) => rgb,
-                Color::Indexed(index) => colors[index as usize].unwrap_or(Rgb {
-                    r: 255,
-                    g: 0,
-                    b: 255,
-                }),
-            };
-
-            0xff000000 | ((rgb.b as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.r as u32)
-        };
-
-        let scale = 1.0 / 37.5;
-        let grid_to_pos = |x: i32, y: i32| -> glam::Vec2 {
-            let col = x as f32 / 50.0 - 1.0;
-            let row = (y as f32 + 1.0) / -37.5 + 1.0;
-            glam::Vec2::new(col, row)
-        };
-
-        let mut bg_vertices = Vec::new();
-        let mut bg_indices = Vec::new();
-        let mut overlay_vertices = Vec::new();
-        let mut overlay_indices = Vec::new();
-
-        let content = term.renderable_content();
-        for cell in content.display_iter {
-            if cell.flags.contains(CellFlags::HIDDEN) {
-                continue;
-            }
-
-            let col = cell.point.column.0 as i32;
-            let row = cell.point.line.0;
-            let pos = grid_to_pos(col, row);
-            let mut fg = cell.fg;
-            let mut bg = cell.bg;
-
-            if cell.flags.contains(CellFlags::INVERSE) {
-                std::mem::swap(&mut fg, &mut bg);
-            }
-
-            let style = FontStyle::from_cell_flags(cell.flags);
-            let face = self.config.fonts.get(style).face.as_face_ref();
-            if let Some(glyph) = face.glyph_index(cell.c) {
-                cells.push((pos, style, glyph.0 as usize, color_to_rgb(fg)));
-            }
-
-            if bg == Color::Named(NamedColor::Background) {
-                continue;
-            }
-
-            let bg = color_to_rgb(bg);
-            let index = bg_vertices.len() as u32;
-
-            bg_vertices.extend_from_slice(&[
-                SolidVertex {
-                    position: grid_to_pos(col, row - 1),
-                    color: bg,
-                },
-                SolidVertex {
-                    position: grid_to_pos(col + 1, row - 1),
-                    color: bg,
-                },
-                SolidVertex {
-                    position: grid_to_pos(col, row),
-                    color: bg,
-                },
-                SolidVertex {
-                    position: grid_to_pos(col + 1, row),
-                    color: bg,
-                },
-            ]);
-
-            bg_indices.extend_from_slice(&[
-                index,
-                index + 1,
-                index + 2,
-                index + 2,
-                index + 1,
-                index + 3,
-            ]);
-        }
-
-        let cursor_color = Color::Named(NamedColor::Foreground);
-        let cursor_color = color_to_rgb(cursor_color);
-        match content.cursor.shape {
-            CursorShape::Hidden => {}
-            _ => {
-                let index = overlay_vertices.len() as u32;
-                let col = content.cursor.point.column.0 as i32;
-                let row = content.cursor.point.line.0;
-                overlay_vertices.extend_from_slice(&[
-                    SolidVertex {
-                        position: grid_to_pos(col, row - 1),
-                        color: cursor_color,
-                    },
-                    SolidVertex {
-                        position: grid_to_pos(col + 1, row - 1),
-                        color: cursor_color,
-                    },
-                    SolidVertex {
-                        position: grid_to_pos(col, row),
-                        color: cursor_color,
-                    },
-                    SolidVertex {
-                        position: grid_to_pos(col + 1, row),
-                        color: cursor_color,
-                    },
-                ]);
-
-                overlay_indices.extend_from_slice(&[
-                    index,
-                    index + 1,
-                    index + 2,
-                    index + 2,
-                    index + 1,
-                    index + 3,
-                ]);
-            }
-        }
-
-        let mut touched = FontSet::<Vec<u16>>::default();
-        let mut glyph_meshes = FontSet::<(Vec<GlyphVertex>, Vec<u32>)>::default();
-
-        for (offset, style, glyph, color) in cells {
-            let (vertices, indices) = &mut glyph_meshes.get_mut(style);
-
-            let index = vertices.len() as u32;
-            let atlas = &self.config.fonts.get(style).atlas;
-            let bitmap = match atlas.glyphs[glyph].as_ref() {
-                Some(b) => b,
-                None => continue,
-            };
-
-            touched.get_mut(style).push(glyph as u16);
-
-            vertices.extend(bitmap.vertices.iter().map(|v| GlyphVertex {
-                position: v.position * scale + offset,
-                tex_coords: v.tex_coords,
-                color,
-            }));
-
-            indices.extend_from_slice(&[
-                index,
-                index + 1,
-                index + 2,
-                index + 2,
-                index + 1,
-                index + 3,
-            ]);
-        }
-
-        self.config
-            .fonts
-            .as_ref()
-            .zip(touched)
-            .for_each(|(font, touched)| {
-                font.touch(&touched);
-            });
-
-        self.glyph_meshes
-            .as_mut()
-            .zip(glyph_meshes)
-            .for_each(|(mesh, (vertices, indices))| mesh.update(&self.device, &vertices, &indices));
-
-        self.bg_mesh.update(&self.device, &bg_vertices, &bg_indices);
-        self.overlay_mesh
-            .update(&self.device, &overlay_vertices, &overlay_indices);
-    }
-}
+use crate::{
+    gpu::{CameraUniform, GlyphVertex, SolidVertex},
+    terminal::{Terminal, TerminalConfig},
+    text::FontSet,
+};
 
 /// Generates a pipeline for either a glyph shader or a solid shader.
 fn make_pipeline(
@@ -603,23 +87,37 @@ fn make_pipeline(
     })
 }
 
+pub struct TerminalWrapper {
+    terminal: Weak<Terminal>,
+    draw_state: TerminalDrawState,
+}
+
+impl TerminalWrapper {
+    pub fn update(&mut self) -> bool {
+        if let Some(terminal) = self.terminal.upgrade() {
+            terminal.update_draw_state(&mut self.draw_state);
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// Persistent terminal rendering configuration and handles to active terminals.
 pub struct TerminalStore {
     device: Arc<Device>,
     queue: Arc<Queue>,
-    config: Arc<TerminalConfig>,
     camera_bgl: BindGroupLayout,
     glyph_bind_groups: FontSet<BindGroup>,
     solid_pipeline: RenderPipeline,
     glyph_pipeline: RenderPipeline,
-    terminals: Vec<Weak<RwLock<Terminal>>>,
-    owned_terminals: Vec<Arc<RwLock<Terminal>>>,
+    terminals: Vec<TerminalWrapper>,
 }
 
 impl TerminalStore {
     /// This routine runs after tonemapping, so `format` is the format of the
     /// final swapchain image format.
-    pub fn new(config: Arc<TerminalConfig>, renderer: &Renderer, format: TextureFormat) -> Self {
+    pub fn new(config: TerminalConfig, renderer: &Renderer, format: TextureFormat) -> Self {
         let shader = renderer
             .device
             .create_shader_module(&include_wgsl!("shaders.wgsl"));
@@ -728,28 +226,22 @@ impl TerminalStore {
         Self {
             device: renderer.device.to_owned(),
             queue: renderer.queue.to_owned(),
-            config,
             camera_bgl,
             glyph_bind_groups,
             solid_pipeline,
             glyph_pipeline,
             terminals: vec![],
-            owned_terminals: vec![],
         }
     }
 
-    /// Creates a new terminal associated with this store.
+    /// Inserts a new terminal into this store.
     ///
-    /// When the last `Arc` is dropped, this terminal will stop being rendered.
-    pub fn create_terminal(&mut self) -> Arc<RwLock<Terminal>> {
-        let terminal = Arc::new(RwLock::new(Terminal::new(
-            self.device.to_owned(),
-            self.config.to_owned(),
-            &self.camera_bgl,
-        )));
-
-        self.terminals.push(Arc::downgrade(&terminal));
-        terminal
+    /// When the last `Arc` owning this terminal is dropped, this terminal will stop being rendered.
+    pub fn insert_terminal(&mut self, terminal: &Arc<Terminal>) {
+        self.terminals.push(TerminalWrapper {
+            terminal: Arc::downgrade(terminal),
+            draw_state: TerminalDrawState::new(self.device.to_owned(), &self.camera_bgl),
+        });
     }
 
     /// Creates a new render routine for this frame.
@@ -757,23 +249,9 @@ impl TerminalStore {
     /// Note that this locks the mutexes on all owned terminals for as long as
     /// this routine is owned. Create and then drop as quickly as possible!
     pub fn create_routine(&mut self) -> TerminalRenderRoutine<'_> {
-        self.owned_terminals.clear();
+        self.terminals.retain_mut(TerminalWrapper::update);
 
-        let mut index = 0;
-        while let Some(terminal) = self.terminals.get(index) {
-            if let Some(terminal) = terminal.upgrade() {
-                self.owned_terminals.push(terminal);
-                index += 1;
-            } else {
-                self.terminals.remove(index);
-            }
-        }
-
-        let terminals = self
-            .owned_terminals
-            .iter()
-            .map(|term| term.read().unwrap())
-            .collect();
+        let terminals: Vec<_> = self.terminals.iter().map(|t| &t.draw_state).collect();
 
         TerminalRenderRoutine {
             store: self,
@@ -785,10 +263,10 @@ impl TerminalStore {
     pub fn draw_terminal<'a>(
         &'a self,
         rpass: &mut RenderPass<'a>,
-        terminal: &'a Terminal,
+        terminal: &'a TerminalDrawState,
         vp: glam::Mat4,
     ) {
-        let model = glam::Mat4::IDENTITY;
+        let model = terminal.model;
 
         self.queue.write_buffer(
             &terminal.camera_buffer,
@@ -815,7 +293,7 @@ impl TerminalStore {
 
 pub struct TerminalRenderRoutine<'a> {
     store: &'a TerminalStore,
-    terminals: Vec<RwLockReadGuard<'a, Terminal>>,
+    terminals: Vec<&'a TerminalDrawState>,
 }
 
 impl<'a> TerminalRenderRoutine<'a> {
@@ -846,7 +324,7 @@ impl<'a> TerminalRenderRoutine<'a> {
         let terminals: Vec<_> = self
             .terminals
             .iter()
-            .map(|t| builder.passthrough_ref(t.deref()))
+            .map(|t| builder.passthrough_ref(*t))
             .collect();
 
         builder.build(
