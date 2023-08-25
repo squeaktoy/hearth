@@ -74,9 +74,10 @@ impl DemoInner {
             orientation: glam::Quat::IDENTITY,
             half_size: Vec2::new(1.2, 0.9),
             opacity: 0.8,
+            colors,
         };
 
-        let config = TerminalConfig { fonts, colors };
+        let config = TerminalConfig { fonts };
         let terminal = Terminal::new(config.clone(), state.clone());
         let mut store = TerminalStore::new(config, renderer, surface_format);
         store.insert_terminal(&terminal);

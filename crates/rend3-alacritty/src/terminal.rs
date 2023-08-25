@@ -70,16 +70,16 @@ impl EventListener for Listener {
 #[derive(Clone)]
 pub struct TerminalConfig {
     pub fonts: FontSet<Arc<FaceAtlas>>,
-    pub colors: Colors,
 }
 
 /// Dynamic terminal appearance and settings configuration.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TerminalState {
     pub position: Vec3,
     pub orientation: Quat,
     pub half_size: Vec2,
     pub opacity: f32,
+    pub colors: Colors,
 }
 
 /// Private terminal mutable state.
@@ -234,12 +234,10 @@ impl Terminal {
         let state = inner.state.clone();
         drop(inner); // get off the mutex
 
-        let colors = self.config.colors.clone();
         let fonts = self.config.fonts.clone();
         let font_baselines = self.font_baselines.clone();
         let units_per_em = self.units_per_em;
         let mut canvas = TerminalCanvas::new(
-            colors,
             fonts,
             units_per_em,
             state,
@@ -269,7 +267,7 @@ impl Terminal {
     fn on_event(&self, event: Event) {
         match event {
             Event::ColorRequest(index, format) => {
-                let color = self.config.colors[index].unwrap_or(Rgb {
+                let color = self.inner.lock().state.colors[index].unwrap_or(Rgb {
                     r: 0xff,
                     g: 0xff,
                     b: 0xff,
@@ -332,7 +330,6 @@ impl TerminalDrawState {
 
 /// An in-progress terminal draw state.
 pub struct TerminalCanvas {
-    colors: Colors,
     fonts: FontSet<Arc<FaceAtlas>>,
     bg_vertices: Vec<SolidVertex>,
     bg_indices: Vec<u32>,
@@ -348,7 +345,6 @@ pub struct TerminalCanvas {
 
 impl TerminalCanvas {
     pub fn new(
-        colors: Colors,
         fonts: FontSet<Arc<FaceAtlas>>,
         units_per_em: f32,
         state: TerminalState,
@@ -357,7 +353,6 @@ impl TerminalCanvas {
         font_baselines: FontSet<f32>,
     ) -> Self {
         Self {
-            colors,
             fonts,
             bg_vertices: Vec::new(),
             bg_indices: Vec::new(),
@@ -375,7 +370,7 @@ impl TerminalCanvas {
     pub fn update_from_content(&mut self, content: RenderableContent) {
         for index in 0..COUNT {
             if let Some(color) = content.colors[index] {
-                self.colors[index] = Some(color);
+                self.state.colors[index] = Some(color);
             }
         }
 
@@ -540,10 +535,10 @@ impl TerminalCanvas {
 
     pub fn color_to_rgb(&self, color: Color) -> Rgb {
         match color {
-            Color::Named(name) => self.colors[name].unwrap(),
+            Color::Named(name) => self.state.colors[name].unwrap(),
             Color::Spec(rgb) => rgb,
             Color::Indexed(index) => {
-                if let Some(color) = self.colors[index as usize] {
+                if let Some(color) = self.state.colors[index as usize] {
                     color
                 } else if let Some(gray) = index.checked_sub(232) {
                     let value = gray * 10 + 8;
