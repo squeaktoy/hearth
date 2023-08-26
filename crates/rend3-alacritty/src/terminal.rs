@@ -105,6 +105,39 @@ pub struct TerminalState {
     pub padding: Vec2,
 }
 
+#[derive(Clone)]
+pub struct FaceWithMetrics {
+    atlas: Arc<FaceAtlas>,
+    ascender: f32,
+    descender: f32,
+    width: f32,
+    height: f32,
+}
+
+impl From<Arc<FaceAtlas>> for FaceWithMetrics {
+    fn from(atlas: Arc<FaceAtlas>) -> Self {
+        let face = atlas.face.as_face_ref();
+        let units_per_em = face.units_per_em() as f32;
+        let ascender = face.ascender() as f32 / units_per_em;
+        let height = face.height() as f32 / units_per_em;
+        let descender = face.descender() as f32 / units_per_em;
+        let height = height.max(ascender + descender);
+        let width = face
+            .glyph_index('M')
+            .and_then(|id| face.glyph_hor_advance(id))
+            .map(|adv| adv as f32 / units_per_em)
+            .unwrap_or(1.0);
+
+        Self {
+            atlas,
+            ascender,
+            descender,
+            height,
+            width,
+        }
+    }
+}
+
 /// Private terminal mutable state.
 struct TerminalInner {
     grid_size: UVec2,
@@ -113,43 +146,24 @@ struct TerminalInner {
 
 /// A CPU-side wrapper around terminal functionality.
 pub struct Terminal {
-    config: TerminalConfig,
     term: Arc<FairMutex<Term<Listener>>>,
     _term_loop: JoinHandle<(EventLoop<Pty, Listener>, State)>,
     term_channel: FairMutex<MioSender<Msg>>,
     should_quit: AtomicBool,
     inner: FairMutex<TerminalInner>,
     units_per_em: f32,
+    fonts: FontSet<FaceWithMetrics>,
     font_baselines: FontSet<f32>,
     cell_size: Vec2,
 }
 
 impl Terminal {
     pub fn new(config: TerminalConfig, initial_state: TerminalState) -> Arc<Self> {
-        let face_metrics = config.fonts.as_ref().map(|face| {
-            let face = face.face.as_face_ref();
-            let units_per_em = face.units_per_em() as f32;
-            let ascender = face.ascender() as f32 / units_per_em;
-            let height = face.height() as f32 / units_per_em;
-            let descender = face.descender() as f32 / units_per_em;
-            let height = height.max(ascender + descender);
-            (ascender, height, descender)
-        });
-
-        let cell_height = face_metrics.regular.1;
-
-        let face = config.fonts.regular.face.as_face_ref();
-        let units_per_em = face.units_per_em() as f32;
-        let cell_width = face
-            .glyph_index('M')
-            .and_then(|id| face.glyph_hor_advance(id))
-            .map(|adv| adv as f32 / units_per_em)
-            .unwrap_or(1.0);
-
-        let font_baselines = face_metrics
-            .map(|(ascender, height, _descender)| (cell_height - height) / 2.0 + ascender);
-
-        let cell_size = Vec2::new(cell_width, cell_height);
+        let fonts = config.fonts.clone().map(FaceWithMetrics::from);
+        let cell_size = Vec2::new(fonts.regular.width, fonts.regular.height);
+        let font_baselines = fonts
+            .as_ref()
+            .map(|font| (cell_size.y - font.height) / 2.0 + font.ascender);
 
         let units_per_em = 0.04;
         let available = (initial_state.half_size - initial_state.padding) * 2.0;
@@ -197,7 +211,7 @@ impl Terminal {
         };
 
         let term = Self {
-            config,
+            fonts,
             term,
             _term_loop: term_loop.spawn(),
             term_channel: FairMutex::new(term_channel),
@@ -258,11 +272,10 @@ impl Terminal {
         let state = inner.state.clone();
         drop(inner); // get off the mutex
 
-        let fonts = self.config.fonts.clone();
         let font_baselines = self.font_baselines.clone();
         let units_per_em = self.units_per_em;
         let mut canvas = TerminalCanvas::new(
-            fonts,
+            self.fonts.clone(),
             units_per_em,
             state,
             grid_size,
@@ -354,7 +367,7 @@ impl TerminalDrawState {
 
 /// An in-progress terminal draw state.
 pub struct TerminalCanvas {
-    fonts: FontSet<Arc<FaceAtlas>>,
+    fonts: FontSet<FaceWithMetrics>,
     bg_vertices: Vec<SolidVertex>,
     bg_indices: Vec<u32>,
     overlay_vertices: Vec<SolidVertex>,
@@ -369,7 +382,7 @@ pub struct TerminalCanvas {
 
 impl TerminalCanvas {
     pub fn new(
-        fonts: FontSet<Arc<FaceAtlas>>,
+        fonts: FontSet<FaceWithMetrics>,
         units_per_em: f32,
         state: TerminalState,
         grid_size: UVec2,
@@ -417,7 +430,7 @@ impl TerminalCanvas {
             let offset = offset + Vec2::new(0.0, -baseline);
 
             let index = vertices.len() as u32;
-            let atlas = &self.fonts.get(style).atlas;
+            let atlas = &self.fonts.get(style).atlas.atlas;
             let bitmap = match atlas.glyphs[glyph as usize].as_ref() {
                 Some(b) => b,
                 None => continue,
@@ -445,7 +458,7 @@ impl TerminalCanvas {
             .as_ref()
             .zip(touched)
             .for_each(|(font, touched)| {
-                font.touch(&touched);
+                font.atlas.touch(&touched);
             });
 
         state
@@ -495,7 +508,7 @@ impl TerminalCanvas {
 
         if !is_full_block {
             let style = FontStyle::from_cell_flags(cell.flags);
-            let face = self.fonts.get(style).face.as_face_ref();
+            let face = self.fonts.get(style).atlas.face.as_face_ref();
             if let Some(glyph) = face.glyph_index(cell.c) {
                 let fg = self.color_to_u32(fg);
                 self.glyphs.push((pos, style, glyph.0, fg));
