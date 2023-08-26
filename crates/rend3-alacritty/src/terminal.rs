@@ -132,7 +132,7 @@ impl From<Arc<FaceAtlas>> for FaceWithMetrics {
             .map(|adv| adv as f32 / units_per_em)
             .unwrap_or(1.0);
 
-        let default_width = 0.04;
+        let default_width = 0.06;
 
         let (strikeout_pos, strikeout_width) = face
             .strikeout_metrics()
@@ -528,39 +528,6 @@ impl TerminalCanvas {
         let tl = self.grid_to_pos(col, row);
         let br = self.grid_to_pos(col + 1, row + 1);
 
-        if !is_full_block {
-            let style = FontStyle::from_cell_flags(cell.flags);
-            let font = self.fonts.get(style);
-            let fg = self.color_to_u32(fg);
-
-            let face = font.atlas.face.as_face_ref();
-            if let Some(glyph) = face.glyph_index(cell.c) {
-                self.glyphs.push((tl, style, glyph.0, fg));
-            }
-
-            let baseline = *self.font_baselines.get(style) * self.units_per_em;
-            let make_line = |pos, width| -> (Vec2, Vec2) {
-                eprintln!("line: {pos} {width}");
-                let cy = tl.y - pos * self.units_per_em - baseline;
-                let w = width * self.units_per_em / 2.0;
-                let tl = vec2(tl.x, cy - w);
-                let br = vec2(br.x, cy + w);
-                (tl, br)
-            };
-
-            // pre-calc line variables before mutable borrowing with rect draws
-            let so_line = make_line(font.strikeout_pos, font.strikeout_width);
-            let ul_line = make_line(font.underline_pos, font.underline_width);
-
-            if cell.flags.contains(Flags::STRIKEOUT) {
-                self.draw_solid_rect(so_line.0, so_line.1, fg);
-            }
-
-            if cell.flags.contains(Flags::UNDERLINE) {
-                self.draw_solid_rect(ul_line.0, ul_line.1, fg);
-            }
-        }
-
         let bg = if bg == Color::Named(NamedColor::Background) {
             self.get_background_color()
         } else {
@@ -568,6 +535,41 @@ impl TerminalCanvas {
         };
 
         self.draw_solid_rect(tl, br, bg);
+
+        // skip foreground rendering if the entire cell is occupied
+        if is_full_block {
+            return;
+        }
+
+        let style = FontStyle::from_cell_flags(cell.flags);
+        let font = self.fonts.get(style);
+        let fg = self.color_to_u32(fg);
+
+        let face = font.atlas.face.as_face_ref();
+        if let Some(glyph) = face.glyph_index(cell.c) {
+            self.glyphs.push((tl, style, glyph.0, fg));
+        }
+
+        let baseline = *self.font_baselines.get(style) * self.units_per_em;
+        let make_line = |pos, width| -> (Vec2, Vec2) {
+            let cy = tl.y + pos * self.units_per_em - baseline;
+            let w = width * self.units_per_em;
+            let tl = vec2(tl.x, cy);
+            let br = vec2(br.x, cy + w);
+            (tl, br)
+        };
+
+        // pre-calc line variables before mutable borrowing with rect draws
+        let so_line = make_line(font.strikeout_pos, font.strikeout_width);
+        let ul_line = make_line(font.underline_pos, font.underline_width);
+
+        if cell.flags.contains(Flags::STRIKEOUT) {
+            self.draw_solid_rect(so_line.0, so_line.1, fg);
+        }
+
+        if cell.flags.contains(Flags::UNDERLINE) {
+            self.draw_solid_rect(ul_line.0, ul_line.1, fg);
+        }
     }
 
     pub fn draw_cursor(&mut self, cursor: RenderableCursor) {
