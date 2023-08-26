@@ -37,7 +37,7 @@ use alacritty_terminal::{
     tty::Pty,
     Term,
 };
-use glam::{IVec2, Mat4, Quat, UVec2, Vec2, Vec3};
+use glam::{vec2, IVec2, Mat4, Quat, UVec2, Vec2, Vec3};
 use mio_extras::channel::Sender as MioSender;
 use owned_ttf_parser::AsFaceRef;
 use wgpu::{
@@ -102,6 +102,60 @@ pub struct TerminalState {
     pub half_size: Vec2,
     pub opacity: f32,
     pub colors: Colors,
+    pub padding: Vec2,
+}
+
+#[derive(Clone)]
+pub struct FaceWithMetrics {
+    atlas: Arc<FaceAtlas>,
+    ascender: f32,
+    descender: f32,
+    width: f32,
+    height: f32,
+    strikeout_pos: f32,
+    strikeout_width: f32,
+    underline_pos: f32,
+    underline_width: f32,
+}
+
+impl From<Arc<FaceAtlas>> for FaceWithMetrics {
+    fn from(atlas: Arc<FaceAtlas>) -> Self {
+        let face = atlas.face.as_face_ref();
+        let units_per_em = face.units_per_em() as f32;
+        let ascender = face.ascender() as f32 / units_per_em;
+        let height = face.height() as f32 / units_per_em;
+        let descender = face.descender() as f32 / units_per_em;
+        let height = height.max(ascender + descender);
+        let width = face
+            .glyph_index('M')
+            .and_then(|id| face.glyph_hor_advance(id))
+            .map(|adv| adv as f32 / units_per_em)
+            .unwrap_or(1.0);
+
+        let default_width = 0.06;
+
+        let (strikeout_pos, strikeout_width) = face
+            .strikeout_metrics()
+            .map(|m| (vec2(m.position as f32, m.thickness as f32) / units_per_em).into())
+            .unwrap_or((height / 2.0, default_width));
+
+        let (underline_pos, underline_width) = face
+            .underline_metrics()
+            .map(|m| (vec2(m.position as f32, m.thickness as f32) / units_per_em).into())
+            .unwrap_or((height / 2.0, default_width));
+
+        Self {
+            atlas,
+            ascender,
+            descender,
+            height,
+            width,
+            strikeout_pos,
+            strikeout_width,
+            underline_pos,
+            underline_width,
+        }
+    }
 }
 
 /// Private terminal mutable state.
@@ -112,48 +166,28 @@ struct TerminalInner {
 
 /// A CPU-side wrapper around terminal functionality.
 pub struct Terminal {
-    config: TerminalConfig,
     term: Arc<FairMutex<Term<Listener>>>,
     _term_loop: JoinHandle<(EventLoop<Pty, Listener>, State)>,
     term_channel: FairMutex<MioSender<Msg>>,
     should_quit: AtomicBool,
     inner: FairMutex<TerminalInner>,
     units_per_em: f32,
+    fonts: FontSet<FaceWithMetrics>,
     font_baselines: FontSet<f32>,
     cell_size: Vec2,
 }
 
 impl Terminal {
     pub fn new(config: TerminalConfig, initial_state: TerminalState) -> Arc<Self> {
-        let face_metrics = config.fonts.as_ref().map(|face| {
-            let face = face.face.as_face_ref();
-            let units_per_em = face.units_per_em() as f32;
-            let ascender = face.ascender() as f32 / units_per_em;
-            let height = face.height() as f32 / units_per_em;
-            let descender = face.descender() as f32 / units_per_em;
-            let height = height.max(ascender + descender);
-            (ascender, height, descender)
-        });
-
-        let cell_height = face_metrics.regular.1;
-
-        let face = config.fonts.regular.face.as_face_ref();
-        let units_per_em = face.units_per_em() as f32;
-        let cell_width = face
-            .glyph_index('M')
-            .and_then(|id| face.glyph_hor_advance(id))
-            .map(|adv| adv as f32 / units_per_em)
-            .unwrap_or(1.0);
-
-        let font_baselines = face_metrics
-            .map(|(ascender, height, _descender)| (cell_height - height) / 2.0 + ascender);
-
-        let cell_size = Vec2::new(cell_width, cell_height);
+        let fonts = config.fonts.clone().map(FaceWithMetrics::from);
+        let cell_size = Vec2::new(fonts.regular.width, fonts.regular.height);
+        let font_baselines = fonts
+            .as_ref()
+            .map(|font| (cell_size.y - font.height) / 2.0 + font.ascender);
 
         let units_per_em = 0.04;
-        let grid_size = (initial_state.half_size * 2.0 / cell_size / units_per_em)
-            .ceil()
-            .as_uvec2();
+        let available = (initial_state.half_size - initial_state.padding) * 2.0;
+        let grid_size = (available / cell_size / units_per_em).ceil().as_uvec2();
 
         let size_info = alacritty_terminal::term::SizeInfo::new(
             grid_size.x as f32,
@@ -197,7 +231,7 @@ impl Terminal {
         };
 
         let term = Self {
-            config,
+            fonts,
             term,
             _term_loop: term_loop.spawn(),
             term_channel: FairMutex::new(term_channel),
@@ -223,8 +257,9 @@ impl Terminal {
     pub fn update(&self, state: TerminalState) {
         let mut inner = self.inner.lock();
 
-        let grid_size = (state.half_size * 2.0 / self.cell_size / self.units_per_em)
-            .floor()
+        let available = (state.half_size - state.padding) * 2.0;
+        let grid_size = (available / self.cell_size / self.units_per_em)
+            .ceil()
             .as_uvec2();
 
         if inner.grid_size != grid_size {
@@ -257,11 +292,10 @@ impl Terminal {
         let state = inner.state.clone();
         drop(inner); // get off the mutex
 
-        let fonts = self.config.fonts.clone();
         let font_baselines = self.font_baselines.clone();
         let units_per_em = self.units_per_em;
         let mut canvas = TerminalCanvas::new(
-            fonts,
+            self.fonts.clone(),
             units_per_em,
             state,
             grid_size,
@@ -353,7 +387,7 @@ impl TerminalDrawState {
 
 /// An in-progress terminal draw state.
 pub struct TerminalCanvas {
-    fonts: FontSet<Arc<FaceAtlas>>,
+    fonts: FontSet<FaceWithMetrics>,
     bg_vertices: Vec<SolidVertex>,
     bg_indices: Vec<u32>,
     overlay_vertices: Vec<SolidVertex>,
@@ -368,7 +402,7 @@ pub struct TerminalCanvas {
 
 impl TerminalCanvas {
     pub fn new(
-        fonts: FontSet<Arc<FaceAtlas>>,
+        fonts: FontSet<FaceWithMetrics>,
         units_per_em: f32,
         state: TerminalState,
         grid_size: UVec2,
@@ -391,6 +425,8 @@ impl TerminalCanvas {
     }
 
     pub fn update_from_content(&mut self, content: RenderableContent) {
+        self.draw_padding();
+
         for index in 0..COUNT {
             if let Some(color) = content.colors[index] {
                 self.state.colors[index] = Some(color);
@@ -414,7 +450,7 @@ impl TerminalCanvas {
             let offset = offset + Vec2::new(0.0, -baseline);
 
             let index = vertices.len() as u32;
-            let atlas = &self.fonts.get(style).atlas;
+            let atlas = &self.fonts.get(style).atlas.atlas;
             let bitmap = match atlas.glyphs[glyph as usize].as_ref() {
                 Some(b) => b,
                 None => continue,
@@ -442,7 +478,7 @@ impl TerminalCanvas {
             .as_ref()
             .zip(touched)
             .for_each(|(font, touched)| {
-                font.touch(&touched);
+                font.atlas.touch(&touched);
             });
 
         state
@@ -465,6 +501,14 @@ impl TerminalCanvas {
             Mat4::from_translation(self.state.position) * Mat4::from_quat(self.state.orientation);
     }
 
+    pub fn draw_padding(&mut self) {
+        let tl = -self.state.half_size;
+        let br = self.state.half_size;
+        let inset = br - self.grid_to_pos(self.grid_size.x as i32, 0);
+        let color = self.get_background_color();
+        self.draw_hollow_rect(tl, br, inset, color);
+    }
+
     pub fn draw_cell(&mut self, cell: Indexed<&Cell>) {
         if cell.flags.contains(Flags::HIDDEN) {
             return;
@@ -472,7 +516,6 @@ impl TerminalCanvas {
 
         let col = cell.point.column.0 as i32;
         let row = cell.point.line.0;
-        let pos = self.grid_to_pos(col, row);
         let mut fg = cell.fg;
         let mut bg = cell.bg;
 
@@ -482,26 +525,51 @@ impl TerminalCanvas {
             std::mem::swap(&mut fg, &mut bg);
         }
 
-        if !is_full_block {
-            let style = FontStyle::from_cell_flags(cell.flags);
-            let face = self.fonts.get(style).face.as_face_ref();
-            if let Some(glyph) = face.glyph_index(cell.c) {
-                let fg = self.color_to_u32(fg);
-                self.glyphs.push((pos, style, glyph.0, fg));
-            }
-        }
+        let tl = self.grid_to_pos(col, row);
+        let br = self.grid_to_pos(col + 1, row + 1);
 
         let bg = if bg == Color::Named(NamedColor::Background) {
-            let base = self.color_to_u32(bg);
-            let alpha = (self.state.opacity * 255.0) as u8;
-            ((alpha as u32) << 24) | (base & 0x00ffffff)
+            self.get_background_color()
         } else {
             self.color_to_u32(bg)
         };
 
-        let tl = self.grid_to_pos(col, row);
-        let br = self.grid_to_pos(col + 1, row + 1);
         self.draw_solid_rect(tl, br, bg);
+
+        // skip foreground rendering if the entire cell is occupied
+        if is_full_block {
+            return;
+        }
+
+        let style = FontStyle::from_cell_flags(cell.flags);
+        let font = self.fonts.get(style);
+        let fg = self.color_to_u32(fg);
+
+        let face = font.atlas.face.as_face_ref();
+        if let Some(glyph) = face.glyph_index(cell.c) {
+            self.glyphs.push((tl, style, glyph.0, fg));
+        }
+
+        let baseline = *self.font_baselines.get(style) * self.units_per_em;
+        let make_line = |pos, width| -> (Vec2, Vec2) {
+            let cy = tl.y + pos * self.units_per_em - baseline;
+            let w = width * self.units_per_em;
+            let tl = vec2(tl.x, cy);
+            let br = vec2(br.x, cy + w);
+            (tl, br)
+        };
+
+        // pre-calc line variables before mutable borrowing with rect draws
+        let so_line = make_line(font.strikeout_pos, font.strikeout_width);
+        let ul_line = make_line(font.underline_pos, font.underline_width);
+
+        if cell.flags.contains(Flags::STRIKEOUT) {
+            self.draw_solid_rect(so_line.0, so_line.1, fg);
+        }
+
+        if cell.flags.contains(Flags::UNDERLINE) {
+            self.draw_solid_rect(ul_line.0, ul_line.1, fg);
+        }
     }
 
     pub fn draw_cursor(&mut self, cursor: RenderableCursor) {
@@ -509,12 +577,30 @@ impl TerminalCanvas {
         let cursor_color = self.color_to_u32(cursor_color);
         let col = cursor.point.column.0 as i32;
         let row = cursor.point.line.0;
+        let line_width = 0.1 * self.units_per_em;
         match cursor.shape {
             CursorShape::Hidden => {}
-            _ => {
+            CursorShape::Block => {
                 let tl = self.grid_to_pos(col, row);
                 let br = self.grid_to_pos(col + 1, row + 1);
                 self.draw_solid_rect(tl, br, cursor_color);
+            }
+            CursorShape::Underline => {
+                let tl = self.grid_to_pos(col, row);
+                let br = self.grid_to_pos(col + 1, row + 1);
+                let tl = vec2(tl.x, br.y + line_width);
+                self.draw_solid_rect(tl, br, cursor_color);
+            }
+            CursorShape::Beam => {
+                let tl = self.grid_to_pos(col, row);
+                let br = self.grid_to_pos(col + 1, row + 1);
+                let br = vec2(tl.x + line_width, br.y);
+                self.draw_solid_rect(tl, br, cursor_color);
+            }
+            CursorShape::HollowBlock => {
+                let tl = self.grid_to_pos(col, row);
+                let br = self.grid_to_pos(col + 1, row + 1);
+                self.draw_hollow_rect(tl, br, Vec2::splat(line_width), cursor_color);
             }
         }
     }
@@ -548,6 +634,19 @@ impl TerminalCanvas {
             index + 1,
             index + 3,
         ]);
+    }
+
+    /// `border` can be positive for inset or negative for outset.
+    pub fn draw_hollow_rect(&mut self, tl: Vec2, br: Vec2, border: Vec2, color: u32) {
+        let bl = vec2(tl.x, br.y); // bottom-left
+        let tr = vec2(br.x, tl.y); // top-right
+        let bx = Vec2::new(border.x, 0.0); // border-X
+        let by = Vec2::new(0.0, border.y); // border-Y
+
+        self.draw_solid_rect(tl, bl + bx, color); // left edge
+        self.draw_solid_rect(tr - bx, br, color); // right edge
+        self.draw_solid_rect(tl + bx, tr - bx + by, color); // top edge
+        self.draw_solid_rect(bl + bx - by, br - bx, color); // bottom edge
     }
 
     pub fn grid_to_pos(&self, x: i32, y: i32) -> Vec2 {
@@ -602,5 +701,12 @@ impl TerminalCanvas {
     pub fn color_to_u32(&self, color: Color) -> u32 {
         let rgb = self.color_to_rgb(color);
         0xff000000 | ((rgb.b as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.r as u32)
+    }
+
+    pub fn get_background_color(&self) -> u32 {
+        let bg = Color::Named(NamedColor::Background);
+        let base = self.color_to_u32(bg);
+        let alpha = (self.state.opacity * 255.0) as u8;
+        ((alpha as u32) << 24) | (base & 0x00ffffff)
     }
 }
