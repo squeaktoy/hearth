@@ -106,7 +106,7 @@ impl Connection {
     }
 }
 
-/// Connects to the Hearth daemon and returns a [UnixStream].
+/// Connects to the Hearth daemon and returns a [Connection].
 pub async fn connect() -> std::io::Result<Connection> {
     use std::io::{Error, ErrorKind};
 
