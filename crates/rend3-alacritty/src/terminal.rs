@@ -37,7 +37,7 @@ use alacritty_terminal::{
     tty::Pty,
     Term,
 };
-use glam::{IVec2, Mat4, Quat, UVec2, Vec2, Vec3};
+use glam::{vec2, IVec2, Mat4, Quat, UVec2, Vec2, Vec3};
 use mio_extras::channel::Sender as MioSender;
 use owned_ttf_parser::AsFaceRef;
 use wgpu::{
@@ -102,6 +102,7 @@ pub struct TerminalState {
     pub half_size: Vec2,
     pub opacity: f32,
     pub colors: Colors,
+    pub padding: Vec2,
 }
 
 /// Private terminal mutable state.
@@ -151,9 +152,8 @@ impl Terminal {
         let cell_size = Vec2::new(cell_width, cell_height);
 
         let units_per_em = 0.04;
-        let grid_size = (initial_state.half_size * 2.0 / cell_size / units_per_em)
-            .ceil()
-            .as_uvec2();
+        let available = (initial_state.half_size - initial_state.padding) * 2.0;
+        let grid_size = (available / cell_size / units_per_em).ceil().as_uvec2();
 
         let size_info = alacritty_terminal::term::SizeInfo::new(
             grid_size.x as f32,
@@ -223,8 +223,9 @@ impl Terminal {
     pub fn update(&self, state: TerminalState) {
         let mut inner = self.inner.lock();
 
-        let grid_size = (state.half_size * 2.0 / self.cell_size / self.units_per_em)
-            .floor()
+        let available = (state.half_size - state.padding) * 2.0;
+        let grid_size = (available / self.cell_size / self.units_per_em)
+            .ceil()
             .as_uvec2();
 
         if inner.grid_size != grid_size {
@@ -391,6 +392,8 @@ impl TerminalCanvas {
     }
 
     pub fn update_from_content(&mut self, content: RenderableContent) {
+        self.draw_padding();
+
         for index in 0..COUNT {
             if let Some(color) = content.colors[index] {
                 self.state.colors[index] = Some(color);
@@ -465,6 +468,14 @@ impl TerminalCanvas {
             Mat4::from_translation(self.state.position) * Mat4::from_quat(self.state.orientation);
     }
 
+    pub fn draw_padding(&mut self) {
+        let tl = -self.state.half_size;
+        let br = self.state.half_size;
+        let inset = br - self.grid_to_pos(self.grid_size.x as i32, 0);
+        let color = self.get_background_color();
+        self.draw_hollow_rect(tl, br, inset, color);
+    }
+
     pub fn draw_cell(&mut self, cell: Indexed<&Cell>) {
         if cell.flags.contains(Flags::HIDDEN) {
             return;
@@ -492,9 +503,7 @@ impl TerminalCanvas {
         }
 
         let bg = if bg == Color::Named(NamedColor::Background) {
-            let base = self.color_to_u32(bg);
-            let alpha = (self.state.opacity * 255.0) as u8;
-            ((alpha as u32) << 24) | (base & 0x00ffffff)
+            self.get_background_color()
         } else {
             self.color_to_u32(bg)
         };
@@ -509,12 +518,30 @@ impl TerminalCanvas {
         let cursor_color = self.color_to_u32(cursor_color);
         let col = cursor.point.column.0 as i32;
         let row = cursor.point.line.0;
+        let line_width = 0.1 * self.units_per_em;
         match cursor.shape {
             CursorShape::Hidden => {}
-            _ => {
+            CursorShape::Block => {
                 let tl = self.grid_to_pos(col, row);
                 let br = self.grid_to_pos(col + 1, row + 1);
                 self.draw_solid_rect(tl, br, cursor_color);
+            }
+            CursorShape::Underline => {
+                let tl = self.grid_to_pos(col, row);
+                let br = self.grid_to_pos(col + 1, row + 1);
+                let tl = vec2(tl.x, br.y + line_width);
+                self.draw_solid_rect(tl, br, cursor_color);
+            }
+            CursorShape::Beam => {
+                let tl = self.grid_to_pos(col, row);
+                let br = self.grid_to_pos(col + 1, row + 1);
+                let br = vec2(tl.x + line_width, br.y);
+                self.draw_solid_rect(tl, br, cursor_color);
+            }
+            CursorShape::HollowBlock => {
+                let tl = self.grid_to_pos(col, row);
+                let br = self.grid_to_pos(col + 1, row + 1);
+                self.draw_hollow_rect(tl, br, Vec2::splat(line_width), cursor_color);
             }
         }
     }
@@ -548,6 +575,19 @@ impl TerminalCanvas {
             index + 1,
             index + 3,
         ]);
+    }
+
+    /// `border` can be positive for inset or negative for outset.
+    pub fn draw_hollow_rect(&mut self, tl: Vec2, br: Vec2, border: Vec2, color: u32) {
+        let bl = vec2(tl.x, br.y); // bottom-left
+        let tr = vec2(br.x, tl.y); // top-right
+        let bx = Vec2::new(border.x, 0.0); // border-X
+        let by = Vec2::new(0.0, border.y); // border-Y
+
+        self.draw_solid_rect(tl, bl + bx, color); // left edge
+        self.draw_solid_rect(tr - bx, br, color); // right edge
+        self.draw_solid_rect(tl + bx, tr - bx + by, color); // top edge
+        self.draw_solid_rect(bl + bx - by, br - bx, color); // bottom edge
     }
 
     pub fn grid_to_pos(&self, x: i32, y: i32) -> Vec2 {
@@ -602,5 +642,12 @@ impl TerminalCanvas {
     pub fn color_to_u32(&self, color: Color) -> u32 {
         let rgb = self.color_to_rgb(color);
         0xff000000 | ((rgb.b as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.r as u32)
+    }
+
+    pub fn get_background_color(&self) -> u32 {
+        let bg = Color::Named(NamedColor::Background);
+        let base = self.color_to_u32(bg);
+        let alpha = (self.state.opacity * 255.0) as u8;
+        ((alpha as u32) << 24) | (base & 0x00ffffff)
     }
 }
