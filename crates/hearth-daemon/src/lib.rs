@@ -23,6 +23,7 @@ use std::{
 };
 
 use hearth_core::{
+    process::{Connection, Process},
     runtime::{Plugin, Runtime, RuntimeBuilder},
     tokio::{
         self,
@@ -129,11 +130,19 @@ impl Plugin for DaemonPlugin {
 
         builder.add_runner(move |runtime| {
             tokio::spawn(async move {
+                let (root_ctx, root_handle) = match root_rx.await {
+                    Ok(root) => root,
+                    Err(err) => {
+                        tracing::warn!("error while waiting for daemon root cap: {:?}", err);
+                        return;
+                    }
+                };
+
                 let listener = Listener::new().await.unwrap();
 
                 loop {
                     let transport = listener.accept_next().await;
-                    self.on_accept(&runtime, transport);
+                    self.on_accept(&root_ctx, root_handle, &runtime, transport);
                 }
             });
         });
@@ -145,5 +154,26 @@ impl DaemonPlugin {
         Self {}
     }
 
-    pub fn on_accept(&mut self, runtime: &Arc<Runtime>, transport: hearth_ipc::Connection) {}
+    pub fn on_accept(
+        &mut self,
+        root_ctx: &Process,
+        root_handle: usize,
+        runtime: &Arc<Runtime>,
+        transport: hearth_ipc::Connection,
+    ) {
+        tracing::info!("Beginning IPC connection");
+        let conn = Connection::new(
+            runtime.process_store.clone(),
+            transport.op_rx,
+            transport.op_tx,
+            None,
+        );
+
+        tracing::info!("Sending the IPC client our root cap");
+        let mut conn = conn.lock();
+        let result = root_ctx.export_connection_root(root_handle, &mut conn);
+        if let Err(err) = result {
+            tracing::error!("error while sending IPC client root cap: {:?}", err);
+        }
+    }
 }
