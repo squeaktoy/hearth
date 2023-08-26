@@ -19,10 +19,11 @@
 use std::{
     ops::{Deref, DerefMut},
     path::PathBuf,
+    sync::Arc,
 };
 
 use hearth_core::{
-    runtime::{Plugin, RuntimeBuilder},
+    runtime::{Plugin, Runtime, RuntimeBuilder},
     tokio::{
         self,
         net::{UnixListener, UnixStream},
@@ -97,24 +98,28 @@ impl Listener {
         Ok(Self { uds, path })
     }
 
-    pub async fn run(self) {
-        loop {
+    pub async fn accept_next(&self) -> hearth_ipc::Connection {
+        let stream = loop {
             match self.accept().await {
-                Ok((_socket, addr)) => {
+                Ok((socket, addr)) => {
                     tracing::debug!("Accepting IPC connection from {:?}", addr);
+                    break socket;
                 }
                 Err(err) => {
                     tracing::error!("IPC listen error: {:?}", err);
                 }
             }
-        }
+        };
+
+        let (rx, tx) = stream.into_split();
+        hearth_ipc::Connection::new(rx, tx)
     }
 }
 
 pub struct DaemonPlugin {}
 
 impl Plugin for DaemonPlugin {
-    fn finish(self, builder: &mut RuntimeBuilder) {
+    fn finish(mut self, builder: &mut RuntimeBuilder) {
         let init = builder
             .get_plugin_mut::<InitPlugin>()
             .expect("InitPlugin not found");
@@ -125,7 +130,11 @@ impl Plugin for DaemonPlugin {
         builder.add_runner(move |runtime| {
             tokio::spawn(async move {
                 let listener = Listener::new().await.unwrap();
-                listener.run().await;
+
+                loop {
+                    let transport = listener.accept_next().await;
+                    self.on_accept(&runtime, transport);
+                }
             });
         });
     }
@@ -135,4 +144,6 @@ impl DaemonPlugin {
     pub fn new() -> Self {
         Self {}
     }
+
+    pub fn on_accept(&mut self, runtime: &Arc<Runtime>, transport: hearth_ipc::Connection) {}
 }
