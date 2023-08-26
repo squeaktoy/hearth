@@ -6,6 +6,7 @@ members = [
   "crates/hearth-ctl",
   "crates/hearth-cognito",
   "crates/hearth-core",
+  "crates/hearth-daemon",
   "crates/hearth-init",
   "crates/hearth-ipc",
   "crates/hearth-fs",
@@ -22,6 +23,7 @@ members = [
 bytemuck = "1.13"
 hearth-cognito = { path = "crates/hearth-cognito" }
 hearth-core = { path = "crates/hearth-core" }
+hearth-daemon = { path = "crates/hearth-daemon" }
 hearth-init = { path = "crates/hearth-init" }
 hearth-ipc = { path = "crates/hearth-ipc" }
 hearth-fs = { path = "crates/hearth-fs" }
