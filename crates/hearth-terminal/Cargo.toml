@@ -7,4 +7,5 @@ license = "AGPL-3.0-or-later"
 [dependencies]
 hearth-core.workspace = true
 hearth-rend3.workspace = true
+hearth-types.workspace = true
 rend3-alacritty.workspace = true
