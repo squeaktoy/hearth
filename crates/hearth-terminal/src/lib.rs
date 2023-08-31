@@ -89,7 +89,7 @@ impl<'a> Node<'a> for TerminalNode<'a> {
     }
 }
 
-/// Converts a serialized [State] into a `rend3-alacritty`-friendly [TerminalState].
+/// Converts a serialized `TerminalState` into a `rend3-alacritty`-friendly [TerminalState].
 pub fn convert_state(state: &hearth_types::terminal::TerminalState) -> TerminalState {
     TerminalState {
         position: state.position,
@@ -97,6 +97,7 @@ pub fn convert_state(state: &hearth_types::terminal::TerminalState) -> TerminalS
         half_size: state.half_size,
         opacity: state.opacity,
         padding: state.padding,
+        units_per_em: state.units_per_em,
         ..Default::default()
     }
 }
