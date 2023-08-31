@@ -61,23 +61,113 @@ impl<O, E> From<E> for ResponseInfo<Result<O, E>> {
 }
 
 #[async_trait]
-pub trait RequestResponseProcess: Send + 'static {
-    type Request: for<'a> Deserialize<'a> + Send;
+pub trait ProcessRunner: Send + 'static {
+    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: Process);
+}
+
+#[async_trait]
+pub trait SinkProcess: Send + Sync + 'static {
+    type Message: for<'a> Deserialize<'a> + Send + Sync;
+
+    async fn on_message(&mut self, message: &mut RequestInfo<'_, Self::Message>);
+}
+
+#[async_trait]
+impl<T> ProcessRunner for T
+where
+    T: SinkProcess,
+{
+    async fn run(mut self, label: String, runtime: Arc<Runtime>, mut ctx: Process) {
+        while let Some(signal) = ctx.recv().await {
+            let ContextSignal::Message(msg) = signal else {
+                // TODO make this a process log
+                warn!("{:?} expected message but received: {:?}", label, signal);
+                continue;
+            };
+
+            let Some(reply) = msg.caps.first().copied() else {
+                // TODO make this a process log
+                debug!("Request to {:?} has no reply address", label);
+                continue;
+            };
+
+            let free_caps = |ctx: &mut Process| {
+                for cap in msg.caps.iter() {
+                    ctx.delete_capability(*cap).unwrap();
+                }
+            };
+
+            let data: T::Message = match serde_json::from_slice(&msg.data) {
+                Ok(request) => request,
+                Err(err) => {
+                    // TODO make this a process log
+                    debug!("Failed to parse {}: {:?}", type_name::<T::Message>(), err);
+                    free_caps(&mut ctx);
+                    continue;
+                }
+            };
+
+            let mut message = RequestInfo {
+                reply,
+                cap_args: &msg.caps[1..],
+                ctx: &mut ctx,
+                runtime: &runtime,
+                data,
+            };
+
+            self.on_message(&mut message).await;
+
+            free_caps(&mut ctx);
+        }
+    }
+}
+
+#[async_trait]
+pub trait RequestResponseProcess: Send + Sync + 'static {
+    type Request: for<'a> Deserialize<'a> + Send + Sync;
     type Response: Serialize;
 
     async fn on_request(
         &mut self,
-        request: RequestInfo<'_, Self::Request>,
+        request: &mut RequestInfo<'_, Self::Request>,
     ) -> ResponseInfo<Self::Response>;
 }
 
-pub trait RequestResponseService: RequestResponseProcess {
+#[async_trait]
+impl<T> SinkProcess for T
+where
+    T: RequestResponseProcess,
+{
+    type Message = T::Request;
+
+    async fn on_message(&mut self, message: &mut RequestInfo<'_, Self::Message>) {
+        let response = self.on_request(message).await;
+        let response_data = serde_json::to_vec(&response.data).unwrap();
+
+        message
+            .ctx
+            .send(
+                message.reply,
+                ContextMessage {
+                    data: response_data,
+                    caps: response.caps.clone(),
+                },
+            )
+            .unwrap();
+
+        for cap in response.caps {
+            message.ctx.delete_capability(cap).unwrap();
+        }
+    }
+}
+
+pub trait ServiceRunner: ProcessRunner {
     const NAME: &'static str;
 }
 
 impl<T> Plugin for T
 where
-    T: RequestResponseService + Send + Sync,
+    T: ServiceRunner + Send + Sync,
 {
     fn finish(self, builder: &mut RuntimeBuilder) {
         builder.add_service(
@@ -85,79 +175,8 @@ where
             ProcessInfo {},
             Flags::SEND,
             move |runtime, ctx| {
-                tokio::spawn(run_request_response_process(
-                    runtime,
-                    ctx,
-                    Self::NAME.to_string(),
-                    self,
-                ));
+                tokio::spawn(self.run(Self::NAME.to_string(), runtime, ctx));
             },
         );
-    }
-}
-
-pub async fn run_request_response_process<T>(
-    runtime: Arc<Runtime>,
-    mut ctx: Process,
-    label: String,
-    mut process: T,
-) where
-    T: RequestResponseProcess,
-{
-    while let Some(signal) = ctx.recv().await {
-        let ContextSignal::Message(msg) = signal else {
-            // TODO make this a process log
-            warn!("{:?} expected message but received: {:?}", label, signal);
-            continue;
-        };
-
-        let Some(reply) = msg.caps.first().copied() else {
-            // TODO make this a process log
-            debug!("Request to {:?} has no reply address", label);
-            continue;
-        };
-
-        let free_caps = |ctx: &mut Process| {
-            for cap in msg.caps.iter() {
-                ctx.delete_capability(*cap).unwrap();
-            }
-        };
-
-        let data: T::Request = match serde_json::from_slice(&msg.data) {
-            Ok(request) => request,
-            Err(err) => {
-                // TODO make this a process log
-                debug!("Failed to parse {}: {:?}", type_name::<T::Request>(), err);
-
-                free_caps(&mut ctx);
-                continue;
-            }
-        };
-
-        let request = RequestInfo {
-            reply,
-            cap_args: &msg.caps[1..],
-            ctx: &mut ctx,
-            runtime: &runtime,
-            data,
-        };
-
-        let response = process.on_request(request).await;
-        let response_data = serde_json::to_vec(&response.data).unwrap();
-
-        ctx.send(
-            reply,
-            ContextMessage {
-                data: response_data,
-                caps: response.caps.clone(),
-            },
-        )
-        .unwrap();
-
-        free_caps(&mut ctx);
-
-        for cap in response.caps {
-            ctx.delete_capability(cap).unwrap();
-        }
     }
 }
