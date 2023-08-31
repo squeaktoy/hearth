@@ -217,7 +217,7 @@ impl Window {
         let size = self.window.inner_size();
         let resolution = glam::UVec2::new(size.width, size.height);
 
-        let eye = glam::Vec3::new(3.0, 3.0, -5.0);
+        let eye = glam::Vec3::new(3.0, 3.0, 5.0);
         let center = glam::Vec3::ZERO;
         let up = glam::Vec3::Y;
         let view = glam::Mat4::look_at_rh(eye, center, up);
@@ -242,6 +242,8 @@ impl Window {
         } else {
             let _ = on_complete_rx.blocking_recv();
         }
+
+        self.window.request_redraw();
     }
 }
 
