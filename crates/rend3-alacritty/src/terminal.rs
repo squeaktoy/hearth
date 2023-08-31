@@ -103,6 +103,7 @@ pub struct TerminalState {
     pub opacity: f32,
     pub colors: Colors,
     pub padding: Vec2,
+    pub units_per_em: f32,
 }
 
 impl Default for TerminalState {
@@ -177,6 +178,7 @@ impl Default for TerminalState {
             opacity: 1.0,
             colors,
             padding: Vec2::ZERO,
+            units_per_em: 0.04,
         }
     }
 }
@@ -247,7 +249,6 @@ pub struct Terminal {
     term_channel: FairMutex<MioSender<Msg>>,
     should_quit: AtomicBool,
     inner: FairMutex<TerminalInner>,
-    units_per_em: f32,
     fonts: FontSet<FaceWithMetrics>,
     font_baselines: FontSet<f32>,
     cell_size: Vec2,
@@ -261,9 +262,10 @@ impl Terminal {
             .as_ref()
             .map(|font| (cell_size.y - font.height) / 2.0 + font.ascender);
 
-        let units_per_em = 0.04;
         let available = (initial_state.half_size - initial_state.padding) * 2.0;
-        let grid_size = (available / cell_size / units_per_em).ceil().as_uvec2();
+        let grid_size = (available / cell_size / initial_state.units_per_em)
+            .ceil()
+            .as_uvec2();
 
         let size_info = alacritty_terminal::term::SizeInfo::new(
             grid_size.x as f32,
@@ -313,7 +315,6 @@ impl Terminal {
             term_channel: FairMutex::new(term_channel),
             should_quit: AtomicBool::new(false),
             inner: FairMutex::new(inner),
-            units_per_em,
             cell_size,
             font_baselines,
         };
@@ -334,7 +335,7 @@ impl Terminal {
         let mut inner = self.inner.lock();
 
         let available = (state.half_size - state.padding) * 2.0;
-        let grid_size = (available / self.cell_size / self.units_per_em)
+        let grid_size = (available / self.cell_size / state.units_per_em)
             .ceil()
             .as_uvec2();
 
@@ -369,10 +370,8 @@ impl Terminal {
         drop(inner); // get off the mutex
 
         let font_baselines = self.font_baselines.clone();
-        let units_per_em = self.units_per_em;
         let mut canvas = TerminalCanvas::new(
             self.fonts.clone(),
-            units_per_em,
             state,
             grid_size,
             self.cell_size,
@@ -469,7 +468,6 @@ pub struct TerminalCanvas {
     overlay_vertices: Vec<SolidVertex>,
     overlay_indices: Vec<u32>,
     glyphs: Vec<(Vec2, FontStyle, u16, u32)>,
-    units_per_em: f32,
     state: TerminalState,
     grid_size: UVec2,
     cell_size: Vec2,
@@ -479,7 +477,6 @@ pub struct TerminalCanvas {
 impl TerminalCanvas {
     pub fn new(
         fonts: FontSet<FaceWithMetrics>,
-        units_per_em: f32,
         state: TerminalState,
         grid_size: UVec2,
         cell_size: Vec2,
@@ -492,7 +489,6 @@ impl TerminalCanvas {
             overlay_vertices: Vec::new(),
             overlay_indices: Vec::new(),
             glyphs: Vec::new(),
-            units_per_em,
             state,
             grid_size,
             cell_size,
@@ -522,7 +518,7 @@ impl TerminalCanvas {
 
         for (offset, style, glyph, color) in self.glyphs.iter().copied() {
             let (vertices, indices) = &mut glyph_meshes.get_mut(style);
-            let baseline = *self.font_baselines.get(style) * self.units_per_em;
+            let baseline = *self.font_baselines.get(style) * self.state.units_per_em;
             let offset = offset + Vec2::new(0.0, -baseline);
 
             let index = vertices.len() as u32;
@@ -535,7 +531,7 @@ impl TerminalCanvas {
             touched.get_mut(style).push(glyph);
 
             vertices.extend(bitmap.vertices.iter().map(|v| GlyphVertex {
-                position: v.position * self.units_per_em + offset,
+                position: v.position * self.state.units_per_em + offset,
                 tex_coords: v.tex_coords,
                 color,
             }));
@@ -626,10 +622,10 @@ impl TerminalCanvas {
             self.glyphs.push((tl, style, glyph.0, fg));
         }
 
-        let baseline = *self.font_baselines.get(style) * self.units_per_em;
+        let baseline = *self.font_baselines.get(style) * self.state.units_per_em;
         let make_line = |pos, width| -> (Vec2, Vec2) {
-            let cy = tl.y + pos * self.units_per_em - baseline;
-            let w = width * self.units_per_em;
+            let cy = tl.y + pos * self.state.units_per_em - baseline;
+            let w = width * self.state.units_per_em;
             let tl = vec2(tl.x, cy);
             let br = vec2(br.x, cy + w);
             (tl, br)
@@ -653,7 +649,7 @@ impl TerminalCanvas {
         let cursor_color = self.color_to_u32(cursor_color);
         let col = cursor.point.column.0 as i32;
         let row = cursor.point.line.0;
-        let line_width = 0.1 * self.units_per_em;
+        let line_width = 0.1 * self.state.units_per_em;
         match cursor.shape {
             CursorShape::Hidden => {}
             CursorShape::Block => {
@@ -728,7 +724,7 @@ impl TerminalCanvas {
     pub fn grid_to_pos(&self, x: i32, y: i32) -> Vec2 {
         let mut pos = IVec2::new(x, y).as_vec2() - self.grid_size.as_vec2() / 2.0;
         pos.y = -pos.y;
-        pos * self.cell_size * self.units_per_em
+        pos * self.cell_size * self.state.units_per_em
     }
 
     pub fn color_to_rgb(&self, color: Color) -> Rgb {
