@@ -401,7 +401,7 @@ struct WasmProcess {
 }
 
 impl WasmProcess {
-    async fn run(&mut self, runtime: Arc<Runtime>, ctx: Process) {
+    async fn run(mut self, runtime: Arc<Runtime>, ctx: Process) {
         let pid = ctx.get_pid();
         match self
             .run_inner(runtime, ctx)
@@ -463,15 +463,12 @@ impl RequestResponseProcess for WasmProcessSpawner {
 
     async fn on_request(
         &mut self,
-        request: RequestInfo<'_, WasmSpawnInfo>,
+        request: &mut RequestInfo<'_, WasmSpawnInfo>,
     ) -> ResponseInfo<Self::Response> {
-        let RequestInfo {
-            ctx, data, runtime, ..
-        } = request;
-
-        let module = runtime
+        let module = request
+            .runtime
             .asset_store
-            .load_asset::<WasmModuleLoader>(&data.lump)
+            .load_asset::<WasmModuleLoader>(&request.data.lump)
             .await
             .context("loading Wasm module");
 
@@ -483,26 +480,22 @@ impl RequestResponseProcess for WasmProcessSpawner {
             }
         };
 
-        debug!("Spawning module {}", data.lump);
+        debug!("Spawning module {}", request.data.lump);
         let info = ProcessInfo {};
         let flags = Flags::SEND | Flags::KILL;
         let child = request.runtime.process_factory.spawn(info, flags);
-        let child_cap = ctx.copy_self_capability(&child);
+        let child_cap = request.ctx.copy_self_capability(&child);
 
-        let runtime = runtime.to_owned();
-        let engine = self.engine.to_owned();
-        let linker = self.linker.to_owned();
-        tokio::spawn(async move {
-            WasmProcess {
-                engine,
-                linker,
-                module,
-                entrypoint: data.entrypoint,
-                this_lump: data.lump,
-            }
-            .run(runtime, child)
-            .await;
-        });
+        let process = WasmProcess {
+            engine: self.engine.clone(),
+            linker: self.linker.clone(),
+            module,
+            entrypoint: request.data.entrypoint,
+            this_lump: request.data.lump,
+        };
+
+        let runtime = request.runtime.clone();
+        tokio::spawn(process.run(runtime, child));
 
         ResponseInfo {
             data: (),
@@ -511,7 +504,7 @@ impl RequestResponseProcess for WasmProcessSpawner {
     }
 }
 
-impl RequestResponseService for WasmProcessSpawner {
+impl ServiceRunner for WasmProcessSpawner {
     const NAME: &'static str = "hearth.cognito.WasmProcessSpawner";
 }
 
