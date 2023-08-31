@@ -29,8 +29,11 @@ impl RequestResponseProcess for FsPlugin {
     type Request = Request;
     type Response = Response;
 
-    async fn on_request(&mut self, request: RequestInfo<'_, Request>) -> ResponseInfo<Response> {
-        let target = match PathBuf::try_from(request.data.target) {
+    async fn on_request(
+        &mut self,
+        request: &mut RequestInfo<'_, Request>,
+    ) -> ResponseInfo<Response> {
+        let target = match PathBuf::try_from(&request.data.target) {
             Ok(target) => target,
             Err(_) => return Error::InvalidTarget.into(),
         };
@@ -82,7 +85,7 @@ impl RequestResponseProcess for FsPlugin {
     }
 }
 
-impl RequestResponseService for FsPlugin {
+impl ServiceRunner for FsPlugin {
     const NAME: &'static str = "hearth.fs.Filesystem";
 }
 
