@@ -16,42 +16,19 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::sync::{
-    mpsc::{channel, Sender},
-    Arc,
-};
+use std::sync::Arc;
 
-use alacritty_terminal::{
-    config::PtyConfig,
-    event::{Event as TermEvent, EventListener},
-    event_loop::{EventLoop as TermEventLoop, Msg as TermMsg, State as TermState},
-    sync::FairMutex,
-    term::color::{Colors, Rgb},
-    tty::Pty,
-    Term,
-};
 use hearth_core::runtime::{Plugin, RuntimeBuilder};
 use hearth_rend3::*;
-use rend3_alacritty::*;
+use rend3_alacritty::{
+    terminal::{Terminal, TerminalConfig, TerminalState},
+    text::{FaceAtlas, FontSet},
+    *,
+};
 use rend3_routine::base::BaseRenderGraphIntermediateState;
 
-pub struct TermListener {
-    sender: Sender<TermEvent>,
-}
-
-impl TermListener {
-    pub fn new(sender: Sender<TermEvent>) -> Self {
-        Self { sender }
-    }
-}
-
-impl EventListener for TermListener {
-    fn send_event(&self, event: TermEvent) {
-        self.sender.send(event).unwrap();
-    }
-}
-
 pub struct TerminalRoutine {
+    config: TerminalConfig,
     store: TerminalStore,
 }
 
@@ -77,108 +54,17 @@ impl TerminalRoutine {
             Arc::new(face_atlas)
         });
 
-        let config = Arc::new(TerminalConfig { fonts });
+        let command = None;
+        let config = TerminalConfig { fonts, command };
 
-        let store = TerminalStore::new(config, &rend3.renderer, rend3.surface_format);
+        let mut store = TerminalStore::new(config.clone(), &rend3.renderer, rend3.surface_format);
 
-        Self { store }
-    }
+        // debug terminal
+        let state = TerminalState::default();
+        let terminal = Terminal::new(config.clone(), state);
+        store.insert_terminal(&terminal);
 
-    pub fn add_terminal(&mut self) {
-        let term_size =
-            alacritty_terminal::term::SizeInfo::new(100.0, 75.0, 1.0, 1.0, 0.0, 0.0, false);
-
-        let (sender, term_events) = channel();
-
-        let shell = alacritty_terminal::config::Program::Just("/usr/bin/fish".into());
-
-        let term_config = alacritty_terminal::config::Config {
-            pty_config: PtyConfig {
-                shell: Some(shell),
-                working_directory: None,
-                hold: false,
-            },
-            ..Default::default()
-        };
-
-        let term_listener = TermListener::new(sender.clone());
-
-        let term = Term::new(&term_config, term_size, term_listener);
-        let term = FairMutex::new(term);
-        let term = Arc::new(term);
-
-        let pty = alacritty_terminal::tty::new(&term_config.pty_config, &term_size, None).unwrap();
-
-        let term_listener = TermListener::new(sender);
-        let term_loop = TermEventLoop::new(term.clone(), term_listener, pty, false, false);
-        let term_channel = term_loop.channel();
-
-        let mut colors = Colors::default();
-        Self::load_colors(&mut colors);
-    }
-
-    pub fn load_colors(color: &mut Colors) {
-        use alacritty_terminal::ansi::NamedColor::*;
-
-        let maps = [
-            (Black, Rgb { r: 0, g: 0, b: 0 }),
-            (Red, Rgb { r: 255, g: 0, b: 0 }),
-            (Green, Rgb { r: 0, g: 255, b: 0 }),
-            (Blue, Rgb { r: 0, g: 0, b: 255 }),
-            (
-                Yellow,
-                Rgb {
-                    r: 255,
-                    g: 255,
-                    b: 0,
-                },
-            ),
-            (
-                Magenta,
-                Rgb {
-                    r: 255,
-                    g: 0,
-                    b: 255,
-                },
-            ),
-            (
-                Cyan,
-                Rgb {
-                    r: 0,
-                    g: 255,
-                    b: 255,
-                },
-            ),
-            (
-                White,
-                Rgb {
-                    r: 255,
-                    g: 255,
-                    b: 255,
-                },
-            ),
-        ];
-
-        for map in maps.iter() {
-            color[map.0] = Some(map.1);
-        }
-
-        let dupes = [
-            (Background, Black),
-            (Foreground, White),
-            (BrightBlack, Black),
-            (BrightRed, Red),
-            (BrightGreen, Green),
-            (BrightYellow, Yellow),
-            (BrightBlue, Blue),
-            (BrightMagenta, Magenta),
-            (BrightCyan, Cyan),
-            (BrightWhite, White),
-        ];
-
-        for (dst, src) in dupes.iter() {
-            color[*dst] = color[*src];
-        }
+        Self { store, config }
     }
 }
 
