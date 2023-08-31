@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use glam::{Vec3, Quat, Vec2};
+use glam::{Quat, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
