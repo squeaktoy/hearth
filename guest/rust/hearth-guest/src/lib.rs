@@ -380,6 +380,28 @@ mod abi {
 }
 
 #[no_mangle]
+extern "C" fn _hearth_init() {
+    // set panic handler that prints error to log
+    std::panic::set_hook(Box::new(|info| {
+        // references default_hook() from
+        // https://doc.rust-lang.org/src/std/panicking.rs.html
+        let location = info.location().unwrap();
+
+        let payload = info.payload();
+        let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
+            *s
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            &s[..]
+        } else {
+            "Box<dyn Any>"
+        };
+
+        let log_message = format!("panicked at '{msg}', {location}");
+        log(ProcessLogLevel::Error, "panic", &log_message);
+    }));
+}
+
+#[no_mangle]
 extern "C" fn _hearth_spawn_by_index(function: u32) {
     let function: fn() = unsafe { std::mem::transmute(function as usize) };
     function();

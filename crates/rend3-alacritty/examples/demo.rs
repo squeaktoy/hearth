@@ -13,43 +13,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use alacritty_terminal::config::PtyConfig;
-use alacritty_terminal::event::{Event as TermEvent, EventListener};
-use alacritty_terminal::event_loop::{
-    EventLoop as TermEventLoop, Msg as TermMsg, State as TermState,
-};
-use alacritty_terminal::sync::FairMutex;
+use std::f32::consts::FRAC_PI_2;
+use std::sync::Arc;
+
 use alacritty_terminal::term::color::{Colors, Rgb};
-use alacritty_terminal::tty::Pty;
-use alacritty_terminal::Term;
-use mio_extras::channel::Sender as MioSender;
+use glam::Vec2;
 use rend3::types::TextureHandle;
-use rend3_alacritty::{FaceAtlas, FontSet, Terminal, TerminalConfig, TerminalStore};
+use rend3_alacritty::terminal::{Terminal, TerminalConfig, TerminalState};
+use rend3_alacritty::text::{FaceAtlas, FontSet};
+use rend3_alacritty::TerminalStore;
 use rend3_routine::base::BaseRenderGraphIntermediateState;
-use winit::event::{Event, WindowEvent};
+use winit::dpi::PhysicalPosition;
+use winit::event::{ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::ControlFlow;
 
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, RwLock};
-use std::thread::JoinHandle;
-
 const SAMPLE_COUNT: rend3::types::SampleCount = rend3::types::SampleCount::One;
-
-pub struct TermListener {
-    sender: Sender<TermEvent>,
-}
-
-impl TermListener {
-    pub fn new(sender: Sender<TermEvent>) -> Self {
-        Self { sender }
-    }
-}
-
-impl EventListener for TermListener {
-    fn send_event(&self, event: TermEvent) {
-        self.sender.send(event).unwrap();
-    }
-}
 
 fn load_skybox_image(data: &mut Vec<u8>, image: &[u8]) {
     let decoded = image::load_from_memory(image).unwrap().into_rgba8();
@@ -58,13 +36,15 @@ fn load_skybox_image(data: &mut Vec<u8>, image: &[u8]) {
 
 pub struct DemoInner {
     store: TerminalStore,
-    term_loop: JoinHandle<(TermEventLoop<Pty, TermListener>, TermState)>,
-    term_channel: MioSender<TermMsg>,
-    term_events: Receiver<TermEvent>,
-    term: Arc<FairMutex<Term<TermListener>>>,
-    term_render: Arc<RwLock<Terminal>>,
-    colors: Colors,
+    terminal: Arc<Terminal>,
     skybox: TextureHandle,
+    orbit_pitch: f32,
+    orbit_yaw: f32,
+    orbit_distance: f32,
+    mouse_pos: PhysicalPosition<f64>,
+    is_orbiting: bool,
+    state: TerminalState,
+    is_resizing: bool,
 }
 
 impl DemoInner {
@@ -86,40 +66,23 @@ impl DemoInner {
             Arc::new(face_atlas)
         });
 
-        let config = Arc::new(TerminalConfig { fonts });
-
-        let mut store = TerminalStore::new(config, renderer, surface_format);
-
-        let term_size =
-            alacritty_terminal::term::SizeInfo::new(100.0, 75.0, 1.0, 1.0, 0.0, 0.0, false);
-
-        let (sender, term_events) = channel();
-
-        let shell = alacritty_terminal::config::Program::Just("/usr/bin/fish".into());
-
-        let term_config = alacritty_terminal::config::Config {
-            pty_config: PtyConfig {
-                shell: Some(shell),
-                working_directory: None,
-                hold: false,
-            },
-            ..Default::default()
-        };
-
-        let term_listener = TermListener::new(sender.clone());
-
-        let term = Term::new(&term_config, term_size, term_listener);
-        let term = FairMutex::new(term);
-        let term = Arc::new(term);
-
-        let pty = alacritty_terminal::tty::new(&term_config.pty_config, &term_size, None).unwrap();
-
-        let term_listener = TermListener::new(sender);
-        let term_loop = TermEventLoop::new(term.clone(), term_listener, pty, false, false);
-        let term_channel = term_loop.channel();
-
         let mut colors = Colors::default();
         Self::load_colors(&mut colors);
+
+        let state = TerminalState {
+            position: glam::Vec3::ZERO,
+            orientation: glam::Quat::IDENTITY,
+            half_size: Vec2::new(1.2, 0.9),
+            padding: Vec2::splat(0.2),
+            opacity: 0.8,
+            colors,
+        };
+
+        let command = None; // autoselect shell
+        let config = TerminalConfig { fonts, command };
+        let terminal = Terminal::new(config.clone(), state.clone());
+        let mut store = TerminalStore::new(config, renderer, surface_format);
+        store.insert_terminal(&terminal);
 
         // load skybox
         let mut data = Vec::new();
@@ -140,14 +103,16 @@ impl DemoInner {
         });
 
         Self {
-            term_render: store.create_terminal(),
+            terminal,
             store,
-            term,
-            term_loop: term_loop.spawn(),
-            term_channel,
-            term_events,
-            colors,
             skybox,
+            orbit_pitch: 0.0,
+            orbit_yaw: 0.0,
+            orbit_distance: 3.0,
+            state,
+            is_orbiting: false,
+            is_resizing: false,
+            mouse_pos: Default::default(),
         }
     }
 
@@ -239,7 +204,7 @@ impl DemoInner {
         if input.state == winit::event::ElementState::Pressed {
             if let Some(keycode) = input.virtual_keycode {
                 if let Some(input) = Self::virtual_keycode_to_string(keycode) {
-                    self.send_input(input);
+                    self.terminal.send_input(input);
                 }
             }
         }
@@ -255,13 +220,7 @@ impl DemoInner {
         }
 
         let string = c.to_string();
-        self.send_input(string.as_str());
-    }
-
-    pub fn send_input(&mut self, input: &str) {
-        let bytes = input.as_bytes();
-        let cow = std::borrow::Cow::Owned(bytes.to_owned());
-        self.term_channel.send(TermMsg::Input(cow)).unwrap();
+        self.terminal.send_input(string.as_str());
     }
 }
 
@@ -291,18 +250,6 @@ impl rend3_framework::App for Demo {
             .lock()
             .set_background_texture(Some(inner.skybox.clone()));
 
-        renderer.set_camera_data(rend3::types::Camera {
-            projection: rend3::types::CameraProjection::Perspective {
-                vfov: 60.0,
-                near: 0.1,
-            },
-            view: glam::Mat4::look_at_rh(
-                glam::Vec3::new(-0.5, 0.5, 2.0),
-                glam::Vec3::ZERO,
-                glam::Vec3::new(0.0, 1.0, 0.0),
-            ),
-        });
-
         self.inner = Some(inner);
     }
 
@@ -330,42 +277,91 @@ impl rend3_framework::App for Demo {
                 WindowEvent::ReceivedCharacter(c) => {
                     inner.on_received_character(c);
                 }
+                WindowEvent::MouseInput {
+                    state,
+                    button: MouseButton::Left,
+                    ..
+                } => match state {
+                    ElementState::Pressed => inner.is_orbiting = true,
+                    ElementState::Released => inner.is_orbiting = false,
+                },
+                WindowEvent::MouseInput {
+                    state,
+                    button: MouseButton::Right,
+                    ..
+                } => match state {
+                    ElementState::Pressed => inner.is_resizing = true,
+                    ElementState::Released => inner.is_resizing = false,
+                },
+                WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    button: MouseButton::Middle,
+                    ..
+                } => {
+                    inner.orbit_pitch = 0.0;
+                    inner.orbit_yaw = 0.0;
+                    inner.orbit_distance = 3.0;
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    let dx = (position.x - inner.mouse_pos.x) as f32;
+                    let dy = (position.y - inner.mouse_pos.y) as f32;
+                    inner.mouse_pos = position;
+
+                    if inner.is_orbiting {
+                        let yaw_factor = -0.003;
+                        let pitch_factor = -0.003;
+
+                        inner.orbit_yaw += dx * yaw_factor;
+
+                        inner.orbit_pitch = (inner.orbit_pitch + dy * pitch_factor)
+                            .clamp(-FRAC_PI_2 * 0.99, FRAC_PI_2 * 0.99);
+                    } else if inner.is_resizing {
+                        let factor = 0.01;
+                        inner.state.half_size = (inner.state.half_size
+                            + Vec2::new(dx, dy) * factor)
+                            .clamp(Vec2::new(0.1, 0.1), Vec2::new(4.0, 4.0));
+
+                        inner.terminal.update(inner.state.clone());
+                    }
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    let delta = match delta {
+                        MouseScrollDelta::LineDelta(_hori, vert) => vert * 30.0,
+                        MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+                    };
+
+                    let factor = -0.01;
+                    inner.orbit_distance = (inner.orbit_distance + delta * factor).clamp(1.0, 20.0);
+                }
                 _ => {}
             },
             Event::MainEventsCleared => {
-                while let Ok(event) = inner.term_events.try_recv() {
-                    match event {
-                        TermEvent::ColorRequest(index, format) => {
-                            let color = inner.colors[index].unwrap_or(Rgb {
-                                r: 255,
-                                g: 0,
-                                b: 255,
-                            });
-
-                            inner.send_input(&format(color));
-                        }
-                        TermEvent::PtyWrite(text) => inner.send_input(&text),
-                        TermEvent::Exit => {
-                            control_flow(ControlFlow::Exit);
-                            return;
-                        }
-                        _ => {}
-                    }
+                if inner.terminal.should_quit() {
+                    control_flow(ControlFlow::Exit);
+                } else {
+                    window.request_redraw();
                 }
-
-                window.request_redraw();
             }
             Event::RedrawRequested(_) => {
+                let eye = glam::Quat::from_rotation_y(inner.orbit_yaw)
+                    * glam::Quat::from_rotation_x(inner.orbit_pitch)
+                    * (glam::Vec3::Z * inner.orbit_distance);
+
+                renderer.set_camera_data(rend3::types::Camera {
+                    projection: rend3::types::CameraProjection::Perspective {
+                        vfov: 60.0,
+                        near: 0.1,
+                    },
+                    view: glam::Mat4::look_at_rh(
+                        eye,
+                        glam::Vec3::ZERO,
+                        glam::Vec3::new(0.0, 1.0, 0.0),
+                    ),
+                });
+
                 let frame = rend3::util::output::OutputFrame::Surface {
                     surface: Arc::clone(surface.unwrap()),
                 };
-
-                let term = inner.term.lock();
-                inner
-                    .term_render
-                    .write()
-                    .unwrap()
-                    .update(&term, &inner.colors);
 
                 let routine = inner.store.create_routine();
 
