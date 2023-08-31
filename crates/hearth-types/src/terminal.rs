@@ -32,6 +32,7 @@ pub struct TerminalState {
     pub half_size: Vec2,
     pub opacity: f32,
     pub padding: Vec2,
+    pub units_per_em: f32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
