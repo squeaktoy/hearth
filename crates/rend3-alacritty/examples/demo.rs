@@ -16,7 +16,6 @@
 use std::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 
-use alacritty_terminal::term::color::{Colors, Rgb};
 use glam::Vec2;
 use rend3::types::TextureHandle;
 use rend3_alacritty::terminal::{Terminal, TerminalConfig, TerminalState};
@@ -66,16 +65,13 @@ impl DemoInner {
             Arc::new(face_atlas)
         });
 
-        let mut colors = Colors::default();
-        Self::load_colors(&mut colors);
-
         let state = TerminalState {
             position: glam::Vec3::ZERO,
             orientation: glam::Quat::IDENTITY,
             half_size: Vec2::new(1.2, 0.9),
             padding: Vec2::splat(0.2),
             opacity: 0.8,
-            colors,
+            ..Default::default()
         };
 
         let command = None; // autoselect shell
@@ -113,70 +109,6 @@ impl DemoInner {
             is_orbiting: false,
             is_resizing: false,
             mouse_pos: Default::default(),
-        }
-    }
-
-    pub fn load_colors(color: &mut Colors) {
-        use alacritty_terminal::ansi::NamedColor::*;
-
-        let maps = [
-            (Black, Rgb { r: 0, g: 0, b: 0 }),
-            (Red, Rgb { r: 255, g: 0, b: 0 }),
-            (Green, Rgb { r: 0, g: 255, b: 0 }),
-            (Blue, Rgb { r: 0, g: 0, b: 255 }),
-            (
-                Yellow,
-                Rgb {
-                    r: 255,
-                    g: 255,
-                    b: 0,
-                },
-            ),
-            (
-                Magenta,
-                Rgb {
-                    r: 255,
-                    g: 0,
-                    b: 255,
-                },
-            ),
-            (
-                Cyan,
-                Rgb {
-                    r: 0,
-                    g: 255,
-                    b: 255,
-                },
-            ),
-            (
-                White,
-                Rgb {
-                    r: 255,
-                    g: 255,
-                    b: 255,
-                },
-            ),
-        ];
-
-        for map in maps.iter() {
-            color[map.0] = Some(map.1);
-        }
-
-        let dupes = [
-            (Background, Black),
-            (Foreground, White),
-            (BrightBlack, Black),
-            (BrightRed, Red),
-            (BrightGreen, Green),
-            (BrightYellow, Yellow),
-            (BrightBlue, Blue),
-            (BrightMagenta, Magenta),
-            (BrightCyan, Cyan),
-            (BrightWhite, White),
-        ];
-
-        for (dst, src) in dupes.iter() {
-            color[*dst] = color[*src];
         }
     }
 

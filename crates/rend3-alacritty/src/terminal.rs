@@ -105,6 +105,82 @@ pub struct TerminalState {
     pub padding: Vec2,
 }
 
+impl Default for TerminalState {
+    fn default() -> Self {
+        use alacritty_terminal::ansi::NamedColor::*;
+        let mut colors = Colors::default();
+
+        let maps = [
+            (Black, Rgb { r: 0, g: 0, b: 0 }),
+            (Red, Rgb { r: 255, g: 0, b: 0 }),
+            (Green, Rgb { r: 0, g: 255, b: 0 }),
+            (Blue, Rgb { r: 0, g: 0, b: 255 }),
+            (
+                Yellow,
+                Rgb {
+                    r: 255,
+                    g: 255,
+                    b: 0,
+                },
+            ),
+            (
+                Magenta,
+                Rgb {
+                    r: 255,
+                    g: 0,
+                    b: 255,
+                },
+            ),
+            (
+                Cyan,
+                Rgb {
+                    r: 0,
+                    g: 255,
+                    b: 255,
+                },
+            ),
+            (
+                White,
+                Rgb {
+                    r: 255,
+                    g: 255,
+                    b: 255,
+                },
+            ),
+        ];
+
+        for map in maps.iter() {
+            colors[map.0] = Some(map.1);
+        }
+
+        let dupes = [
+            (Background, Black),
+            (Foreground, White),
+            (BrightBlack, Black),
+            (BrightRed, Red),
+            (BrightGreen, Green),
+            (BrightYellow, Yellow),
+            (BrightBlue, Blue),
+            (BrightMagenta, Magenta),
+            (BrightCyan, Cyan),
+            (BrightWhite, White),
+        ];
+
+        for (dst, src) in dupes.iter() {
+            colors[*dst] = colors[*src];
+        }
+
+        Self {
+            position: Vec3::ZERO,
+            orientation: Quat::IDENTITY,
+            half_size: Vec2::ONE,
+            opacity: 1.0,
+            colors,
+            padding: Vec2::ZERO,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct FaceWithMetrics {
     atlas: Arc<FaceAtlas>,
@@ -657,7 +733,11 @@ impl TerminalCanvas {
 
     pub fn color_to_rgb(&self, color: Color) -> Rgb {
         match color {
-            Color::Named(name) => self.state.colors[name].unwrap(),
+            Color::Named(name) => self.state.colors[name].unwrap_or(Rgb {
+                r: 0xff,
+                g: 0x00,
+                b: 0xff,
+            }),
             Color::Spec(rgb) => rgb,
             Color::Indexed(index) => {
                 if let Some(color) = self.state.colors[index as usize] {
