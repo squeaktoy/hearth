@@ -1,3 +1,16 @@
+> **WARNING**: the contents of this design document are currently out of date.
+> Recently, Hearth has done a radical change from the "everyone is trusted"
+> policy described in this document to a capability-based security model.
+> Please refer to #104 for more info surrounding this. Because of this, Hearth
+> has grown a lot in complexity and core architecture, and this documentation
+> has not been updated to reflect this yet.
+>
+> Most of the ideas here are still relevant to Hearth's design, but please keep
+> in mind that Hearth has undergone some fundamental restructuring since the
+> specifics described here were written.
+>
+> Thank you for your interest in Hearth, and stay posted for new documentation!
+
 # Architecture
 
 The name "Hearth" is meant to invoke the coziness of sharing a warm fireplace
@@ -290,3 +303,151 @@ Features include, but are not limited to:
 
 `hearth-console` uses the [tui](https://crates.io/crates/tui) crate as the
 base TUI framework.
+
+# Roadmap
+
+## Phase 0: Pre-Production
+
+In phase 0, Hearth documents its purpose, proposes an implementation, decides
+on which libraries and resources to use in its development, and finds a handful
+of core developers who understand Hearth's goals and who are capable of
+meaningfully contributing in the long run.
+
+- [ ] write a design document
+- [x] create a Discord server
+- [x] create a GitHub repository
+- [ ] onboard 3-4 core developers who can contribute to Hearth long-term
+- [x] design a project logo
+- [x] set up continuous integration to check pull requests
+- [x] write a CONTRIBUTORS.md describing contribution workflow
+- [x] design a workspace structure
+- [x] set up licensing headers and copyright information
+- [ ] finalize the rest of the phases of the roadmap
+- [ ] money?
+
+## Phase 1: Pre-Alpha
+
+In phase 1, each subsystem of Hearth is developed, and the details of its
+design aspects are made concrete. The whole system has not yet been tied
+together, and low-level design decisions are considered in isolation of each
+other.
+
+Hearth's core host-side components can generally be decoupled from each other
+into several different areas of development or subsystems:
+
+1. IPC, TUI, and CLI interfaces.
+2. Client-server networking.
+3. Process management.
+4. Virtual terminal emulator development.
+
+Because these different areas are independent, the goal is to work on each of
+these areas in parallel. During this point of development, it's important that
+multiple developers work in coordination with each other in order to progress
+to alpha as quickly as possible. Mock interfaces and placeholder data where
+functioning inter-component code would otherwise go are used to develop each
+component separately.
+
+- [x] implement password authentication and stream encryption
+- [x] create a standalone, usable, rend3-based 3D terminal emulator
+- [x] design an inter-subsystem plugin interface
+- [x] create a process store capable of sending messages between local processes
+- [ ] implement process linking
+- [x] create a lump store data structure
+- [x] create an asset loading system
+- [x] design initial RPC network interfaces
+- [ ] write mock RPC endpoints for testing subsystems in isolation
+- [x] implement IPC using Unix domain sockets (Unix only)
+- [ ] complete `hearth-ctl`
+- [ ] define guest-to-host WebAssembly APIs for logging, lump loading, and message transmission
+- [x] create a native service for spawning WebAssembly processes
+- [x] integrate rend3 and winit into `hearth-client`
+- [ ] use WebSockets (optionally over TLS) for networking
+
+## Phase 2: Alpha
+
+In phase 2, Hearth begins to come together as a whole. Each subsystem is hooked
+into the others, and the developers work together to synthesize their work into
+a single functioning application. Although at this point in development network
+servers are started up for testing, the protocols between subsystems are
+highly unstable, so long-lived, self-sustaining virtual spaces are still
+unfeasible.
+
+- [ ] write a unit test suite for Wasm guests written in Rust
+- [ ] implement an asset reaper for unused assets
+- [ ] implement message-sending between processes on different peers
+- [ ] implement a process supervision tree in `hearth-guest`
+- [x] asynchronous MSDF glyph loading for large fonts
+- [ ] support IPC on Windows using an appropriate alternative to Unix domain sockets
+- [ ] complete the WebAssembly host call APIs
+- [ ] complete `hearth-console`
+- [ ] add asset loaders for rend3 meshes, 2D textures, cube textures, and materials
+- [ ] integrate `alacritty_terminal` with Tokio's child process API
+- [ ] create native services for rend3 meshes, lights, and skeletons
+- [ ] create native services for pancake mode input handling
+- [ ] create native services for rend3 configuration like skyboxes, global lighting, and camera setup
+- [ ] create native services for virtual terminal management
+- [ ] create a server blocklist and allowlist system
+
+## Phase 3: Beta
+
+In phase 3, Hearth's protocols and system interfaces are mature and relatively
+stable, so a long-lived development space is created. In this space, developers
+work together on exploring the capabilities of Hearth processes, and implement
+practical applications in Hearth using Hearth's fundamental toolkit. If
+oversights or missing features are found in Hearth's interfaces, they are
+addressed as fit. However, because the fundamentals of Hearth's implementation
+are complete, changes to interfaces are infrequent and often non-breaking.
+
+A major focus of this phase is to refine the design principles of writing
+Hearth processes through rapid iteration, collaboration, and peer review. This
+makes phase 3 the most difficult phase to complete, as Hearth's goal during
+this step is to explore uncharted design territory in a unique execution
+environment.
+
+Here are some ideas for subjects of exploration that Hearth may explore in
+beta:
+- Database
+  - data backup
+  - process-to-host integration with database APIs
+  - persistent world storage
+- Physics
+  - avatar movement and input handling systems
+  - guest-side physics engines (using [Rapier](https://rapier.rs))
+  - avatar skeletal animation
+  - inverse kinematics
+- Models
+  - OBJ loading
+  - FBX loading
+  - glTF loading
+- Audio
+  - audio compression
+  - spatial audio
+  - voice chat
+- Editing
+  - collaborative world editing
+  - live mesh editing
+  - live interior design and virtual architecture tooling
+- Languages/Scripting
+  - WASI-based text editors for non-native script authoring
+  - Wasm compilers in Hearth for non-native script development
+  - guest APIs for more WebAssembly languages (i.e. C/C++, AssemblyScript, 
+Grain)
+  - non-Wasm process scripting runtimes (i.e. Lua, Mono, Javascript, Lisp, 
+Python)
+  - Create a block-based [Scratch](https://scratch.mit.edu)-like scripting language
+- Miscellaneous
+  - in-space virtual cameras for external applications to record the space 
+through
+
+These topics may be further explored post-beta. They mainly serve the purpose
+of guiding Hearth's developers towards supporting an aligned set of expected
+usecases and to fuel curiosity into Hearth's potential.
+
+## Phase 4: Release
+
+- [ ] publish Hearth on the AUR
+- [ ] publish Hearth's crates to the AUR
+- [ ] evaluate Hearth's design and brainstorm future improvements to found problems
+- [ ] create a launcher for Hearth server and client
+- [ ] create comprehensive documentation on usage
+- [ ] create a web page for promoting and reusing community contributions
