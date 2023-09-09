@@ -164,6 +164,8 @@ impl DaemonPlugin {
         Self {}
     }
 
+    /// Performs a connection handshake with an IPC client and adds the new
+    /// connection to the runtime.
     pub fn on_accept(
         &mut self,
         root_ctx: &Process,
