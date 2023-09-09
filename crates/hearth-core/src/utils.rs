@@ -73,8 +73,13 @@ impl<O, E> From<E> for ResponseInfo<Result<O, E>> {
     }
 }
 
+/// A trait for types that implement process behavior.
 #[async_trait]
 pub trait ProcessRunner: Send + 'static {
+    /// Executes this process.
+    ///
+    /// Takes ownership of this object and provides a dev-facing label, a handle
+    /// to the runtime, and an existing [Process] instance as context.
     async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: Process);
 }
 
