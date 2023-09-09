@@ -78,11 +78,11 @@ impl Listener {
 
         match UnixStream::connect(&sock_path).await {
             Ok(_) => {
-                tracing::warn!(
-                    "Socket is already in use. Another instance of Hearth may be running."
-                );
                 let kind = ErrorKind::AddrInUse;
-                let error = Error::new(kind, "Socket is already in use.");
+                let error = Error::new(
+                    kind,
+                    "Socket is already in use. Another instance of Hearth may be running.",
+                );
                 return Err(error);
             }
             Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
@@ -130,15 +130,25 @@ impl Plugin for DaemonPlugin {
 
         builder.add_runner(move |runtime| {
             tokio::spawn(async move {
+                tracing::info!("Waiting for IPC daemon hook...");
+
                 let (root_ctx, root_handle) = match root_rx.await {
                     Ok(root) => root,
                     Err(err) => {
-                        tracing::warn!("error while waiting for daemon root cap: {:?}", err);
+                        tracing::warn!("error while waiting for daemon root cap: {}", err);
                         return;
                     }
                 };
 
-                let listener = Listener::new().await.unwrap();
+                tracing::info!("Listening on IPC daemon...");
+
+                let listener = match Listener::new().await {
+                    Ok(l) => l,
+                    Err(err) => {
+                        tracing::warn!("error while listening on IPC daemon: {}", err);
+                        return;
+                    }
+                };
 
                 loop {
                     let transport = listener.accept_next().await;
