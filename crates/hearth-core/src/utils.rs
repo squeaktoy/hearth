@@ -32,11 +32,24 @@ use crate::{
     runtime::{Plugin, Runtime, RuntimeBuilder},
 };
 
+/// Context for an incoming message in [SinkProcess] or [RequestResponseProcess].
 pub struct RequestInfo<'a, T> {
+    /// The capability handle of the first capability from the message.
     pub reply: usize,
+
+    /// The rest of the capabilities from the message.
+    ///
+    /// These are automatically freed after this message's callback is handled,
+    /// so make a copy of it if it needs to be kept around.
     pub cap_args: &'a [usize],
+
+    /// The [Process] that has received this message.
     pub ctx: &'a mut Process,
+
+    /// A handle to the [Runtime] this process is running in.
     pub runtime: &'a Arc<Runtime>,
+
+    /// The deserialized data of the message's contents.
     pub data: T,
 }
 
@@ -65,10 +78,17 @@ pub trait ProcessRunner: Send + 'static {
     async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: Process);
 }
 
+/// A trait for process runners that continuously receive JSON-formatted messages of a single type.
+///
+/// This trait has a blanket implementation for [ProcessRunner] that loops and
+/// receives new messages of the given data type, and calls [Self::on_message]
+/// with a [RequestInfo].
 #[async_trait]
 pub trait SinkProcess: Send + Sync + 'static {
+    /// The deserializeable data type to be received.
     type Message: for<'a> Deserialize<'a> + Send + Sync;
 
+    /// A callback to call when messages are received by this process.
     async fn on_message(&mut self, message: &mut RequestInfo<'_, Self::Message>);
 }
 
