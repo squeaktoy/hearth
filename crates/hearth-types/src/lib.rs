@@ -33,7 +33,7 @@ pub mod protocol;
 /// Registry protocol.
 pub mod registry;
 
-// Terminal protocol.
+/// Terminal protocol.
 pub mod terminal;
 
 /// WebAssembly process protocols and utilities.
