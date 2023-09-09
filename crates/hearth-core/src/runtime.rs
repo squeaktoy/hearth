@@ -236,21 +236,12 @@ impl RuntimeBuilder {
     /// This returns a shared pointer to the new runtime.
     pub async fn run(mut self, config: RuntimeConfig) -> Arc<Runtime> {
         debug!("Finishing plugins");
-        loop {
-            use std::mem::take;
-            let mut plugins = take(&mut self.plugins);
-            let mut order = take(&mut self.plugin_order);
 
-            if plugins.is_empty() {
-                break;
-            }
-
-            // finish in reverse order of adding
-            while let Some(id) = order.pop() {
-                let wrapper = plugins.remove(&id).unwrap();
-                let PluginWrapper { plugin, finish } = wrapper;
-                finish(plugin, &mut self);
-            }
+        // finish in reverse order of adding
+        while let Some(id) = self.plugin_order.pop() {
+            let wrapper = self.plugins.remove(&id).unwrap();
+            let PluginWrapper { plugin, finish } = wrapper;
+            finish(plugin, &mut self);
         }
 
         use crate::process::*;
