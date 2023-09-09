@@ -121,7 +121,7 @@ impl SinkProcess for TerminalSink {
                 self.inner.take();
             }
             TerminalUpdate::Input(input) => {
-                inner.send_input(&input);
+                inner.send_input(input);
             }
             TerminalUpdate::State(state) => {
                 inner.update(convert_state(state));
