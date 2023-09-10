@@ -116,6 +116,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(rend3_plugin);
+    builder.add_plugin(hearth_terminal::TerminalPlugin::new());
     builder.add_plugin(init);
     builder.add_plugin(hearth_daemon::DaemonPlugin::new());
     let runtime = builder.run(config).await;

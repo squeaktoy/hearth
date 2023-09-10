@@ -23,6 +23,9 @@ use rend3::Renderer;
 use terminal::TerminalDrawState;
 use wgpu::*;
 
+pub use alacritty_terminal;
+pub use owned_ttf_parser;
+
 /// Terminal-related logic and helpers.
 pub mod terminal;
 
