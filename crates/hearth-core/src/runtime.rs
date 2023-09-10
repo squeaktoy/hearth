@@ -40,7 +40,7 @@ use crate::process::factory::ProcessInfo;
 /// Each plugin first builds onto a runtime using its `build` function and an
 /// in-progress [RuntimeBuilder]. During this phase, plugins can mutably access
 /// other plugins that have already been added. When all the plugins have been
-/// added, the final phase of runtime building begins. Each plugin's `run`
+/// added, the final phase of runtime building begins. Each plugin's `finish`
 /// method takes ownership of the plugin and finishes adding onto the
 /// [RuntimeBuilder] using the complete configuration for that plugin.
 #[async_trait]
@@ -61,6 +61,7 @@ struct PluginWrapper {
 pub struct RuntimeBuilder {
     config_file: toml::Table,
     plugins: HashMap<TypeId, PluginWrapper>,
+    plugin_order: Vec<TypeId>,
     runners: Vec<Box<dyn FnOnce(Arc<Runtime>) + Send>>,
     services: HashSet<String>,
     lump_store: Arc<LumpStoreImpl>,
@@ -80,6 +81,7 @@ impl RuntimeBuilder {
         Self {
             config_file,
             plugins: Default::default(),
+            plugin_order: Default::default(),
             runners: Default::default(),
             services: Default::default(),
             lump_store,
@@ -110,7 +112,8 @@ impl RuntimeBuilder {
     /// already-added plugins using [RuntimeBuilder::get_plugin] and
     /// [RuntimeBuilder::get_plugin_mut]. After all plugins have been added
     /// and before the runtime is started, [Plugin::finish] is called with
-    /// each plugin to complete the plugin's building.
+    /// each plugin in reverse order of adding to complete the plugin's
+    /// building.
     pub fn add_plugin<T: Plugin>(&mut self, mut plugin: T) -> &mut Self {
         let name = std::any::type_name::<T>();
         debug!("Adding {} plugin", name);
@@ -134,6 +137,8 @@ impl RuntimeBuilder {
                 }),
             },
         );
+
+        self.plugin_order.push(id);
 
         self
     }
@@ -231,17 +236,12 @@ impl RuntimeBuilder {
     /// This returns a shared pointer to the new runtime.
     pub async fn run(mut self, config: RuntimeConfig) -> Arc<Runtime> {
         debug!("Finishing plugins");
-        loop {
-            let plugins = std::mem::take(&mut self.plugins);
 
-            if plugins.is_empty() {
-                break;
-            }
-
-            for (_id, wrapper) in plugins {
-                let PluginWrapper { plugin, finish } = wrapper;
-                finish(plugin, &mut self);
-            }
+        // finish in reverse order of adding
+        while let Some(id) = self.plugin_order.pop() {
+            let wrapper = self.plugins.remove(&id).unwrap();
+            let PluginWrapper { plugin, finish } = wrapper;
+            finish(plugin, &mut self);
         }
 
         use crate::process::*;

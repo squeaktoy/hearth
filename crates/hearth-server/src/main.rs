@@ -78,16 +78,8 @@ async fn main() {
     builder.add_plugin(hearth_cognito::WasmPlugin::new());
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(init);
+    builder.add_plugin(hearth_daemon::DaemonPlugin::new());
     let runtime = builder.run(config).await;
-
-    debug!("Initializing IPC");
-    let daemon_listener = match hearth_ipc::Listener::new().await {
-        Ok(l) => l,
-        Err(err) => {
-            error!("IPC listener setup error: {:?}", err);
-            return;
-        }
-    };
 
     if let Some(addr) = args.bind {
         tokio::spawn(async move {
@@ -97,7 +89,6 @@ async fn main() {
         info!("Server running in headless mode");
     }
 
-    daemon_listener.listen();
     hearth_core::wait_for_interrupt().await;
 
     info!("Interrupt received; exiting server");

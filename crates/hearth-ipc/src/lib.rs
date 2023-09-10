@@ -16,10 +16,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 
-use tokio::net::{UnixListener, UnixStream};
+use hearth_types::protocol::CapOperation;
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    net::UnixStream,
+    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+};
 
 /// Returns the path of the Hearth IPC socket.
 ///
@@ -55,90 +59,55 @@ pub fn get_socket_path() -> Option<PathBuf> {
     None
 }
 
-pub struct Listener {
-    pub uds: UnixListener,
-    pub path: PathBuf,
+pub struct Connection {
+    /// An outgoing channel for capability operations.
+    pub op_tx: UnboundedSender<CapOperation>,
+
+    /// A channel for incoming capability operations.
+    pub op_rx: UnboundedReceiver<CapOperation>,
 }
 
-impl Drop for Listener {
-    fn drop(&mut self) {
-        match std::fs::remove_file(&self.path) {
-            Ok(_) => {}
-            Err(e) => tracing::error!("Could not delete UnixListener {:?}", e),
-        }
-    }
-}
+impl Connection {
+    /// Creates a connection for the given transport.
+    pub fn new(
+        mut rx: impl AsyncRead + Unpin + Send + 'static,
+        mut tx: impl AsyncWrite + Unpin + Send + 'static,
+    ) -> Self {
+        let (outgoing_tx, mut outgoing_rx) = unbounded_channel();
+        let (incoming_tx, incoming_rx) = unbounded_channel();
 
-impl Deref for Listener {
-    type Target = UnixListener;
-
-    fn deref(&self) -> &UnixListener {
-        &self.uds
-    }
-}
-
-impl DerefMut for Listener {
-    fn deref_mut(&mut self) -> &mut UnixListener {
-        &mut self.uds
-    }
-}
-
-impl Listener {
-    pub async fn new() -> std::io::Result<Self> {
-        use std::io::{Error, ErrorKind};
-
-        let sock_path = match get_socket_path() {
-            Some(p) => p,
-            None => {
-                let kind = ErrorKind::NotFound;
-                let msg = "Failed to find a socket path";
-                tracing::error!(msg);
-                return Err(Error::new(kind, msg));
-            }
-        };
-
-        match UnixStream::connect(&sock_path).await {
-            Ok(_) => {
-                tracing::warn!(
-                    "Socket is already in use. Another instance of Hearth may be running."
-                );
-                let kind = ErrorKind::AddrInUse;
-                let error = Error::new(kind, "Socket is already in use.");
-                return Err(error);
-            }
-            Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
-                tracing::warn!("Found leftover socket; removing.");
-                std::fs::remove_file(&sock_path)?;
-            }
-            Err(ref err) if err.kind() == ErrorKind::NotFound => {}
-            Err(err) => return Err(err),
-        }
-
-        tracing::info!("Making socket at: {:?}", sock_path);
-        let uds = UnixListener::bind(&sock_path)?;
-        let path = sock_path.to_path_buf();
-        Ok(Self { uds, path })
-    }
-
-    /// Spawns a Tokio thread to respond to connections on the domain socket.
-    pub fn listen(self) {
         tokio::spawn(async move {
+            while let Some(op) = outgoing_rx.recv().await {
+                let payload = bincode::serialize(&op).unwrap();
+                let len = payload.len() as u32;
+                tx.write_u32_le(len).await.unwrap();
+                tx.write_all(&payload).await.unwrap();
+            }
+        });
+
+        #[allow(clippy::read_zero_byte_vec)]
+        tokio::spawn(async move {
+            let mut buf = Vec::new();
             loop {
-                match self.accept().await {
-                    Ok((_socket, addr)) => {
-                        tracing::debug!("Accepting IPC connection from {:?}", addr);
-                    }
-                    Err(err) => {
-                        tracing::error!("IPC listen error: {:?}", err);
-                    }
+                let len = rx.read_u32_le().await.unwrap();
+                buf.resize(len as usize, 0);
+                rx.read_exact(&mut buf).await.unwrap();
+                let op = bincode::deserialize(&buf).unwrap();
+                if incoming_tx.send(op).is_err() {
+                    break;
                 }
             }
         });
+
+        Self {
+            op_tx: outgoing_tx,
+            op_rx: incoming_rx,
+        }
     }
 }
 
-/// Connects to the Hearth daemon and returns a [UnixStream].
-pub async fn connect() -> std::io::Result<UnixStream> {
+/// Connects to the Hearth daemon and returns a [Connection].
+pub async fn connect() -> std::io::Result<Connection> {
     use std::io::{Error, ErrorKind};
 
     let sock_path = match get_socket_path() {
@@ -151,5 +120,7 @@ pub async fn connect() -> std::io::Result<UnixStream> {
         }
     };
 
-    UnixStream::connect(&sock_path).await
+    let stream = UnixStream::connect(&sock_path).await?;
+    let (rx, tx) = stream.into_split();
+    Ok(Connection::new(rx, tx))
 }
