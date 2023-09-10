@@ -19,7 +19,7 @@
 use std::{collections::HashMap, fmt::Display, process::exit};
 
 use clap::{Parser, Subcommand};
-use tokio::net::UnixStream;
+use hearth_ipc::Connection;
 use yacexits::{EX_OK, EX_PROTOCOL};
 
 pub struct DaemonOffer {}
@@ -93,7 +93,7 @@ async fn main() {
     }
 }
 
-async fn get_daemon() -> CommandResult<UnixStream> {
+async fn get_daemon() -> CommandResult<Connection> {
     hearth_ipc::connect()
         .await
         .to_command_error("connecting to Hearth daemon", EX_PROTOCOL)

@@ -118,22 +118,12 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     builder.add_plugin(rend3_plugin);
     builder.add_plugin(hearth_terminal::TerminalPlugin::new());
     builder.add_plugin(init);
+    builder.add_plugin(hearth_daemon::DaemonPlugin::new());
     let runtime = builder.run(config).await;
 
     tokio::spawn(async move {
         connect(network_root_rx, runtime, args.server, args.password).await;
     });
-
-    debug!("Initializing IPC");
-    let daemon_listener = match hearth_ipc::Listener::new().await {
-        Ok(l) => l,
-        Err(err) => {
-            tracing::error!("IPC listener setup error: {:?}", err);
-            return;
-        }
-    };
-
-    daemon_listener.listen();
 
     hearth_core::wait_for_interrupt().await;
     info!("Ctrl+C hit; quitting client");
