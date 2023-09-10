@@ -19,32 +19,28 @@
 use std::{any::type_name, sync::Arc};
 
 use async_trait::async_trait;
-use hearth_types::Flags;
+use flue::{CapabilityHandle, ContextSignal};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
 use crate::{
-    process::{
-        context::{ContextMessage, ContextSignal},
-        factory::ProcessInfo,
-        Process,
-    },
+    process::Process,
     runtime::{Plugin, Runtime, RuntimeBuilder},
 };
 
 /// Context for an incoming message in [SinkProcess] or [RequestResponseProcess].
 pub struct RequestInfo<'a, T> {
-    /// The capability handle of the first capability from the message.
-    pub reply: usize,
-
-    /// The rest of the capabilities from the message.
-    ///
-    /// These are automatically freed after this message's callback is handled,
-    /// so make a copy of it if it needs to be kept around.
-    pub cap_args: &'a [usize],
+    /// This process's label.
+    pub label: &'a str,
 
     /// The [Process] that has received this message.
-    pub ctx: &'a mut Process,
+    pub process: &'a Process,
+
+    /// The capability handle of the first capability from the message.
+    pub reply: CapabilityHandle<'a>,
+
+    /// The rest of the capabilities from the message.
+    pub cap_args: &'a [CapabilityHandle<'a>],
 
     /// A handle to the [Runtime] this process is running in.
     pub runtime: &'a Arc<Runtime>,
@@ -53,18 +49,28 @@ pub struct RequestInfo<'a, T> {
     pub data: T,
 }
 
-pub struct ResponseInfo<T> {
+pub struct ResponseInfo<'a, T>
+where
+    T: Send,
+{
     pub data: T,
-    pub caps: Vec<usize>,
+    pub caps: Vec<CapabilityHandle<'a>>,
 }
 
-impl<T> From<T> for ResponseInfo<T> {
+impl<'a, T> From<T> for ResponseInfo<'a, T>
+where
+    T: Send,
+{
     fn from(data: T) -> Self {
         Self { data, caps: vec![] }
     }
 }
 
-impl<O, E> From<E> for ResponseInfo<Result<O, E>> {
+impl<'a, O, E> From<E> for ResponseInfo<'a, Result<O, E>>
+where
+    O: Send,
+    E: Send,
+{
     fn from(err: E) -> Self {
         Self {
             data: Err(err),
@@ -75,7 +81,7 @@ impl<O, E> From<E> for ResponseInfo<Result<O, E>> {
 
 /// A trait for types that implement process behavior.
 #[async_trait]
-pub trait ProcessRunner: Send + 'static {
+pub trait ProcessRunner: Send {
     /// Executes this process.
     ///
     /// Takes ownership of this object and provides a dev-facing label, a handle
@@ -89,12 +95,12 @@ pub trait ProcessRunner: Send + 'static {
 /// receives new messages of the given data type, and calls [Self::on_message]
 /// with a [RequestInfo].
 #[async_trait]
-pub trait SinkProcess: Send + Sync + 'static {
+pub trait SinkProcess: Send + Sync {
     /// The deserializeable data type to be received.
     type Message: for<'a> Deserialize<'a> + Send + Sync;
 
     /// A callback to call when messages are received by this process.
-    async fn on_message(&mut self, message: &mut RequestInfo<'_, Self::Message>);
+    async fn on_message<'a>(&'a mut self, message: &mut RequestInfo<'a, Self::Message>);
 }
 
 #[async_trait]
@@ -102,60 +108,64 @@ impl<T> ProcessRunner for T
 where
     T: SinkProcess,
 {
-    async fn run(mut self, label: String, runtime: Arc<Runtime>, mut ctx: Process) {
-        while let Some(signal) = ctx.recv().await {
-            let ContextSignal::Message(msg) = signal else {
-                // TODO make this a process log
-                warn!("{:?} expected message but received: {:?}", label, signal);
-                continue;
+    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: Process) {
+        loop {
+            let recv = ctx.borrow_parent().recv(|signal| match signal {
+                ContextSignal::Message { data, caps } => Some((data.to_owned(), caps.to_owned())),
+                signal => {
+                    warn!("{:?} expected message but received: {:?}", label, signal);
+                    None
+                }
+            });
+
+            let (data, caps) = match recv.await {
+                Some(Some(msg)) => msg,
+                Some(None) => continue,
+                None => break,
             };
 
-            let Some(reply) = msg.caps.first().copied() else {
-                // TODO make this a process log
+            let caps: Vec<_> = caps
+                .into_iter()
+                .map(|cap| ctx.borrow_table().wrap_handle(cap).unwrap())
+                .collect();
+
+            let Some(reply) = caps.first().cloned() else {
                 debug!("Request to {:?} has no reply address", label);
                 continue;
             };
 
-            let free_caps = |ctx: &mut Process| {
-                for cap in msg.caps.iter() {
-                    ctx.delete_capability(*cap).unwrap();
-                }
-            };
-
-            let data: T::Message = match serde_json::from_slice(&msg.data) {
+            let data: T::Message = match serde_json::from_slice(&data) {
                 Ok(request) => request,
                 Err(err) => {
                     // TODO make this a process log
                     debug!("Failed to parse {}: {:?}", type_name::<T::Message>(), err);
-                    free_caps(&mut ctx);
                     continue;
                 }
             };
 
             let mut message = RequestInfo {
+                label: &label,
+                process: &ctx,
                 reply,
-                cap_args: &msg.caps[1..],
-                ctx: &mut ctx,
+                cap_args: &caps[1..],
                 runtime: &runtime,
                 data,
             };
 
             self.on_message(&mut message).await;
-
-            free_caps(&mut ctx);
         }
     }
 }
 
 #[async_trait]
-pub trait RequestResponseProcess: Send + Sync + 'static {
+pub trait RequestResponseProcess: Send + Sync {
     type Request: for<'a> Deserialize<'a> + Send + Sync;
-    type Response: Serialize;
+    type Response: Serialize + Send;
 
-    async fn on_request(
-        &mut self,
-        request: &mut RequestInfo<'_, Self::Request>,
-    ) -> ResponseInfo<Self::Response>;
+    async fn on_request<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, Self::Request>,
+    ) -> ResponseInfo<'a, Self::Response>;
 }
 
 #[async_trait]
@@ -165,23 +175,14 @@ where
 {
     type Message = T::Request;
 
-    async fn on_message(&mut self, message: &mut RequestInfo<'_, Self::Message>) {
+    async fn on_message<'a>(&'a mut self, message: &mut RequestInfo<'a, Self::Message>) {
         let response = self.on_request(message).await;
-        let response_data = serde_json::to_vec(&response.data).unwrap();
+        let data = serde_json::to_vec(&response.data).unwrap();
+        let caps: Vec<_> = response.caps.iter().collect();
+        let result = message.reply.send(&data, &caps).await;
 
-        message
-            .ctx
-            .send(
-                message.reply,
-                ContextMessage {
-                    data: response_data,
-                    caps: response.caps.clone(),
-                },
-            )
-            .unwrap();
-
-        for cap in response.caps {
-            message.ctx.delete_capability(cap).unwrap();
+        if let Err(err) = result {
+            debug!("{:?} reply error: {:?}", message.label, err);
         }
     }
 }
@@ -192,16 +193,9 @@ pub trait ServiceRunner: ProcessRunner {
 
 impl<T> Plugin for T
 where
-    T: ServiceRunner + Send + Sync,
+    T: ServiceRunner + Send + Sync + 'static,
 {
     fn finish(self, builder: &mut RuntimeBuilder) {
-        builder.add_service(
-            Self::NAME.to_string(),
-            ProcessInfo {},
-            Flags::SEND,
-            move |runtime, ctx| {
-                tokio::spawn(self.run(Self::NAME.to_string(), runtime, ctx));
-            },
-        );
+        builder.add_service(Self::NAME.to_string(), self);
     }
 }
