@@ -205,6 +205,9 @@ impl Signal {
     }
 }
 
+/// An un-closeable mailbox that receives signals from the parent of this process.
+pub static PARENT: Mailbox = Mailbox(0);
+
 pub struct Mailbox(u32);
 
 impl Drop for Mailbox {
