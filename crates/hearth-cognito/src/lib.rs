@@ -537,11 +537,27 @@ impl RequestResponseProcess for WasmProcessSpawner {
         let info = ProcessInfo {};
         let child = request.runtime.process_factory.spawn(info);
 
+        // create a capability to this child's parent mailbox
         let perms = Permissions::SEND | Permissions::LINK | Permissions::KILL;
         let child_cap = request
             .process
             .borrow_table()
             .import(child.borrow_parent(), perms);
+
+        let child_cap = request
+            .process
+            .borrow_table()
+            .wrap_handle(child_cap)
+            .unwrap();
+
+        // send initial capabilities
+        child_cap
+            .send(&[], request.cap_args.iter().collect::<Vec<_>>().as_slice())
+            .await
+            .unwrap();
+
+        // flush initial capabilities
+        child.borrow_parent().recv(|_| ()).await.unwrap();
 
         let process = WasmProcess {
             engine: self.engine.clone(),
@@ -556,11 +572,7 @@ impl RequestResponseProcess for WasmProcessSpawner {
 
         ResponseInfo {
             data: (),
-            caps: vec![request
-                .process
-                .borrow_table()
-                .wrap_handle(child_cap)
-                .unwrap()],
+            caps: vec![child_cap],
         }
     }
 }

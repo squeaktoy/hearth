@@ -1,5 +1,5 @@
-use flue::Permissions;
 use hearth_core::{
+    flue::{ContextSignal, Permissions},
     process::ProcessInfo,
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
@@ -42,13 +42,16 @@ async fn main() {
     };
 
     registry
-        .send(&serde_json::to_vec(&request).unwrap(), &[&response_cap])
+        .send(
+            &serde_json::to_vec(&request).unwrap(),
+            &[&response_cap, &registry],
+        )
         .await
         .unwrap();
 
     let spawner = response
         .recv(|signal| {
-            let flue::ContextSignal::Message { mut caps, .. } = signal else {
+            let ContextSignal::Message { mut caps, .. } = signal else {
                 panic!("expected message, got {:?}", signal);
             };
 
