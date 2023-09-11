@@ -9,6 +9,7 @@ bytemuck = { workspace = true }
 hearth-core = { workspace = true }
 hearth-macros = { workspace = true }
 hearth-wasm = { workspace = true }
+ouroboros = { workspace = true }
 serde_json = { workspace = true }
 slab = "0.4.8"
 tracing = { workspace = true }

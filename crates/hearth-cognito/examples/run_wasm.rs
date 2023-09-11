@@ -1,8 +1,9 @@
+use flue::Permissions;
 use hearth_core::{
-    process::factory::ProcessInfo,
+    process::ProcessInfo,
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
-use hearth_types::{wasm::WasmSpawnInfo, Flags};
+use hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo};
 use tracing::info;
 
 #[tokio::main]
@@ -28,20 +29,39 @@ async fn main() {
         entrypoint: None,
     };
 
-    let mut parent = runtime.process_factory.spawn(ProcessInfo {}, Flags::SEND);
+    let parent = runtime.process_factory.spawn(ProcessInfo {});
+    let response = parent.borrow_store().create_mailbox().unwrap();
+    let response_cap = response.make_capability(Permissions::SEND);
 
-    let wasm_spawner = parent
-        .get_service("hearth.cognito.WasmProcessSpawner")
-        .expect("Wasm spawner service not found");
+    let registry = runtime.registry.borrow_parent();
+    let registry = parent.borrow_table().import(registry, Permissions::SEND);
+    let registry = parent.borrow_table().wrap_handle(registry).unwrap();
 
-    parent
-        .send(
-            wasm_spawner,
-            hearth_core::process::context::ContextMessage {
-                data: serde_json::to_vec(&spawn_info).unwrap(),
-                caps: vec![0],
-            },
-        )
+    let request = RegistryRequest::Get {
+        name: "hearth.cognito.WasmProcessSpawner".to_string(),
+    };
+
+    registry
+        .send(&serde_json::to_vec(&request).unwrap(), &[&response_cap])
+        .await
+        .unwrap();
+
+    let spawner = response
+        .recv(|signal| {
+            let flue::ContextSignal::Message { mut caps, .. } = signal else {
+                panic!("expected message, got {:?}", signal);
+            };
+
+            caps.remove(0)
+        })
+        .await
+        .unwrap();
+
+    let spawner = parent.borrow_table().wrap_handle(spawner).unwrap();
+
+    spawner
+        .send(&serde_json::to_vec(&spawn_info).unwrap(), &[&response_cap])
+        .await
         .unwrap();
 
     hearth_core::wait_for_interrupt().await;

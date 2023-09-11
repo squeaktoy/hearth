@@ -21,26 +21,24 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use hearth_core::anyhow::{self, bail, Context};
 use hearth_core::asset::AssetLoader;
+use hearth_core::flue::{ContextSignal, Mailbox, MailboxStore, Permissions, Table};
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
-use hearth_core::process::context::{ContextMessage, ContextSignal};
-use hearth_core::process::factory::{ProcessInfo, ProcessLogEvent};
-use hearth_core::process::Process;
+use hearth_core::process::{Process, ProcessInfo, ProcessLogEvent};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_core::tokio;
 use hearth_core::utils::*;
 use hearth_core::{async_trait, hearth_types};
 use hearth_macros::impl_wasm_linker;
 use hearth_types::wasm::WasmSpawnInfo;
-use hearth_types::{Flags, LumpId, SignalKind};
+use hearth_types::{LumpId, SignalKind};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use slab::Slab;
-use tokio::sync::Mutex;
 use tracing::{debug, error};
-use wasmtime::*;
+use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
 
 /// Implements the `hearth::log` ABI module.
 pub struct LogAbi {
-    pub ctx: Arc<Mutex<Process>>,
+    process: Arc<Process>,
 }
 
 #[impl_wasm_linker(module = "hearth::log")]
@@ -54,21 +52,19 @@ impl LogAbi {
         content_ptr: u32,
         content_len: u32,
     ) -> Result<()> {
-        self.ctx.lock().await.log(ProcessLogEvent {
-            level: level
-                .try_into()
-                .map_err(|_| anyhow!("invalid log level constant {}", level))?,
+        let level = level
+            .try_into()
+            .map_err(|_| anyhow!("invalid log level constant {}", level))?;
+
+        let event = ProcessLogEvent {
+            level,
             module: memory.get_str(module_ptr, module_len)?.to_string(),
             content: memory.get_str(content_ptr, content_len)?.to_string(),
-        });
+        };
+
+        self.process.borrow_log_tx().send(event)?;
 
         Ok(())
-    }
-}
-
-impl LogAbi {
-    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
-        Self { ctx }
     }
 }
 
@@ -156,189 +152,238 @@ impl LumpAbi {
     }
 }
 
-/// Implements the `hearth::process` ABI module.
-pub struct ProcessAbi {
-    pub ctx: Arc<Mutex<Process>>,
+pub struct TableAbi {
+    process: Arc<Process>,
 }
 
-#[impl_wasm_linker(module = "hearth::process")]
-impl ProcessAbi {
-    async fn get_flags(&self, cap: u32) -> Result<u32> {
-        self.ctx
-            .lock()
-            .await
-            .get_capability_flags(cap as usize)
-            .map(|flags| flags.bits())
-    }
-
-    async fn copy(&self, cap: u32, new_flags: u32) -> Result<u32> {
-        let new_flags = Flags::from_bits(new_flags).context("flags have unrecognized bits set")?;
-
-        self.ctx
-            .lock()
-            .await
-            .make_capability(cap as usize, new_flags)
-            .map(|cap| cap as u32)
-    }
-
-    async fn send(
-        &mut self,
-        memory: GuestMemory<'_>,
-        dst_cap: u32,
-        data_ptr: u32,
-        data_len: u32,
-        caps_ptr: u32,
-        caps_num: u32,
-    ) -> Result<()> {
-        self.ctx.lock().await.send(
-            dst_cap as usize,
-            ContextMessage {
-                data: memory.get_slice(data_ptr, data_len)?.to_vec(),
-                caps: memory
-                    .get_memory_slice::<u32>(caps_ptr, caps_num)?
-                    .iter_mut()
-                    .map(|cap| *cap as usize)
-                    .collect(),
-            },
-        )
-    }
-
-    async fn kill(&self, cap: u32) -> Result<()> {
-        self.ctx.lock().await.kill(cap as usize)
-    }
-
-    async fn link(&self, cap: u32) -> Result<()> {
-        self.ctx.lock().await.link(cap as usize)
-    }
-
-    async fn free(&self, cap: u32) -> Result<()> {
-        self.ctx.lock().await.delete_capability(cap as usize)
+impl AsRef<Table> for TableAbi {
+    fn as_ref(&self) -> &Table {
+        self.process.borrow_table()
     }
 }
 
-impl ProcessAbi {
-    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
-        Self { ctx }
-    }
-}
-
-/// Implements the `hearth::service` ABI module.
-pub struct ServiceAbi {
-    pub ctx: Arc<Mutex<Process>>,
-}
-
-#[impl_wasm_linker(module = "hearth::service")]
-impl ServiceAbi {
-    async fn get(&self, memory: GuestMemory<'_>, name_ptr: u32, name_len: u32) -> Result<u32> {
-        Ok(self
-            .ctx
-            .lock()
-            .await
-            .get_service(memory.get_str(name_ptr, name_len)?)
-            .map(|handle| handle as u32)
-            .unwrap_or(u32::MAX))
-    }
-}
-
-impl ServiceAbi {
-    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
-        Self { ctx }
-    }
-}
-
-/// Implements the `hearth::signal` ABI module.
-pub struct SignalAbi {
-    pub signal_store: Slab<ContextSignal>,
-    pub ctx: Arc<Mutex<Process>>,
-}
-
-#[impl_wasm_linker(module = "hearth::signal")]
-impl SignalAbi {
-    async fn recv(&mut self) -> Result<u32> {
-        match self.ctx.lock().await.recv().await {
-            None => Err(anyhow!("process killed")),
-            Some(signal) => Ok(self.signal_store.insert(signal) as u32),
-        }
-    }
-
-    async fn recv_timeout(&mut self, timeout_us: u64) -> Result<u32> {
-        let duration = std::time::Duration::from_micros(timeout_us);
-        tokio::select! {
-            result = self.recv() => result,
-            _ = tokio::time::sleep(duration) => Ok(u32::MAX),
-        }
-    }
-
-    fn get_kind(&self, handle: u32) -> Result<u32> {
-        Ok(match self.get_signal(handle)? {
-            ContextSignal::Unlink { .. } => SignalKind::Unlink,
-            ContextSignal::Message(_) => SignalKind::Message,
-        }
-        .into())
-    }
-
-    fn get_data_len(&self, handle: u32) -> Result<u32> {
-        Ok(match self.get_signal(handle)? {
-            ContextSignal::Unlink { .. } => 0,
-            ContextSignal::Message(ContextMessage { data, .. }) => data.len() as u32,
-        })
-    }
-
-    fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
-        match self.get_signal(handle)? {
-            ContextSignal::Unlink { .. } => {
-                bail!("cannot retrieve data of unlink signal {}", handle);
-            }
-            ContextSignal::Message(ContextMessage { data, .. }) => {
-                let len = data.len() as u32;
-                let dst = memory.get_slice(ptr, len)?;
-                dst.copy_from_slice(data.as_slice());
-                Ok(())
-            }
-        }
-    }
-
-    fn get_caps_num(&self, handle: u32) -> Result<u32> {
-        Ok(match self.get_signal(handle)? {
-            ContextSignal::Unlink { .. } => 1,
-            ContextSignal::Message(ContextMessage { caps, .. }) => caps.len() as u32,
-        })
-    }
-
-    fn get_caps(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
-        let caps = match self.get_signal(handle)? {
-            ContextSignal::Unlink { subject } => vec![*subject as u32],
-            ContextSignal::Message(ContextMessage { caps, .. }) => {
-                caps.iter().map(|cap| *cap as u32).collect()
-            }
-        };
-
-        let len = caps.len() as u32;
-        let dst = memory.get_memory_slice::<u32>(ptr, len)?;
-        dst.copy_from_slice(caps.as_slice());
+#[impl_wasm_linker(module = "hearth::table")]
+impl TableAbi {
+    fn inc_ref(&self, handle: u32) -> Result<()> {
+        self.as_ref().inc_ref(handle as usize)?;
         Ok(())
     }
 
-    fn free(&mut self, handle: u32) -> Result<()> {
-        self.signal_store
-            .try_remove(handle as usize)
-            .map(|_| ())
-            .ok_or_else(|| anyhow!("signal handle {} is invalid", handle))
+    fn dec_ref(&self, handle: u32) -> Result<()> {
+        self.as_ref().dec_ref(handle as usize)?;
+        Ok(())
+    }
+
+    fn demote(&self, handle: u32, perms: u32) -> Result<u32> {
+        let perms = Permissions::from_bits(perms).context("unknown permission bits set")?;
+        let handle = self.as_ref().demote(handle as usize, perms)?;
+        Ok(handle.try_into().unwrap())
+    }
+
+    async fn send(
+        &self,
+        memory: GuestMemory<'_>,
+        handle: u32,
+        data_ptr: u32,
+        data_len: u32,
+        caps_ptr: u32,
+        caps_len: u32,
+    ) -> Result<()> {
+        let data = memory.get_slice(data_ptr, data_len)?;
+        let caps = memory.get_memory_slice::<u32>(caps_ptr, caps_len)?;
+        let caps: Vec<_> = caps.iter().map(|cap| *cap as usize).collect();
+        self.process
+            .borrow_table()
+            .send(handle as usize, data, &caps)
+            .await?;
+        Ok(())
+    }
+
+    fn kill(&self, handle: u32) -> Result<()> {
+        self.as_ref().kill(handle as usize)?;
+        Ok(())
     }
 }
 
-impl SignalAbi {
-    pub fn new(ctx: Arc<Mutex<Process>>) -> Self {
-        Self {
-            signal_store: Slab::new(),
-            ctx,
+enum Signal {
+    Unlink { handle: u32 },
+    Message { data: Vec<u8>, caps: Vec<u32> },
+}
+
+impl<'a> From<ContextSignal<'a>> for Signal {
+    fn from(signal: ContextSignal<'a>) -> Signal {
+        match signal {
+            ContextSignal::Unlink { handle } => Signal::Unlink {
+                handle: handle as u32,
+            },
+            ContextSignal::Message { data, caps } => Signal::Message {
+                data: data.to_vec(),
+                caps: caps.iter().map(|cap| *cap as u32).collect(),
+            },
+        }
+    }
+}
+
+struct MailboxArena<'a> {
+    store: &'a MailboxStore<'a>,
+    mbs: Slab<Mailbox<'a>>,
+}
+
+impl<'a> MailboxArena<'a> {
+    fn create(&mut self) -> Result<u32> {
+        let mb = self
+            .store
+            .create_mailbox()
+            .context("process has been killed")?;
+
+        let handle = self.mbs.insert(mb);
+        Ok(handle.try_into().unwrap())
+    }
+}
+
+#[ouroboros::self_referencing]
+pub struct MailboxAbi {
+    process: Arc<Process>,
+    signals: Slab<Signal>,
+
+    #[borrows(process)]
+    #[covariant]
+    arena: MailboxArena<'this>,
+}
+
+#[impl_wasm_linker(module = "hearth::mailbox")]
+impl MailboxAbi {
+    fn create(&mut self) -> Result<u32> {
+        self.with_arena_mut(|arena| arena.create())
+    }
+
+    fn destroy(&mut self, handle: u32) -> Result<()> {
+        self.with_arena_mut(|arena| {
+            arena
+                .mbs
+                .try_remove(handle as usize)
+                .context("invalid handle")
+        })?;
+
+        Ok(())
+    }
+
+    fn make_capability(&self, handle: u32, perms: u32) -> Result<u32> {
+        let mb = self.get_mb(handle)?;
+        let perms = Permissions::from_bits(perms).context("unknown permission bits set")?;
+        let cap = mb.make_capability(perms);
+        Ok(cap.into_handle().try_into().unwrap())
+    }
+
+    fn link(&self, mailbox: u32, cap: u32) -> Result<()> {
+        let cap = cap as usize;
+        let mb = self.get_mb(mailbox)?;
+        self.borrow_process().borrow_table().link(cap, mb)?;
+        Ok(())
+    }
+
+    async fn recv(&mut self, handle: u32) -> Result<u32> {
+        let mb = self.get_mb(handle)?;
+
+        let signal = mb
+            .recv(|signal| Signal::from(signal))
+            .await
+            .context("process has been killed")?;
+
+        let handle = self.with_signals_mut(|signals| signals.insert(signal));
+
+        Ok(handle.try_into().unwrap())
+    }
+
+    fn try_recv(&mut self, handle: u32) -> Result<u32> {
+        let mb = self.get_mb(handle)?;
+
+        let signal = mb
+            .try_recv(|signal| Signal::from(signal))
+            .context("process has been killed")?;
+
+        match signal {
+            Some(signal) => {
+                let handle = self.with_signals_mut(|signals| signals.insert(signal));
+                Ok(handle.try_into().unwrap())
+            }
+            None => Ok(u32::MAX),
         }
     }
 
-    fn get_signal(&self, handle: u32) -> Result<&ContextSignal> {
-        self.signal_store
-            .get(handle as usize)
-            .with_context(|| format!("signal handle {} is invalid", handle))
+    fn destroy_signal(&mut self, handle: u32) -> Result<()> {
+        self.with_signals_mut(|signals| signals.try_remove(handle as usize))
+            .map(|_| ())
+            .context("invalid handle")
+    }
+
+    fn get_signal_kind(&self, handle: u32) -> Result<u32> {
+        let signal = self.get_signal(handle)?;
+
+        let kind = match signal {
+            Signal::Unlink { .. } => SignalKind::Unlink,
+            Signal::Message { .. } => SignalKind::Message,
+        };
+
+        Ok(kind.into())
+    }
+
+    fn get_unlink_capability(&self, handle: u32) -> Result<u32> {
+        let signal = self.get_signal(handle)?;
+
+        let Signal::Unlink { handle } = signal else {
+            bail!("invalid signal kind");
+        };
+
+        Ok(*handle)
+    }
+
+    fn get_message_data_len(&self, handle: u32) -> Result<u32> {
+        let (data, _caps) = self.get_message(handle)?;
+        Ok(data.len().try_into().unwrap())
+    }
+
+    fn get_message_data(&self, memory: GuestMemory<'_>, handle: u32, dst_ptr: u32) -> Result<()> {
+        let (data, _caps) = self.get_message(handle)?;
+        let dst_len = data.len().try_into().unwrap();
+        let dst = memory.get_memory_slice(dst_ptr, dst_len)?;
+        dst.copy_from_slice(data);
+        Ok(())
+    }
+
+    fn get_message_caps_num(&self, handle: u32) -> Result<u32> {
+        let (_data, caps) = self.get_message(handle)?;
+        Ok(caps.len().try_into().unwrap())
+    }
+
+    fn get_message_caps(&self, memory: GuestMemory<'_>, handle: u32, dst_ptr: u32) -> Result<()> {
+        let (_data, caps) = self.get_message(handle)?;
+        let dst_len = caps.len().try_into().unwrap();
+        let dst = memory.get_memory_slice(dst_ptr, dst_len)?;
+        dst.copy_from_slice(caps);
+        Ok(())
+    }
+}
+
+impl MailboxAbi {
+    fn get_mb(&self, handle: u32) -> Result<&Mailbox> {
+        self.with_arena(|arena| arena.mbs.get(handle as usize))
+            .context("invalid handle")
+    }
+
+    fn get_signal(&self, handle: u32) -> Result<&Signal> {
+        self.with_signals(|signals| signals.get(handle as usize))
+            .context("invalid handle")
+    }
+
+    fn get_message(&self, handle: u32) -> Result<(&[u8], &[u32])> {
+        let signal = self.get_signal(handle)?;
+
+        let Signal::Message { data, caps } = signal else {
+            bail!("invalid signal kind");
+        };
+
+        Ok((data, caps))
     }
 }
 
@@ -346,21 +391,26 @@ impl SignalAbi {
 pub struct ProcessData {
     pub log: LogAbi,
     pub lump: LumpAbi,
-    pub process: ProcessAbi,
-    pub service: ServiceAbi,
-    pub signal: SignalAbi,
+    pub table: TableAbi,
+    pub mailbox: MailboxAbi,
 }
 
 impl ProcessData {
-    pub fn new(runtime: &Runtime, ctx: Process, this_lump: LumpId) -> Self {
-        let ctx = Arc::new(Mutex::new(ctx));
+    pub fn new(runtime: &Runtime, process: Process, this_lump: LumpId) -> Self {
+        let process = Arc::new(process);
 
         Self {
-            log: LogAbi::new(ctx.to_owned()),
+            log: LogAbi {
+                process: process.clone(),
+            },
             lump: LumpAbi::new(runtime, this_lump),
-            process: ProcessAbi::new(ctx.to_owned()),
-            service: ServiceAbi::new(ctx.to_owned()),
-            signal: SignalAbi::new(ctx),
+            table: TableAbi {
+                process: process.clone(),
+            },
+            mailbox: MailboxAbi::new(process, Slab::new(), |process| MailboxArena {
+                store: process.borrow_store(),
+                mbs: Slab::new(),
+            }),
         }
     }
 }
@@ -377,18 +427,16 @@ macro_rules! impl_asmut {
 
 impl_asmut!(ProcessData, LogAbi, log);
 impl_asmut!(ProcessData, LumpAbi, lump);
-impl_asmut!(ProcessData, ProcessAbi, process);
-impl_asmut!(ProcessData, ServiceAbi, service);
-impl_asmut!(ProcessData, SignalAbi, signal);
+impl_asmut!(ProcessData, TableAbi, table);
+impl_asmut!(ProcessData, MailboxAbi, mailbox);
 
 impl ProcessData {
     /// Adds all module ABIs to the given linker.
     pub fn add_to_linker(linker: &mut Linker<Self>) {
         LogAbi::add_to_linker(linker);
         LumpAbi::add_to_linker(linker);
-        ProcessAbi::add_to_linker(linker);
-        ServiceAbi::add_to_linker(linker);
-        SignalAbi::add_to_linker(linker);
+        TableAbi::add_to_linker(linker);
+        MailboxAbi::add_to_linker(linker);
     }
 }
 
@@ -402,11 +450,11 @@ struct WasmProcess {
 
 impl WasmProcess {
     async fn run(mut self, runtime: Arc<Runtime>, ctx: Process) {
-        let pid = ctx.get_pid();
+        let pid = *ctx.borrow_pid();
         match self
             .run_inner(runtime, ctx)
             .await
-            .with_context(|| format!("error in Wasm process {}", pid.0))
+            .with_context(|| format!("error in Wasm process {}", pid))
         {
             Ok(()) => {}
             Err(err) => {
@@ -461,10 +509,10 @@ impl RequestResponseProcess for WasmProcessSpawner {
     type Request = WasmSpawnInfo;
     type Response = ();
 
-    async fn on_request(
-        &mut self,
-        request: &mut RequestInfo<'_, WasmSpawnInfo>,
-    ) -> ResponseInfo<Self::Response> {
+    async fn on_request<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, WasmSpawnInfo>,
+    ) -> ResponseInfo<'a, Self::Response> {
         let module = request
             .runtime
             .asset_store
@@ -482,9 +530,13 @@ impl RequestResponseProcess for WasmProcessSpawner {
 
         debug!("Spawning module {}", request.data.lump);
         let info = ProcessInfo {};
-        let flags = Flags::SEND | Flags::KILL;
-        let child = request.runtime.process_factory.spawn(info, flags);
-        let child_cap = request.ctx.copy_self_capability(&child);
+        let child = request.runtime.process_factory.spawn(info);
+
+        let perms = Permissions::SEND | Permissions::LINK | Permissions::KILL;
+        let child_cap = request
+            .process
+            .borrow_table()
+            .import(child.borrow_parent(), perms);
 
         let process = WasmProcess {
             engine: self.engine.clone(),
@@ -499,7 +551,11 @@ impl RequestResponseProcess for WasmProcessSpawner {
 
         ResponseInfo {
             data: (),
-            caps: vec![child_cap],
+            caps: vec![request
+                .process
+                .borrow_table()
+                .wrap_handle(child_cap)
+                .unwrap()],
         }
     }
 }
