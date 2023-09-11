@@ -259,14 +259,18 @@ pub struct MailboxAbi {
 #[impl_wasm_linker(module = "hearth::mailbox")]
 impl MailboxAbi {
     fn create(&mut self) -> Result<u32> {
-        self.with_arena_mut(|arena| arena.create())
+        Ok(self.with_arena_mut(|arena| arena.create())? + 1)
     }
 
     fn destroy(&mut self, handle: u32) -> Result<()> {
+        if handle == 0 {
+            bail!("attempted to destroy parent mailbox");
+        }
+
         self.with_arena_mut(|arena| {
             arena
                 .mbs
-                .try_remove(handle as usize)
+                .try_remove(handle as usize - 1)
                 .context("invalid handle")
         })?;
 
@@ -372,8 +376,12 @@ impl MailboxAbi {
 
 impl MailboxAbi {
     fn get_mb(&self, handle: u32) -> Result<&Mailbox> {
-        self.with_arena(|arena| arena.mbs.get(handle as usize))
-            .context("invalid handle")
+        if handle == 0 {
+            Ok(self.borrow_process().borrow_parent())
+        } else {
+            self.with_arena(|arena| arena.mbs.get(handle as usize - 1))
+                .context("invalid handle")
+        }
     }
 
     fn get_signal(&self, handle: u32) -> Result<&Signal> {
