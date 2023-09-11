@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::borrow::Borrow;
+use std::{borrow::Borrow, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
 
@@ -46,11 +46,62 @@ pub fn this_lump() -> LumpId {
     id
 }
 
+/// A helper struct for request-response capabilities.
+pub struct RequestResponse<Request, Response> {
+    process: Process,
+    _request: PhantomData<Request>,
+    _response: PhantomData<Response>,
+}
+
+impl<Request, Response> RequestResponse<Request, Response>
+where
+    Request: Serialize,
+    Response: for<'a> Deserialize<'a>,
+{
+    pub const fn new(process: Process) -> Self {
+        Self {
+            process,
+            _request: PhantomData,
+            _response: PhantomData,
+        }
+    }
+
+    pub fn request(&self, request: Request) -> (Response, Vec<Process>) {
+        let reply = Mailbox::new();
+        let reply_cap = reply.make_capability(Permissions::SEND);
+        reply.link(&self.process);
+
+        self.process.send_json(&request, &[&reply_cap]);
+
+        reply.recv_json()
+    }
+}
+
+pub type Registry = RequestResponse<registry::RegistryRequest, registry::RegistryResponse>;
+
+impl Registry {
+    pub fn get_service(&self, name: &str) -> Process {
+        let request = registry::RegistryRequest::Get {
+            name: name.to_string(),
+        };
+
+        let (data, mut caps) = self.request(request);
+
+        let registry::RegistryResponse::Get(true) = data else {
+            panic!("failed to get service {:?}", name);
+        };
+
+        caps.remove(0)
+    }
+}
+
+/// A capability to the registry that this process has base access to.
+pub static REGISTRY: Registry = RequestResponse::new(Process(0));
+
 lazy_static::lazy_static! {
     /// A lazily-initialized handle to the WebAssembly spawner service.
-    pub static ref WASM_SPAWNER: Process = {
-        Process::get_service("hearth.cognito.WasmProcessSpawner")
-            .expect("couldn't find Wasm spawner service")
+    pub static ref WASM_SPAWNER: RequestResponse<wasm::WasmSpawnInfo, ()> = {
+        RequestResponse::new(REGISTRY.get_service("hearth.cognito.WasmProcessSpawner"))
     };
 }
 
@@ -75,20 +126,12 @@ impl Drop for Process {
 impl Process {
     /// Spawns a child process for the given function.
     pub fn spawn(cb: fn()) -> Self {
-        WASM_SPAWNER.send_json(
-            &wasm::WasmSpawnInfo {
-                lump: this_lump(),
-                entrypoint: Some(unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32),
-            },
-            &[&SELF],
-        );
+        let ((), mut caps) = WASM_SPAWNER.request(wasm::WasmSpawnInfo {
+            lump: this_lump(),
+            entrypoint: Some(unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32),
+        });
 
-        let signal = Signal::recv();
-        let Signal::Message(mut msg) = signal else {
-            panic!("expected message, received {:?}", signal);
-        };
-
-        msg.caps.remove(0)
+        caps.remove(0)
     }
 
     /// Sends a message to this process.
@@ -202,7 +245,7 @@ impl Mailbox {
 
     /// Receives a JSON message. Panics if the next signal isn't a message or
     /// if deserialization fails.
-    pub fn recv_json<T>(&self) -> (Vec<Process>, T)
+    pub fn recv_json<T>(&self) -> (T, Vec<Process>)
     where
         T: for<'a> Deserialize<'a>,
     {
@@ -213,7 +256,7 @@ impl Mailbox {
         };
 
         let data = serde_json::from_slice(&msg.data).unwrap();
-        (msg.caps, data)
+        (data, msg.caps)
     }
 }
 
