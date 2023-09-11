@@ -174,6 +174,11 @@ impl TableAbi {
         Ok(())
     }
 
+    fn get_permissions(&self, handle: u32) -> Result<u32> {
+        let perms = self.as_ref().get_permissions(handle as usize)?;
+        Ok(perms.bits())
+    }
+
     fn demote(&self, handle: u32, perms: u32) -> Result<u32> {
         let perms = Permissions::from_bits(perms).context("unknown permission bits set")?;
         let handle = self.as_ref().demote(handle as usize, perms)?;
