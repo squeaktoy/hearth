@@ -80,18 +80,22 @@ where
 pub type Registry = RequestResponse<registry::RegistryRequest, registry::RegistryResponse>;
 
 impl Registry {
-    pub fn get_service(&self, name: &str) -> Process {
+    pub fn get_service(&self, name: &str) -> Option<Process> {
         let request = registry::RegistryRequest::Get {
             name: name.to_string(),
         };
 
         let (data, mut caps) = self.request(request);
 
-        let registry::RegistryResponse::Get(true) = data else {
+        let registry::RegistryResponse::Get(present) = data else {
             panic!("failed to get service {:?}", name);
         };
 
-        caps.remove(0)
+        if present {
+            Some(caps.remove(0))
+        } else {
+            None
+        }
     }
 }
 
@@ -101,7 +105,7 @@ pub static REGISTRY: Registry = RequestResponse::new(Process(0));
 lazy_static::lazy_static! {
     /// A lazily-initialized handle to the WebAssembly spawner service.
     pub static ref WASM_SPAWNER: RequestResponse<wasm::WasmSpawnInfo, ()> = {
-        RequestResponse::new(REGISTRY.get_service("hearth.cognito.WasmProcessSpawner"))
+        RequestResponse::new(REGISTRY.get_service("hearth.cognito.WasmProcessSpawner").unwrap())
     };
 }
 
