@@ -16,11 +16,20 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{borrow::Borrow, ops::Deref};
+use std::borrow::Borrow;
 
 use serde::{Deserialize, Serialize};
 
 pub use hearth_types::*;
+
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct Permissions: u32 {
+        const SEND = 1 << 0;
+        const LINK = 1 << 1;
+        const KILL = 1 << 2;
+    }
+}
 
 /// Internal helper function to turn a string into a pointer and length.
 fn abi_string(str: &str) -> (u32, u32) {
@@ -37,9 +46,6 @@ pub fn this_lump() -> LumpId {
     id
 }
 
-/// The process currently executing.
-pub static SELF: Process = Process(ProcessRef(0));
-
 lazy_static::lazy_static! {
     /// A lazily-initialized handle to the WebAssembly spawner service.
     pub static ref WASM_SPAWNER: Process = {
@@ -48,52 +54,25 @@ lazy_static::lazy_static! {
     };
 }
 
-/// A handle to a process.
+/// A capability to a process.
 #[repr(transparent)]
 #[derive(Debug, Hash, PartialEq, Eq)]
-pub struct Process(ProcessRef);
-
-impl Borrow<ProcessRef> for Process {
-    fn borrow(&self) -> &ProcessRef {
-        &self.0
-    }
-}
+pub struct Process(u32);
 
 impl Clone for Process {
     fn clone(&self) -> Self {
-        self.demote(self.get_flags())
-    }
-}
-
-impl Deref for Process {
-    type Target = ProcessRef;
-
-    fn deref(&self) -> &ProcessRef {
-        &self.0
+        unsafe { abi::table::inc_ref(self.0) }
+        Process(self.0)
     }
 }
 
 impl Drop for Process {
     fn drop(&mut self) {
-        unsafe { abi::process::free(self.0 .0) }
+        unsafe { abi::table::dec_ref(self.0) }
     }
 }
 
 impl Process {
-    /// Looks up a service.
-    // TODO multiple peers support; better API
-    pub fn get_service(name: &str) -> Option<Self> {
-        unsafe {
-            let (ptr, len) = abi_string(name);
-            let handle = abi::service::get(ptr, len);
-            if handle == u32::MAX {
-                None
-            } else {
-                Some(Process(ProcessRef(handle)))
-            }
-        }
-    }
-
     /// Spawns a child process for the given function.
     pub fn spawn(cb: fn()) -> Self {
         WASM_SPAWNER.send_json(
@@ -111,22 +90,12 @@ impl Process {
 
         msg.caps.remove(0)
     }
-}
 
-/// A non-owning process reference.
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub struct ProcessRef(u32);
-
-impl ProcessRef {
     /// Sends a message to this process.
-    pub fn send<T>(&self, data: &[u8], caps: &[&T])
-    where
-        T: Borrow<ProcessRef>,
-    {
+    pub fn send(&self, data: &[u8], caps: &[&Process]) {
         let caps: Vec<u32> = caps.iter().map(|process| (*process).borrow().0).collect();
         unsafe {
-            abi::process::send(
+            abi::table::send(
                 self.0,
                 data.as_ptr() as u32,
                 data.len() as u32,
@@ -137,94 +106,108 @@ impl ProcessRef {
     }
 
     /// Sends a type, serialized as JSON, to this process.
-    pub fn send_json<T>(&self, data: &impl Serialize, caps: &[&T])
-    where
-        T: Borrow<ProcessRef>,
-    {
+    pub fn send_json(&self, data: &impl Serialize, caps: &[&Process]) {
         let msg = serde_json::to_string(data).unwrap();
         self.send(&msg.into_bytes(), caps);
     }
 
     /// Kills this process.
     pub fn kill(&self) {
-        unsafe { abi::process::kill(self.0) }
+        unsafe { abi::table::kill(self.0) }
     }
 
-    /// Links to this process.
-    pub fn link(&self) {
-        unsafe { abi::process::link(self.0) }
-    }
-
-    /// Demotes this process handle to an owned process with fewer flags.
-    pub fn demote(&self, new_flags: Flags) -> Process {
-        let handle = unsafe { abi::process::copy(self.0, new_flags.bits()) };
-        Process(ProcessRef(handle))
+    /// Demotes this process handle to an owned process with fewer permissions.
+    pub fn demote(&self, new_perms: Permissions) -> Process {
+        let handle = unsafe { abi::table::demote(self.0, new_perms.bits()) };
+        Process(handle)
     }
 
     /// Gets the flags for this process.
-    pub fn get_flags(&self) -> Flags {
-        Flags::from_bits_retain(unsafe { abi::process::get_flags(self.0) })
+    pub fn get_flags(&self) -> Permissions {
+        Permissions::from_bits_retain(unsafe { abi::table::get_permissions(self.0) })
     }
 }
 
 /// A signal.
 #[derive(Clone, Debug)]
 pub enum Signal {
-    Unlink { subject: ProcessRef },
+    Unlink { subject: Process },
     Message(Message),
 }
 
 impl Signal {
-    /// Blocks until a signal has been received.
-    pub fn recv() -> Self {
+    unsafe fn from_handle(handle: u32) -> Self {
+        let kind = abi::mailbox::get_signal_kind(handle);
+
+        let Ok(kind) = SignalKind::try_from(kind) else {
+            panic!("unknown signal kind {}", kind);
+        };
+
+        let signal = match kind {
+            SignalKind::Message => Signal::Message(Message::load_from_handle(handle)),
+            SignalKind::Unlink => {
+                let handle = abi::mailbox::get_unlink_capability(handle);
+                let subject = Process(handle);
+                Signal::Unlink { subject }
+            }
+        };
+
+        abi::mailbox::destroy_signal(handle);
+
+        signal
+    }
+}
+
+pub struct Mailbox(u32);
+
+impl Drop for Mailbox {
+    fn drop(&mut self) {
+        unsafe { abi::mailbox::destroy(self.0) }
+    }
+}
+
+impl Mailbox {
+    pub fn new() -> Self {
+        let handle = unsafe { abi::mailbox::create() };
+        Self(handle)
+    }
+
+    pub fn make_capability(&self, perms: Permissions) -> Process {
+        let handle = unsafe { abi::mailbox::make_capability(self.0, perms.bits()) };
+        Process(handle)
+    }
+
+    pub fn link(&self, subject: &Process) {
+        unsafe { abi::mailbox::link(self.0, subject.0) }
+    }
+
+    pub fn recv(&self) -> Signal {
         unsafe {
-            let handle = abi::signal::recv();
-            let kind = abi::signal::get_kind(handle);
-            let Ok(kind) = SignalKind::try_from(kind) else {
-                panic!("unknown signal kind {}", kind);
-            };
-
-            let signal = match kind {
-                SignalKind::Message => Signal::Message(Message::load_from_handle(handle)),
-                SignalKind::Unlink => {
-                    // TODO unlink signal userdata
-                    let mut subject = 0u32;
-                    abi::signal::get_caps(handle, &mut subject as *mut u32 as u32);
-                    let subject = ProcessRef(subject);
-                    Signal::Unlink { subject }
-                }
-            };
-
-            abi::signal::free(handle);
-            signal
+            let handle = abi::mailbox::recv(self.0);
+            Signal::from_handle(handle)
         }
     }
 
-    /// Blocks until a signal is received or the given timeout (in microseconds)
-    /// expires.
-    ///
-    /// Setting the timeout to 0 skips any blocking and in effect polls the signal
-    /// queue for a new signal.
-    pub fn recv_timeout(timeout_us: u64) -> Option<Self> {
+    pub fn try_recv(&self) -> Option<Signal> {
         unsafe {
-            let handle = abi::signal::recv_timeout(timeout_us);
+            let handle = abi::mailbox::try_recv(self.0);
+
             if handle == u32::MAX {
                 None
             } else {
-                let msg = Message::load_from_handle(handle);
-                abi::signal::free(handle);
-                Some(Signal::Message(msg))
+                Some(Signal::from_handle(handle))
             }
         }
     }
 
     /// Receives a JSON message. Panics if the next signal isn't a message or
     /// if deserialization fails.
-    pub fn recv_json<T>() -> (Vec<Process>, T)
+    pub fn recv_json<T>(&self) -> (Vec<Process>, T)
     where
         T: for<'a> Deserialize<'a>,
     {
-        let signal = Signal::recv();
+        let signal = self.recv();
+
         let Signal::Message(msg) = signal else {
             panic!("expected message, received {:?}", signal);
         };
@@ -244,15 +227,15 @@ pub struct Message {
 impl Message {
     /// Loads a message signal by its handle.
     unsafe fn load_from_handle(handle: u32) -> Self {
-        let data_len = abi::signal::get_data_len(handle) as usize;
+        let data_len = abi::mailbox::get_message_data_len(handle) as usize;
         let mut data = Vec::with_capacity(data_len);
         data.set_len(data_len);
-        abi::signal::get_data(handle, data.as_ptr() as u32);
+        abi::mailbox::get_message_data(handle, data.as_ptr() as u32);
 
-        let caps_num = abi::signal::get_caps_num(handle) as usize;
+        let caps_num = abi::mailbox::get_message_caps_num(handle) as usize;
         let mut caps = Vec::with_capacity(caps_num);
         caps.set_len(caps_num);
-        abi::signal::get_caps(handle, caps.as_ptr() as u32);
+        abi::mailbox::get_message_caps(handle, caps.as_ptr() as u32);
 
         Self { data, caps }
     }
@@ -345,36 +328,34 @@ mod abi {
         }
     }
 
-    pub mod process {
-        #[link(wasm_import_module = "hearth::process")]
+    pub mod table {
+        #[link(wasm_import_module = "hearth::table")]
         extern "C" {
-            pub fn get_flags(cap: u32) -> u32;
-            pub fn copy(cap: u32, new_flags: u32) -> u32;
-            pub fn send(dst_cap: u32, data_ptr: u32, data_len: u32, caps_ptr: u32, caps_num: u32);
-            pub fn kill(cap: u32);
-            pub fn link(cap: u32);
-            pub fn free(cap: u32);
+            pub fn inc_ref(handle: u32);
+            pub fn dec_ref(handle: u32);
+            pub fn get_permissions(handle: u32) -> u32;
+            pub fn demote(handle: u32, perms: u32) -> u32;
+            pub fn send(handle: u32, data_ptr: u32, data_len: u32, caps_ptr: u32, caps_len: u32);
+            pub fn kill(handle: u32);
         }
     }
 
-    pub mod service {
-        #[link(wasm_import_module = "hearth::service")]
+    pub mod mailbox {
+        #[link(wasm_import_module = "hearth::mailbox")]
         extern "C" {
-            pub fn get(name_ptr: u32, name_len: u32) -> u32;
-        }
-    }
-
-    pub mod signal {
-        #[link(wasm_import_module = "hearth::signal")]
-        extern "C" {
-            pub fn recv() -> u32;
-            pub fn recv_timeout(timeout_us: u64) -> u32;
-            pub fn get_kind(msg: u32) -> u32;
-            pub fn get_data_len(msg: u32) -> u32;
-            pub fn get_data(msg: u32, ptr: u32);
-            pub fn get_caps_num(msg: u32) -> u32;
-            pub fn get_caps(msg: u32, ptr: u32);
-            pub fn free(msg: u32);
+            pub fn create() -> u32;
+            pub fn destroy(handle: u32);
+            pub fn make_capability(handle: u32, perms: u32) -> u32;
+            pub fn link(mailbox: u32, cap: u32);
+            pub fn recv(handle: u32) -> u32;
+            pub fn try_recv(handle: u32) -> u32;
+            pub fn destroy_signal(handle: u32);
+            pub fn get_signal_kind(handle: u32) -> u32;
+            pub fn get_unlink_capability(handle: u32) -> u32;
+            pub fn get_message_data_len(handle: u32) -> u32;
+            pub fn get_message_data(handle: u32, dst_ptr: u32);
+            pub fn get_message_caps_num(handle: u32) -> u32;
+            pub fn get_message_caps(handle: u32, dst_ptr: u32);
         }
     }
 }
