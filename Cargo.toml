@@ -22,6 +22,7 @@ members = [
 
 [workspace.dependencies]
 bytemuck = "1.13"
+flume = "0.11.0"
 hearth-cognito = { path = "crates/hearth-cognito" }
 hearth-core = { path = "crates/hearth-core" }
 hearth-daemon = { path = "crates/hearth-daemon" }
