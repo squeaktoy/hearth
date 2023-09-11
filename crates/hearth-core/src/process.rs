@@ -22,6 +22,7 @@ use flue::{Mailbox, MailboxStore, PostOffice, Table};
 use flume::Sender;
 use hearth_types::ProcessLogLevel;
 use ouroboros::self_referencing;
+use tracing::debug;
 
 pub struct ProcessInfo {}
 
@@ -44,7 +45,13 @@ impl ProcessFactory {
             .pid_gen
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let (log_tx, _log_rx) = flume::unbounded();
+        let (log_tx, log_rx) = flume::unbounded();
+
+        tokio::spawn(async move {
+            while let Ok(event) = log_rx.recv_async().await {
+                debug!("PID {} log: {:?}", pid, event);
+            }
+        });
 
         Process::new(
             pid,
