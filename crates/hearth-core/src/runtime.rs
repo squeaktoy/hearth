@@ -33,7 +33,7 @@ use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
-use crate::process::{ProcessFactory, ProcessInfo};
+use crate::process::{Process, ProcessFactory, ProcessInfo};
 use crate::registry::RegistryBuilder;
 use crate::utils::ProcessRunner;
 
@@ -196,7 +196,7 @@ impl RuntimeBuilder {
             tokio::spawn(async move {
                 debug!("Spawning '{}' service", name);
                 let _ = service_start_tx.send(name.clone());
-                process.run(name, runtime, ctx).await;
+                process.run(name, runtime, &ctx).await;
             });
         });
 
@@ -246,12 +246,32 @@ impl RuntimeBuilder {
             finish(plugin, &mut self);
         }
 
+        // finalize registry
+        let RegistryBuilder {
+            table: registry_table,
+            inner: registry_inner,
+        } = self.registry_builder;
+
+        let info = ProcessInfo {};
+        let ctx = self.process_factory.spawn_with_table(info, registry_table);
+        let registry = Arc::new(ctx);
+
         let runtime = Arc::new(Runtime {
             asset_store: Arc::new(self.asset_store),
             lump_store: self.lump_store,
             config,
             post: self.post,
             process_factory: self.process_factory,
+            registry: registry.clone(),
+        });
+
+        tokio::spawn({
+            let runtime = runtime.clone();
+            async move {
+                registry_inner
+                    .run("Registry".to_string(), runtime, &registry)
+                    .await;
+            }
         });
 
         debug!("Running runners");
@@ -303,4 +323,9 @@ pub struct Runtime {
 
     /// This runtime's local process factory.
     pub process_factory: ProcessFactory,
+
+    /// A shared handle to this runtime's native registry.
+    ///
+    /// Access the `parent` field on it to gain a capability to it.
+    pub registry: Arc<Process>,
 }

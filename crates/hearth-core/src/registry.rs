@@ -23,15 +23,11 @@ use flue::{Mailbox, Permissions, PostOffice, Table};
 use hearth_types::registry::*;
 use tracing::warn;
 
-use crate::{
-    process::Process,
-    runtime::Runtime,
-    utils::{ProcessRunner, RequestInfo, RequestResponseProcess, ResponseInfo},
-};
+use crate::utils::{RequestInfo, RequestResponseProcess, ResponseInfo};
 
 pub struct RegistryBuilder {
-    table: Table,
-    inner: Registry,
+    pub table: Table,
+    pub inner: Registry,
 }
 
 impl RegistryBuilder {
@@ -52,15 +48,10 @@ impl RegistryBuilder {
             self.inner.services.insert(name, cap);
         }
     }
-
-    pub async fn run(self, runtime: Arc<Runtime>) {
-        let ctx = Process::from(self.table);
-        self.inner.run("Registry".to_string(), runtime, ctx).await;
-    }
 }
 
 #[derive(Default)]
-struct Registry {
+pub struct Registry {
     services: HashMap<String, usize>,
 }
 

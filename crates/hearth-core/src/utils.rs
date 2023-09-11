@@ -86,7 +86,7 @@ pub trait ProcessRunner: Send {
     ///
     /// Takes ownership of this object and provides a dev-facing label, a handle
     /// to the runtime, and an existing [Process] instance as context.
-    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: Process);
+    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: &Process);
 }
 
 /// A trait for process runners that continuously receive JSON-formatted messages of a single type.
@@ -108,7 +108,7 @@ impl<T> ProcessRunner for T
 where
     T: SinkProcess,
 {
-    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: Process) {
+    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: &Process) {
         loop {
             let recv = ctx.borrow_parent().recv(|signal| match signal {
                 ContextSignal::Message { data, caps } => Some((data.to_owned(), caps.to_owned())),
