@@ -29,10 +29,10 @@ impl RequestResponseProcess for FsPlugin {
     type Request = Request;
     type Response = Response;
 
-    async fn on_request(
-        &mut self,
-        request: &mut RequestInfo<'_, Request>,
-    ) -> ResponseInfo<Response> {
+    async fn on_request<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, Request>,
+    ) -> ResponseInfo<'a, Response> {
         let target = match PathBuf::try_from(&request.data.target) {
             Ok(target) => target,
             Err(_) => return Error::InvalidTarget.into(),
