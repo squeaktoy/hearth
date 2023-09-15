@@ -42,10 +42,7 @@ async fn main() {
     };
 
     registry
-        .send(
-            &serde_json::to_vec(&request).unwrap(),
-            &[&response_cap, &registry],
-        )
+        .send(&serde_json::to_vec(&request).unwrap(), &[&response_cap])
         .await
         .unwrap();
 
@@ -63,7 +60,10 @@ async fn main() {
     let spawner = parent.borrow_table().wrap_handle(spawner).unwrap();
 
     spawner
-        .send(&serde_json::to_vec(&spawn_info).unwrap(), &[&response_cap])
+        .send(
+            &serde_json::to_vec(&spawn_info).unwrap(),
+            &[&response_cap, &registry],
+        )
         .await
         .unwrap();
 
