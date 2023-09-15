@@ -165,23 +165,38 @@ impl AsRef<Table> for TableAbi {
 #[impl_wasm_linker(module = "hearth::table")]
 impl TableAbi {
     fn inc_ref(&self, handle: u32) -> Result<()> {
-        self.as_ref().inc_ref(handle as usize)?;
+        self.as_ref()
+            .inc_ref(handle as usize)
+            .with_context(|| format!("inc_ref({handle})"))?;
+
         Ok(())
     }
 
     fn dec_ref(&self, handle: u32) -> Result<()> {
-        self.as_ref().dec_ref(handle as usize)?;
+        self.as_ref()
+            .dec_ref(handle as usize)
+            .with_context(|| format!("dec_ref({handle})"))?;
+
         Ok(())
     }
 
     fn get_permissions(&self, handle: u32) -> Result<u32> {
-        let perms = self.as_ref().get_permissions(handle as usize)?;
+        let perms = self
+            .as_ref()
+            .get_permissions(handle as usize)
+            .with_context(|| format!("get_permissions({handle})"))?;
+
         Ok(perms.bits())
     }
 
     fn demote(&self, handle: u32, perms: u32) -> Result<u32> {
         let perms = Permissions::from_bits(perms).context("unknown permission bits set")?;
-        let handle = self.as_ref().demote(handle as usize, perms)?;
+
+        let handle = self
+            .as_ref()
+            .demote(handle as usize, perms)
+            .with_context(|| format!("demote({handle})"))?;
+
         Ok(handle.try_into().unwrap())
     }
 
@@ -200,12 +215,17 @@ impl TableAbi {
         self.process
             .borrow_table()
             .send(handle as usize, data, &caps)
-            .await?;
+            .await
+            .with_context(|| format!("send({handle})"))?;
+
         Ok(())
     }
 
     fn kill(&self, handle: u32) -> Result<()> {
-        self.as_ref().kill(handle as usize)?;
+        self.as_ref()
+            .kill(handle as usize)
+            .with_context(|| format!("kill({handle})"))?;
+
         Ok(())
     }
 }
@@ -287,7 +307,12 @@ impl MailboxAbi {
     fn link(&self, mailbox: u32, cap: u32) -> Result<()> {
         let cap = cap as usize;
         let mb = self.get_mb(mailbox)?;
-        self.borrow_process().borrow_table().link(cap, mb)?;
+
+        self.borrow_process()
+            .borrow_table()
+            .link(cap, mb)
+            .with_context(|| format!("link(mailbox = {mailbox}, cap = {cap})"))?;
+
         Ok(())
     }
 
