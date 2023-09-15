@@ -22,15 +22,6 @@ use serde::{Deserialize, Serialize};
 
 pub use hearth_types::*;
 
-bitflags::bitflags! {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    pub struct Permissions: u32 {
-        const SEND = 1 << 0;
-        const LINK = 1 << 1;
-        const KILL = 1 << 2;
-    }
-}
-
 /// Internal helper function to turn a string into a pointer and length.
 fn abi_string(str: &str) -> (u32, u32) {
     let bytes = str.as_bytes();
@@ -53,6 +44,12 @@ pub struct RequestResponse<Request, Response> {
     _response: PhantomData<Response>,
 }
 
+impl<Request, Response> AsRef<Process> for RequestResponse<Request, Response> {
+    fn as_ref(&self) -> &Process {
+        &self.process
+    }
+}
+
 impl<Request, Response> RequestResponse<Request, Response>
 where
     Request: Serialize,
@@ -66,12 +63,16 @@ where
         }
     }
 
-    pub fn request(&self, request: Request) -> (Response, Vec<Process>) {
+    pub fn request(&self, request: Request, args: &[&Process]) -> (Response, Vec<Process>) {
         let reply = Mailbox::new();
         let reply_cap = reply.make_capability(Permissions::SEND);
         reply.link(&self.process);
 
-        self.process.send_json(&request, &[&reply_cap]);
+        let mut caps = Vec::with_capacity(args.len() + 1);
+        caps.push(&reply_cap);
+        caps.extend_from_slice(args);
+
+        self.process.send_json(&request, caps.as_slice());
 
         reply.recv_json()
     }
@@ -85,7 +86,7 @@ impl Registry {
             name: name.to_string(),
         };
 
-        let (data, mut caps) = self.request(request);
+        let (data, mut caps) = self.request(request, &[]);
 
         let registry::RegistryResponse::Get(present) = data else {
             panic!("failed to get service {:?}", name);
@@ -129,11 +130,14 @@ impl Drop for Process {
 
 impl Process {
     /// Spawns a child process for the given function.
-    pub fn spawn(cb: fn()) -> Self {
-        let ((), mut caps) = WASM_SPAWNER.request(wasm::WasmSpawnInfo {
-            lump: this_lump(),
-            entrypoint: Some(unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32),
-        });
+    pub fn spawn(cb: fn(), registry: Option<Process>) -> Self {
+        let ((), mut caps) = WASM_SPAWNER.request(
+            wasm::WasmSpawnInfo {
+                lump: this_lump(),
+                entrypoint: Some(unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32),
+            },
+            &[registry.as_ref().unwrap_or(REGISTRY.as_ref())],
+        );
 
         caps.remove(0)
     }
