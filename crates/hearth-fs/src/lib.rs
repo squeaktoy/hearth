@@ -18,7 +18,9 @@
 
 use std::path::PathBuf;
 
-use hearth_core::{async_trait, hearth_types::fs::*, utils::*};
+use hearth_core::{
+    async_trait, cargo_process_info, hearth_types::fs::*, process::ProcessInfo, utils::*,
+};
 
 pub struct FsPlugin {
     root: PathBuf,
@@ -87,6 +89,13 @@ impl RequestResponseProcess for FsPlugin {
 
 impl ServiceRunner for FsPlugin {
     const NAME: &'static str = "hearth.fs.Filesystem";
+
+    fn get_process_info() -> ProcessInfo {
+        let mut info = cargo_process_info!();
+        info.description =
+            Some("The native filesystem access service. Accepts FsRequest.".to_string());
+        info
+    }
 }
 
 impl FsPlugin {
