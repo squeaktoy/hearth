@@ -127,7 +127,7 @@ pub trait ProcessRunner: Send {
 #[async_trait]
 pub trait SinkProcess: Send + Sync {
     /// The deserializeable data type to be received.
-    type Message: for<'a> Deserialize<'a> + Send + Sync;
+    type Message: for<'a> Deserialize<'a> + Send + Sync + Debug;
 
     /// A callback to call when messages are received by this process.
     async fn on_message<'a>(&'a mut self, message: &mut RequestInfo<'a, Self::Message>);
@@ -173,6 +173,8 @@ where
                 }
             };
 
+            trace!("{:?} received {:?}", label, data);
+
             let mut message = RequestInfo {
                 label: &label,
                 process: &ctx,
@@ -183,14 +185,16 @@ where
             };
 
             self.on_message(&mut message).await;
+
+            trace!("{:?} finished processing message", label);
         }
     }
 }
 
 #[async_trait]
 pub trait RequestResponseProcess: Send + Sync {
-    type Request: for<'a> Deserialize<'a> + Send + Sync;
-    type Response: Serialize + Send;
+    type Request: for<'a> Deserialize<'a> + Send + Sync + Debug;
+    type Response: Serialize + Send + Debug;
 
     async fn on_request<'a>(
         &'a mut self,
