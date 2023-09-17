@@ -177,6 +177,7 @@ impl RuntimeBuilder {
     pub fn add_service(
         &mut self,
         name: String,
+        info: ProcessInfo,
         process: impl ProcessRunner + 'static,
     ) -> &mut Self {
         if self.services.contains(&name) {
@@ -187,7 +188,6 @@ impl RuntimeBuilder {
         let service_start_tx = self.service_start_tx.clone();
         self.service_num += 1;
 
-        let info = ProcessInfo {};
         let ctx = self.process_factory.spawn(info);
         self.registry_builder.add(name.clone(), ctx.borrow_parent());
         self.services.insert(name.clone());
@@ -252,7 +252,25 @@ impl RuntimeBuilder {
             inner: registry_inner,
         } = self.registry_builder;
 
-        let info = ProcessInfo {};
+        let mut info = ProcessInfo::default();
+        info.name = Some("Registry".to_string());
+        info.description = Some("Hearth's native service registry.".to_string());
+
+        let some_or_empty = |str: &str| {
+            if str.is_empty() {
+                None
+            } else {
+                Some(str.to_string())
+            }
+        };
+
+        info.authors = some_or_empty(env!("CARGO_PKG_AUTHORS"))
+            .map(|authors| authors.split(':').map(ToString::to_string).collect());
+
+        info.repository = some_or_empty(env!("CARGO_PKG_REPOSITORY"));
+        info.homepage = some_or_empty(env!("CARGO_PKG_HOMEPAGE"));
+        info.license = some_or_empty(env!("CARGO_PKG_LICENSE"));
+
         let ctx = self.process_factory.spawn_with_table(info, registry_table);
         let registry = Arc::new(ctx);
 

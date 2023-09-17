@@ -16,17 +16,47 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{any::type_name, sync::Arc};
+use std::{any::type_name, fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
 use flue::{CapabilityHandle, ContextSignal};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 use crate::{
-    process::Process,
+    process::{Process, ProcessInfo},
     runtime::{Plugin, Runtime, RuntimeBuilder},
 };
+
+/// Helper macro to initialize [ProcessInfo] using Cargo environment variables.
+///
+/// This macro initializes these [ProcessInfo] fields with `CARGO_PKG_*` flags:
+/// - `authors`: `CARGO_PKG_AUTHORS`
+/// - `repository`: `CARGO_PKG_REPOSITORY`
+/// - `homepage`: `CARGO_PKG_HOMEPAGE`
+/// - `license`: `CARGO_PKG_LICENSE`
+#[macro_export]
+macro_rules! cargo_process_info {
+    () => {{
+        let mut info = ::hearth_core::process::ProcessInfo::default();
+
+        let some_or_empty = |str: &str| {
+            if str.is_empty() {
+                None
+            } else {
+                Some(str.to_string())
+            }
+        };
+
+        info.authors = some_or_empty(env!("CARGO_PKG_AUTHORS"))
+            .map(|authors| authors.split(':').map(ToString::to_string).collect());
+
+        info.repository = some_or_empty(env!("CARGO_PKG_REPOSITORY"));
+        info.homepage = some_or_empty(env!("CARGO_PKG_HOMEPAGE"));
+        info.license = some_or_empty(env!("CARGO_PKG_LICENSE"));
+        info
+    }};
+}
 
 /// Context for an incoming message in [SinkProcess] or [RequestResponseProcess].
 pub struct RequestInfo<'a, T> {
@@ -189,6 +219,11 @@ where
 
 pub trait ServiceRunner: ProcessRunner {
     const NAME: &'static str;
+
+    /// Gets the [ProcessInfo] for this service.
+    ///
+    /// The `name` field of this struct is overridden by [Self::NAME].
+    fn get_process_info() -> ProcessInfo;
 }
 
 impl<T> Plugin for T
@@ -196,6 +231,9 @@ where
     T: ServiceRunner + Send + Sync + 'static,
 {
     fn finish(self, builder: &mut RuntimeBuilder) {
-        builder.add_service(Self::NAME.to_string(), self);
+        let name = Self::NAME.to_string();
+        let mut info = Self::get_process_info();
+        info.name = Some(name.clone());
+        builder.add_service(name, info, self);
     }
 }

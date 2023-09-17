@@ -24,7 +24,28 @@ use hearth_types::ProcessLogLevel;
 use ouroboros::self_referencing;
 use tracing::debug;
 
-pub struct ProcessInfo {}
+/// Static metadata about a process.
+#[non_exhaustive]
+#[derive(Clone, Debug, Default)]
+pub struct ProcessInfo {
+    /// A short, human-readable identifier for this process's function.
+    pub name: Option<String>,
+
+    /// Longer documentation of this process's function.
+    pub description: Option<String>,
+
+    /// A list of authors of this process.
+    pub authors: Option<Vec<String>>,
+
+    /// A link to this process's source repository.
+    pub repository: Option<String>,
+
+    /// A link to the home page of this process.
+    pub homepage: Option<String>,
+
+    /// An SPDX license identifier of this process's software license.
+    pub license: Option<String>,
+}
 
 pub struct ProcessFactory {
     post: Arc<PostOffice>,
