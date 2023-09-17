@@ -31,6 +31,9 @@ pub use tracing;
 /// Asset loading and storage.
 pub mod asset;
 
+/// Network connection.
+pub mod connection;
+
 /// Lump loading and storage.
 pub mod lump;
 
