@@ -19,20 +19,18 @@
 use std::sync::Arc;
 
 use hearth_core::{
-    async_trait,
-    process::factory::ProcessInfo,
+    async_trait, cargo_process_info,
+    flue::Permissions,
+    process::ProcessInfo,
     runtime::{Plugin, RuntimeBuilder},
     tokio::{
         self,
         sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     },
-    utils::{
-        ProcessRunner, RequestInfo, RequestResponseProcess, ResponseInfo, ServiceRunner,
-        SinkProcess,
-    },
+    utils::*,
 };
 use hearth_rend3::*;
-use hearth_types::{terminal::*, Flags};
+use hearth_types::terminal::*;
 use rend3_alacritty::{
     terminal::{Terminal, TerminalConfig, TerminalState},
     text::{FaceAtlas, FontSet},
@@ -111,7 +109,7 @@ pub struct TerminalSink {
 impl SinkProcess for TerminalSink {
     type Message = TerminalUpdate;
 
-    async fn on_message(&mut self, request: &mut RequestInfo<'_, Self::Message>) {
+    async fn on_message<'a>(&'a mut self, request: MessageInfo<'a, Self::Message>) {
         let Some(inner) = self.inner.as_ref() else {
             return;
         };
@@ -141,10 +139,10 @@ impl RequestResponseProcess for TerminalFactory {
     type Request = FactoryRequest;
     type Response = FactoryResponse;
 
-    async fn on_request(
-        &mut self,
-        request: &mut RequestInfo<'_, Self::Request>,
-    ) -> ResponseInfo<Self::Response> {
+    async fn on_request<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, Self::Request>,
+    ) -> ResponseInfo<'a, Self::Response> {
         let FactoryRequest::CreateTerminal(state) = &request.data;
 
         let state = convert_state(state);
@@ -155,12 +153,27 @@ impl RequestResponseProcess for TerminalFactory {
             inner: Some(terminal),
         };
 
-        let info = ProcessInfo {};
-        let flags = Flags::SEND | Flags::KILL;
-        let child = request.runtime.process_factory.spawn(info, flags);
-        let child_cap = request.ctx.copy_self_capability(&child);
+        let mut info = cargo_process_info!();
+        info.name = Some("TerminalSink".to_string());
+        info.description = Some("An instance of a terminal. Accepts TerminalUpdate.".to_string());
 
-        tokio::spawn(sink.run("TerminalSink".to_string(), request.runtime.clone(), child));
+        let child = request.runtime.process_factory.spawn(info);
+        let perms = Permissions::SEND | Permissions::KILL;
+        let child_cap = request
+            .process
+            .borrow_table()
+            .import(child.borrow_parent(), perms);
+
+        let child_cap = request
+            .process
+            .borrow_table()
+            .wrap_handle(child_cap)
+            .unwrap();
+
+        let runtime = request.runtime.clone();
+        tokio::spawn(async move {
+            sink.run("TerminalSink".to_string(), runtime, &child).await;
+        });
 
         ResponseInfo {
             data: Ok(FactorySuccess::Terminal),
@@ -171,6 +184,16 @@ impl RequestResponseProcess for TerminalFactory {
 
 impl ServiceRunner for TerminalFactory {
     const NAME: &'static str = "hearth.terminal.TerminalFactory";
+
+    fn get_process_info() -> ProcessInfo {
+        let mut info = cargo_process_info!();
+        info.name = Some("TerminalFactory".to_string());
+        info.description = Some(
+            "The native terminal emulator factory service. Accepts FactoryRequest.".to_string(),
+        );
+
+        info
+    }
 }
 
 pub struct TerminalPlugin {}
