@@ -40,10 +40,12 @@ impl ProcessFactory {
     }
 
     /// Spawns a process with an existing [Table].
-    pub fn spawn_with_table(&self, _info: ProcessInfo, table: Table) -> Process {
+    pub fn spawn_with_table(&self, info: ProcessInfo, table: Table) -> Process {
         let pid = self
             .pid_gen
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        debug!("spawning PID {}: {:?}", pid, info);
 
         let (log_tx, log_rx) = flume::unbounded();
 
@@ -53,10 +55,11 @@ impl ProcessFactory {
             }
         });
 
+        let id = ProcessIdentity { pid, log_tx, info };
+
         Process::new(
-            pid,
-            log_tx,
             table,
+            id,
             |table| MailboxStore::new(table),
             |store| store.create_mailbox().unwrap(),
         )
@@ -78,16 +81,31 @@ pub struct ProcessLogEvent {
     // TODO serializeable timestamp?
 }
 
-#[self_referencing]
-pub struct Process {
+/// Metadata of a running process with data distinguishing it from other processes.
+pub struct ProcessIdentity {
     /// The process ID of this process.
     pub pid: usize,
 
     /// A sender to this process's log.
     pub log_tx: Sender<ProcessLogEvent>,
 
+    /// This process's [ProcessInfo].
+    pub info: ProcessInfo,
+}
+
+impl Drop for ProcessIdentity {
+    fn drop(&mut self) {
+        debug!("despawning PID {}", self.pid);
+    }
+}
+
+#[self_referencing]
+pub struct Process {
     /// This process's [Table].
     pub table: Table,
+
+    /// This process's [ProcessIdentity].
+    pub id: ProcessIdentity,
 
     /// This process's [MailboxStore].
     #[borrows(table)]
