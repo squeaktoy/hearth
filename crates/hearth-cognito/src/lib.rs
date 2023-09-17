@@ -25,9 +25,9 @@ use hearth_core::flue::{ContextSignal, Mailbox, MailboxStore, Permissions, Table
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_core::process::{Process, ProcessInfo, ProcessLogEvent};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
-use hearth_core::tokio;
 use hearth_core::utils::*;
 use hearth_core::{async_trait, hearth_types};
+use hearth_core::{cargo_process_info, tokio};
 use hearth_macros::impl_wasm_linker;
 use hearth_types::wasm::WasmSpawnInfo;
 use hearth_types::{LumpId, SignalKind};
@@ -62,7 +62,7 @@ impl LogAbi {
             content: memory.get_str(content_ptr, content_len)?.to_string(),
         };
 
-        self.process.borrow_log_tx().send(event)?;
+        self.process.borrow_id().log_tx.send(event)?;
 
         Ok(())
     }
@@ -488,11 +488,12 @@ struct WasmProcess {
 
 impl WasmProcess {
     async fn run(mut self, runtime: Arc<Runtime>, ctx: Process) {
-        let pid = *ctx.borrow_pid();
+        let pid = ctx.borrow_id().pid;
+
         match self
             .run_inner(runtime, ctx)
             .await
-            .with_context(|| format!("error in Wasm process {}", pid))
+            .with_context(|| format!("PID {}", pid))
         {
             Ok(()) => {}
             Err(err) => {
@@ -567,7 +568,7 @@ impl RequestResponseProcess for WasmProcessSpawner {
         };
 
         debug!("Spawning module {}", request.data.lump);
-        let info = ProcessInfo {};
+        let info = ProcessInfo::default();
         let child = request.runtime.process_factory.spawn(info);
 
         // create a capability to this child's parent mailbox
@@ -612,6 +613,14 @@ impl RequestResponseProcess for WasmProcessSpawner {
 
 impl ServiceRunner for WasmProcessSpawner {
     const NAME: &'static str = "hearth.cognito.WasmProcessSpawner";
+
+    fn get_process_info() -> ProcessInfo {
+        let mut info = cargo_process_info!();
+        info.description =
+            Some("The native WebAssembly process spawner. Accepts WasmSpawnInfo.".to_string());
+
+        info
+    }
 }
 
 pub struct WasmModuleLoader {
