@@ -19,10 +19,10 @@
 use std::{path::PathBuf, sync::Arc};
 
 use hearth_core::{
-    async_trait,
+    async_trait, cargo_process_info,
     flue::{ContextSignal, OwnedCapability, Permissions},
     hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo},
-    process::{Process, ProcessInfo},
+    process::Process,
     runtime::{Plugin, Runtime, RuntimeBuilder},
     tokio::{spawn, sync::oneshot::Sender},
     utils::ProcessRunner,
@@ -70,7 +70,11 @@ pub struct InitPlugin {
 impl Plugin for InitPlugin {
     fn finish(self, builder: &mut RuntimeBuilder) {
         for hook in self.hooks {
-            builder.add_service(hook.service.clone(), hook);
+            let mut info = cargo_process_info!();
+            info.name = Some(hook.service.clone());
+            info.description = Some("An init hook. Send a message with no data and a single capability to initialize it.".to_string());
+
+            builder.add_service(hook.service.clone(), info, hook);
         }
 
         builder.add_runner(move |runtime| {
@@ -85,23 +89,25 @@ impl Plugin for InitPlugin {
                 };
 
                 debug!("Running init system");
-                let parent = runtime.process_factory.spawn(ProcessInfo {});
+                let mut info = cargo_process_info!();
+                info.name = Some("init system parent".to_string());
+
+                let parent = runtime.process_factory.spawn(info);
                 let response = parent.borrow_store().create_mailbox().unwrap();
                 let response_cap = response.make_capability(Permissions::SEND);
 
                 let registry = runtime.registry.borrow_parent();
-                let registry = parent.borrow_table().import(registry, Permissions::SEND);
-                let registry = parent.borrow_table().wrap_handle(registry).unwrap();
+                let table = parent.borrow_table();
+                let perms = Permissions::SEND | Permissions::LINK;
+                let registry = table.import(registry, perms);
+                let registry = table.wrap_handle(registry).unwrap();
 
                 let request = RegistryRequest::Get {
                     name: "hearth.cognito.WasmProcessSpawner".to_string(),
                 };
 
                 registry
-                    .send(
-                        &serde_json::to_vec(&request).unwrap(),
-                        &[&response_cap, &registry],
-                    )
+                    .send(&serde_json::to_vec(&request).unwrap(), &[&response_cap])
                     .await
                     .unwrap();
 
@@ -119,7 +125,10 @@ impl Plugin for InitPlugin {
                 let spawner = parent.borrow_table().wrap_handle(spawner).unwrap();
 
                 spawner
-                    .send(&serde_json::to_vec(&spawn_info).unwrap(), &[&response_cap])
+                    .send(
+                        &serde_json::to_vec(&spawn_info).unwrap(),
+                        &[&response_cap, &registry],
+                    )
                     .await
                     .unwrap();
             });
