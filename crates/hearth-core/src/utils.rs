@@ -58,7 +58,25 @@ macro_rules! cargo_process_info {
     }};
 }
 
-/// Context for an incoming message in [SinkProcess] or [RequestResponseProcess].
+/// Context for an incoming message in [SinkProcess].
+pub struct MessageInfo<'a, T> {
+    /// This process's label.
+    pub label: &'a str,
+
+    /// The [Process] that has received this message.
+    pub process: &'a Process,
+
+    /// A handle to the [Runtime] this process is running in.
+    pub runtime: &'a Arc<Runtime>,
+
+    /// The deserialized data of the message's contents.
+    pub data: T,
+
+    /// The capabilities from this message.
+    pub caps: &'a [CapabilityHandle<'a>],
+}
+
+/// Context for an incoming message in [RequestResponseProcess].
 pub struct RequestInfo<'a, T> {
     /// This process's label.
     pub label: &'a str,
@@ -130,7 +148,7 @@ pub trait SinkProcess: Send + Sync {
     type Message: for<'a> Deserialize<'a> + Send + Sync + Debug;
 
     /// A callback to call when messages are received by this process.
-    async fn on_message<'a>(&'a mut self, message: &mut RequestInfo<'a, Self::Message>);
+    async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, Self::Message>);
 }
 
 #[async_trait]
@@ -159,11 +177,6 @@ where
                 .map(|cap| ctx.borrow_table().wrap_handle(cap).unwrap())
                 .collect();
 
-            let Some(reply) = caps.first().cloned() else {
-                debug!("Request to {:?} has no reply address", label);
-                continue;
-            };
-
             let data: T::Message = match serde_json::from_slice(&data) {
                 Ok(request) => request,
                 Err(err) => {
@@ -175,16 +188,14 @@ where
 
             trace!("{:?} received {:?}", label, data);
 
-            let mut message = RequestInfo {
+            self.on_message(MessageInfo {
                 label: &label,
                 process: &ctx,
-                reply,
-                cap_args: &caps[1..],
                 runtime: &runtime,
                 data,
-            };
-
-            self.on_message(&mut message).await;
+                caps: &caps,
+            })
+            .await;
 
             trace!("{:?} finished processing message", label);
         }
@@ -209,11 +220,25 @@ where
 {
     type Message = T::Request;
 
-    async fn on_message<'a>(&'a mut self, message: &mut RequestInfo<'a, Self::Message>) {
-        let response = self.on_request(message).await;
+    async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, Self::Message>) {
+        let Some(reply) = message.caps.first().cloned() else {
+            debug!("Request to {:?} has no reply address", message.label);
+            return;
+        };
+
+        let mut request = RequestInfo {
+            label: message.label,
+            process: message.process,
+            reply: reply.clone(),
+            cap_args: &message.caps[1..],
+            runtime: message.runtime,
+            data: message.data,
+        };
+
+        let response = self.on_request(&mut request).await;
         let data = serde_json::to_vec(&response.data).unwrap();
         let caps: Vec<_> = response.caps.iter().collect();
-        let result = message.reply.send(&data, &caps).await;
+        let result = reply.send(&data, &caps).await;
 
         if let Err(err) = result {
             debug!("{:?} reply error: {:?}", message.label, err);
