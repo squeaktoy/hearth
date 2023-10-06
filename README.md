@@ -28,8 +28,8 @@ is licensed under a
 
 <div align="center">
   <figure>
-    <img src="./resources/misc/terminal-demo-screenshot.jpg"/>
-    <figcaption>A screenshot of the Hearth terminal emulator demo program.</figcaption>
+    <img src="./resources/misc/terminal-demo-screenshot.png"/>
+    <figcaption>A screenshot of the Hearth terminal emulator demo program editing its own source code.</figcaption>
   </figure>
 </div>
 
