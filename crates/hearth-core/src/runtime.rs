@@ -40,7 +40,7 @@ use crate::process::factory::ProcessInfo;
 /// Each plugin first builds onto a runtime using its `build` function and an
 /// in-progress [RuntimeBuilder]. During this phase, plugins can mutably access
 /// other plugins that have already been added. When all the plugins have been
-/// added, the final phase of runtime building begins. Each plugin's `finish`
+/// added, the final phase of runtime building begins. Each plugin's `finalize`
 /// method takes ownership of the plugin and finishes adding onto the
 /// [RuntimeBuilder] using the complete configuration for that plugin.
 #[async_trait]
@@ -49,12 +49,12 @@ pub trait Plugin: Sized + Send + Sync + 'static {
     fn build(&mut self, _builder: &mut RuntimeBuilder) {}
 
     /// Finishes building this runtime before the runtime starts. See [RuntimeBuilder] for more info.
-    fn finish(self, _builder: &mut RuntimeBuilder) {}
+    fn finalize(self, _builder: &mut RuntimeBuilder) {}
 }
 
 struct PluginWrapper {
     plugin: Box<dyn Any + Send>,
-    finish: Box<dyn FnOnce(Box<dyn Any>, &mut RuntimeBuilder) + Send>,
+    finalize: Box<dyn FnOnce(Box<dyn Any>, &mut RuntimeBuilder) + Send>,
 }
 
 /// Builder struct for a single Hearth [Runtime].
@@ -111,7 +111,7 @@ impl RuntimeBuilder {
     /// asset loaders, runners, or anything else. Then, plugins may configure
     /// already-added plugins using [RuntimeBuilder::get_plugin] and
     /// [RuntimeBuilder::get_plugin_mut]. After all plugins have been added
-    /// and before the runtime is started, [Plugin::finish] is called with
+    /// and before the runtime is started, [Plugin::finalize] is called with
     /// each plugin in reverse order of adding to complete the plugin's
     /// building.
     pub fn add_plugin<T: Plugin>(&mut self, mut plugin: T) -> &mut Self {
@@ -130,10 +130,10 @@ impl RuntimeBuilder {
             id,
             PluginWrapper {
                 plugin: Box::new(plugin),
-                finish: Box::new(move |plugin, builder| {
+                finalize: Box::new(move |plugin, builder| {
                     let plugin = plugin.downcast::<T>().unwrap();
-                    debug!("Finishing {} plugin", name);
-                    plugin.finish(builder);
+                    debug!("Finalizing {} plugin", name);
+                    plugin.finalize(builder);
                 }),
             },
         );
@@ -235,13 +235,13 @@ impl RuntimeBuilder {
     ///
     /// This returns a shared pointer to the new runtime.
     pub async fn run(mut self, config: RuntimeConfig) -> Arc<Runtime> {
-        debug!("Finishing plugins");
+        debug!("Finalizing plugins");
 
-        // finish in reverse order of adding
+        // finalize in reverse order of adding
         while let Some(id) = self.plugin_order.pop() {
             let wrapper = self.plugins.remove(&id).unwrap();
-            let PluginWrapper { plugin, finish } = wrapper;
-            finish(plugin, &mut self);
+            let PluginWrapper { plugin, finalize } = wrapper;
+            finalize(plugin, &mut self);
         }
 
         use crate::process::*;
