@@ -45,10 +45,14 @@ use crate::process::factory::ProcessInfo;
 /// [RuntimeBuilder] using the complete configuration for that plugin.
 #[async_trait]
 pub trait Plugin: Sized + Send + Sync + 'static {
-    /// Builds a runtime using this plugin. See [RuntimeBuilder] for more info.
+    /// Builds a runtime using this plugin.
     fn build(&mut self, _builder: &mut RuntimeBuilder) {}
 
-    /// Finishes building this runtime before the runtime starts. See [RuntimeBuilder] for more info.
+    /// Takes ownership of this plugin to finish its building before the runtime starts.
+    ///
+    /// Plugins are finalized in LIFO order. If a plugin adds another plugin
+    /// during its finalization, then that plugin is also pushed into the
+    /// finalization stack.
     fn finalize(self, _builder: &mut RuntimeBuilder) {}
 }
 
