@@ -82,7 +82,7 @@ pub struct Rend3Plugin {
 }
 
 impl Plugin for Rend3Plugin {
-    fn finish(mut self, _builder: &mut RuntimeBuilder) {
+    fn finalize(mut self, _builder: &mut RuntimeBuilder) {
         tokio::spawn(async move {
             while let Some(frame) = self.frame_request_rx.recv().await {
                 self.draw(frame);
