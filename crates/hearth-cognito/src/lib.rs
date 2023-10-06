@@ -540,7 +540,7 @@ impl Plugin for WasmPlugin {
         });
     }
 
-    fn finish(self, _builder: &mut RuntimeBuilder) {
+    fn finalize(self, _builder: &mut RuntimeBuilder) {
         tokio::spawn(async move {
             // TODO make this time slice duration configurable
             let duration = std::time::Duration::from_micros(100);

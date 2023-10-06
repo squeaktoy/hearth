@@ -41,7 +41,7 @@ pub struct InitPlugin {
 }
 
 impl Plugin for InitPlugin {
-    fn finish(mut self, builder: &mut RuntimeBuilder) {
+    fn finalize(mut self, builder: &mut RuntimeBuilder) {
         for hook in std::mem::take(&mut self.hooks) {
             builder.add_service(
                 hook.service,
