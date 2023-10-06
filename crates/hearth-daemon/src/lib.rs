@@ -121,7 +121,7 @@ impl Listener {
 pub struct DaemonPlugin {}
 
 impl Plugin for DaemonPlugin {
-    fn finish(mut self, builder: &mut RuntimeBuilder) {
+    fn finalize(mut self, builder: &mut RuntimeBuilder) {
         let init = builder
             .get_plugin_mut::<InitPlugin>()
             .expect("InitPlugin not found");

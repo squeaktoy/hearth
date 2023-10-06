@@ -194,7 +194,7 @@ impl<T> Plugin for T
 where
     T: ServiceRunner + Send + Sync,
 {
-    fn finish(self, builder: &mut RuntimeBuilder) {
+    fn finalize(self, builder: &mut RuntimeBuilder) {
         builder.add_service(
             Self::NAME.to_string(),
             ProcessInfo {},
