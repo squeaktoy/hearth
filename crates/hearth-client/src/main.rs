@@ -26,7 +26,6 @@ use std::{
 
 use clap::Parser;
 use hearth_core::{
-    async_trait,
     process::{context::Capability, Process},
     runtime::{Plugin, Runtime, RuntimeBuilder, RuntimeConfig},
 };
@@ -131,7 +130,6 @@ pub struct ClientPlugin {
     pub password: String,
 }
 
-#[async_trait]
 impl Plugin for ClientPlugin {
     fn finalize(self, builder: &mut RuntimeBuilder) {
         let init = builder
