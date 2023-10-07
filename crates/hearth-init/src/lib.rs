@@ -68,7 +68,7 @@ pub struct InitPlugin {
 }
 
 impl Plugin for InitPlugin {
-    fn finish(self, builder: &mut RuntimeBuilder) {
+    fn finalize(self, builder: &mut RuntimeBuilder) {
         for hook in self.hooks {
             let mut info = cargo_process_info!();
             info.name = Some(hook.service.clone());
