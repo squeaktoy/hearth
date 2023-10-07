@@ -259,7 +259,7 @@ impl<T> Plugin for T
 where
     T: ServiceRunner + Send + Sync + 'static,
 {
-    fn finish(self, builder: &mut RuntimeBuilder) {
+    fn finalize(self, builder: &mut RuntimeBuilder) {
         let name = Self::NAME.to_string();
         let mut info = Self::get_process_info();
         info.name = Some(name.clone());
