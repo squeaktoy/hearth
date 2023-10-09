@@ -291,6 +291,9 @@ impl Terminal {
             ..Default::default()
         };
 
+        // setup environment variables
+        alacritty_terminal::tty::setup_env(&term_config);
+
         let term_listener = Listener::new(sender.clone());
 
         let term = Term::new(&term_config, size_info, term_listener);
