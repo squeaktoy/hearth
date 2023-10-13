@@ -82,52 +82,92 @@ impl GlyphVertex {
     };
 }
 
-pub struct DynamicMesh<T> {
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
-    index_num: u32,
+pub struct GpuVector<T> {
+    buffer: Buffer,
+    length: u64,
+    capacity: u64,
+    label: Option<String>,
+    usage: BufferUsages,
     _data: PhantomData<T>,
 }
 
-impl<T: Pod> DynamicMesh<T> {
-    pub fn new(device: &Device) -> Self {
+impl<T: Pod> GpuVector<T> {
+    pub fn new(device: &Device, label: Option<String>, usage: BufferUsages) -> Self {
+        let capacity = 128;
+        let size = capacity * std::mem::size_of::<T>() as u64;
+        let usage = usage | BufferUsages::COPY_DST;
+
         Self {
-            vertex_buffer: device.create_buffer(&BufferDescriptor {
-                label: Some("AlacrittyRoutine vertex buffer"),
-                size: 0,
+            buffer: device.create_buffer(&BufferDescriptor {
+                label: label.as_deref(),
+                size,
+                usage,
                 mapped_at_creation: false,
-                usage: BufferUsages::VERTEX,
             }),
-            index_buffer: device.create_buffer(&BufferDescriptor {
-                label: Some("AlacrittyRoutine vertex buffer"),
-                size: 0,
-                mapped_at_creation: false,
-                usage: BufferUsages::INDEX,
-            }),
-            index_num: 0,
+            length: 0,
+            capacity,
+            label,
+            usage,
             _data: PhantomData,
         }
     }
 
-    pub fn update(&mut self, device: &Device, vertices: &[T], indices: &[u32]) {
-        self.vertex_buffer = device.create_buffer_init(&util::BufferInitDescriptor {
-            label: Some("AlacrittyRoutine vertex buffer"),
-            contents: bytemuck::cast_slice(vertices),
-            usage: BufferUsages::VERTEX,
-        });
+    pub fn update(&mut self, device: &Device, queue: &Queue, data: &[T]) {
+        if self.capacity >= data.len() as u64 {
+            queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(data));
+        } else {
+            while self.capacity < data.len() as u64 {
+                self.capacity += self.capacity >> 1;
+            }
 
-        self.index_buffer = device.create_buffer_init(&util::BufferInitDescriptor {
-            label: Some("AlacrittyRoutine index buffer"),
-            contents: bytemuck::cast_slice(indices),
-            usage: BufferUsages::INDEX,
-        });
+            let mut contents: Vec<u8> = bytemuck::cast_slice(data).to_vec();
+            let size = self.capacity as usize * std::mem::size_of::<T>();
+            contents.resize(size, 0);
 
-        self.index_num = indices.len() as u32;
+            self.buffer = device.create_buffer_init(&util::BufferInitDescriptor {
+                label: self.label.as_deref(),
+                contents: contents.as_slice(),
+                usage: self.usage,
+            });
+        }
+
+        self.length = data.len() as u64;
+    }
+
+    pub fn len(&self) -> u64 {
+        self.length
+    }
+
+    pub fn get_buffer(&self) -> &Buffer {
+        &self.buffer
+    }
+}
+
+pub struct DynamicMesh<T> {
+    vertices: GpuVector<T>,
+    indices: GpuVector<u32>,
+}
+
+impl<T: Pod> DynamicMesh<T> {
+    pub fn new(device: &Device, label: Option<String>) -> Self {
+        Self {
+            vertices: GpuVector::new(device, label.clone(), BufferUsages::VERTEX),
+            indices: GpuVector::new(device, label, BufferUsages::INDEX),
+        }
+    }
+
+    pub fn update(&mut self, device: &Device, queue: &Queue, vertices: &[T], indices: &[u32]) {
+        self.vertices.update(device, queue, vertices);
+        self.indices.update(device, queue, indices);
     }
 
     pub fn draw<'a>(&'a self, rpass: &mut RenderPass<'a>) {
-        rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        rpass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
-        rpass.draw_indexed(0..self.index_num, 0, 0..1);
+        let vs = self.vertices.get_buffer();
+        let is = self.indices.get_buffer();
+        let index_num = self.indices.len().try_into().unwrap();
+
+        rpass.set_vertex_buffer(0, vs.slice(..));
+        rpass.set_index_buffer(is.slice(..), IndexFormat::Uint32);
+        rpass.draw_indexed(0..index_num, 0, 0..1);
     }
 }

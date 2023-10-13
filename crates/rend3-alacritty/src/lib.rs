@@ -243,7 +243,11 @@ impl TerminalStore {
     pub fn insert_terminal(&mut self, terminal: &Arc<Terminal>) {
         self.terminals.push(TerminalWrapper {
             terminal: Arc::downgrade(terminal),
-            draw_state: TerminalDrawState::new(self.device.to_owned(), &self.camera_bgl),
+            draw_state: TerminalDrawState::new(
+                self.device.to_owned(),
+                self.queue.to_owned(),
+                &self.camera_bgl,
+            ),
         });
     }
 
