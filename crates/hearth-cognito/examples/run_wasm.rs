@@ -20,7 +20,7 @@ async fn main() {
     let config_path = hearth_core::get_config_path();
     let config_file = hearth_core::load_config(&config_path).unwrap();
     let mut builder = RuntimeBuilder::new(config_file);
-    builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    builder.add_plugin(hearth_cognito::WasmPlugin::default());
     let runtime = builder.run(config).await;
 
     let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
