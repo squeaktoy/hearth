@@ -51,6 +51,7 @@ fn make_pipeline(
     vertex_layout: VertexBufferLayout,
     layout: &PipelineLayout,
     output_format: TextureFormat,
+    depth_write_enabled: bool,
 ) -> RenderPipeline {
     device.create_render_pipeline(&RenderPipelineDescriptor {
         label,
@@ -62,7 +63,7 @@ fn make_pipeline(
         },
         depth_stencil: Some(DepthStencilState {
             format: TextureFormat::Depth32Float,
-            depth_write_enabled: false,
+            depth_write_enabled,
             depth_compare: CompareFunction::GreaterEqual,
             stencil: StencilState::default(),
             bias: DepthBiasState::default(),
@@ -182,6 +183,7 @@ impl TerminalStore {
             SolidVertex::LAYOUT,
             &layout,
             format,
+            false,
         );
 
         let glyph_pipeline = make_pipeline(
@@ -193,6 +195,7 @@ impl TerminalStore {
             GlyphVertex::LAYOUT,
             &layout,
             format,
+            true,
         );
 
         let atlas_sampler = renderer.device.create_sampler(&SamplerDescriptor {
@@ -312,7 +315,7 @@ impl<'a> TerminalRenderRoutine<'a> {
     ) {
         let mut builder = graph.add_node("alacritty");
         let output_handle = builder.add_render_target_output(output);
-        let depth_handle = builder.add_render_target_input(depth);
+        let depth_handle = builder.add_render_target_output(depth);
         let rpass_handle = builder.add_renderpass(RenderPassTargets {
             targets: vec![RenderPassTarget {
                 color: output_handle,
@@ -321,7 +324,7 @@ impl<'a> TerminalRenderRoutine<'a> {
             }],
             depth_stencil: Some(RenderPassDepthTarget {
                 target: rend3::graph::DepthHandle::RenderTarget(depth_handle),
-                depth_clear: None,
+                depth_clear: Some(0.0),
                 stencil_clear: None,
             }),
         });
