@@ -184,7 +184,7 @@ impl DebugDrawRoutine {
                 },
                 depth_stencil: Some(DepthStencilState {
                     format: TextureFormat::Depth32Float,
-                    depth_write_enabled: false,
+                    depth_write_enabled: true,
                     depth_compare: CompareFunction::GreaterEqual,
                     stencil: Default::default(),
                     bias: Default::default(),
@@ -241,7 +241,7 @@ impl<'a> Node<'a> for DebugDrawNode<'a> {
 
         let mut builder = info.graph.add_node("debug draw");
         let output_handle = builder.add_render_target_output(output);
-        let depth_handle = builder.add_render_target_input(depth);
+        let depth_handle = builder.add_render_target_output(depth);
 
         let rpass_handle = builder.add_renderpass(RenderPassTargets {
             targets: vec![RenderPassTarget {
@@ -251,7 +251,7 @@ impl<'a> Node<'a> for DebugDrawNode<'a> {
             }],
             depth_stencil: Some(RenderPassDepthTarget {
                 target: DepthHandle::RenderTarget(depth_handle),
-                depth_clear: None,
+                depth_clear: Some(0.0),
                 stencil_clear: None,
             }),
         });
