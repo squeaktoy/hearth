@@ -21,7 +21,8 @@ members = [
 ]
 
 [workspace.dependencies]
-bytemuck = "1.13"
+bytemuck = { version = "1.13", features = ["derive"] }
+flume = "0.11"
 hearth-cognito = { path = "crates/hearth-cognito" }
 hearth-core = { path = "crates/hearth-core" }
 hearth-daemon = { path = "crates/hearth-daemon" }
