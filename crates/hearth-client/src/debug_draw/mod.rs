@@ -20,7 +20,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use bytemuck::{Pod, Zeroable};
 use flume::{unbounded, Receiver, Sender};
-use glam::{vec3, Vec3};
+use glam::Vec3;
 use hearth_core::{
     async_trait,
     process::factory::ProcessInfo,
@@ -371,48 +371,10 @@ impl Plugin for DebugDrawPlugin {
 
         let (update_tx, update_rx) = unbounded();
 
-        let mut vertices = Vec::new();
-
-        let size = 100;
-        let scale = 0.1;
-        let color = [0, 255, 0];
-
-        for x in -size..size {
-            vertices.push(DebugDrawVertex {
-                position: vec3(x as f32, 0.0, -size as f32) * scale,
-                color,
-            });
-
-            vertices.push(DebugDrawVertex {
-                position: vec3(x as f32, 0.0, size as f32) * scale,
-                color,
-            });
-        }
-
-        for y in -size..size {
-            vertices.push(DebugDrawVertex {
-                position: vec3(-size as f32, 0.0, y as f32) * scale,
-                color,
-            });
-
-            vertices.push(DebugDrawVertex {
-                position: vec3(size as f32, 0.0, y as f32) * scale,
-                color,
-            });
-        }
-
-        let _ = update_tx.send((
-            0,
-            DebugDrawUpdate::Contents(DebugDrawMesh {
-                indices: (0..(vertices.len() as u32)).collect(),
-                vertices,
-            }),
-        ));
-
         rend3.add_routine(DebugDrawRoutine::new(rend3, update_rx));
 
         builder.add_plugin(DebugDrawFactory {
-            next_id: 1,
+            next_id: 0,
             update_tx,
         });
     }
