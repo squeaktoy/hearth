@@ -40,6 +40,8 @@ use rend3_alacritty::{
 };
 use rend3_routine::base::BaseRenderGraphIntermediateState;
 
+pub use rend3_alacritty;
+
 pub struct TerminalRoutine {
     store: TerminalStore,
     new_terminals: UnboundedReceiver<Arc<Terminal>>,
