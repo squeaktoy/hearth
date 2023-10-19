@@ -38,7 +38,6 @@ use rend3_alacritty::{
     text::{FaceAtlas, FontSet},
     *,
 };
-use rend3_routine::base::BaseRenderGraphIntermediateState;
 
 pub use rend3_alacritty;
 
@@ -78,15 +77,8 @@ pub struct TerminalNode<'a> {
 
 impl<'a> Node<'a> for TerminalNode<'a> {
     fn draw<'graph>(&'graph self, info: &mut RoutineInfo<'_, 'graph>) {
-        let state = BaseRenderGraphIntermediateState::new(
-            info.graph,
-            info.ready_data,
-            info.resolution,
-            info.sample_count,
-        );
-
         let output = info.graph.add_surface_texture();
-        let depth = state.depth;
+        let depth = info.state.depth;
         self.routine.add_to_graph(info.graph, output, depth);
     }
 }
