@@ -98,7 +98,13 @@ pub fn convert_state(state: &hearth_types::terminal::TerminalState) -> TerminalS
 
 /// Guest-exposed terminal process.
 pub struct TerminalSink {
-    inner: Option<Arc<Terminal>>,
+    inner: Arc<Terminal>,
+}
+
+impl Drop for TerminalSink {
+    fn drop(&mut self) {
+        self.inner.quit();
+    }
 }
 
 #[async_trait]
@@ -106,19 +112,15 @@ impl SinkProcess for TerminalSink {
     type Message = TerminalUpdate;
 
     async fn on_message(&mut self, request: &mut RequestInfo<'_, Self::Message>) {
-        let Some(inner) = self.inner.as_ref() else {
-            return;
-        };
-
         match &request.data {
             TerminalUpdate::Quit => {
-                self.inner.take();
+                self.inner.quit();
             }
             TerminalUpdate::Input(input) => {
-                inner.send_input(input);
+                self.inner.send_input(input);
             }
             TerminalUpdate::State(state) => {
-                inner.update(convert_state(state));
+                self.inner.update(convert_state(state));
             }
         }
     }
@@ -145,9 +147,7 @@ impl RequestResponseProcess for TerminalFactory {
         let terminal = Terminal::new(self.config.clone(), state);
         let _ = self.new_terminals_tx.send(terminal.clone());
 
-        let sink = TerminalSink {
-            inner: Some(terminal),
-        };
+        let sink = TerminalSink { inner: terminal };
 
         let info = ProcessInfo {};
         let flags = Flags::SEND | Flags::KILL;
