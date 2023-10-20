@@ -117,6 +117,7 @@ impl Listener {
     }
 }
 
+#[derive(Default)]
 pub struct DaemonPlugin {}
 
 impl Plugin for DaemonPlugin {
@@ -160,10 +161,6 @@ impl Plugin for DaemonPlugin {
 }
 
 impl DaemonPlugin {
-    pub fn new() -> Self {
-        Self {}
-    }
-
     /// Performs a connection handshake with an IPC client and adds the new
     /// connection to the runtime.
     pub fn on_accept(

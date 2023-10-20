@@ -104,12 +104,9 @@ mod tests {
         assert!(reg.insert("test", cap).is_none());
         reg.store.kill(handle);
 
-        match reg.get("test") {
-            Some(cap) => {
-                cap.free(reg.store.as_ref());
-                panic!("dead process was not removed from registry");
-            }
-            None => {}
+        if let Some(cap) = reg.get("test") {
+            cap.free(reg.store.as_ref());
+            panic!("dead process was not removed from registry");
         }
     }
 }

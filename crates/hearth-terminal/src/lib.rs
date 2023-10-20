@@ -167,6 +167,7 @@ impl ServiceRunner for TerminalFactory {
     const NAME: &'static str = "hearth.terminal.TerminalFactory";
 }
 
+#[derive(Default)]
 pub struct TerminalPlugin {}
 
 impl Plugin for TerminalPlugin {
@@ -206,11 +207,5 @@ impl Plugin for TerminalPlugin {
             config,
             new_terminals_tx,
         });
-    }
-}
-
-impl TerminalPlugin {
-    pub fn new() -> Self {
-        Self {}
     }
 }
