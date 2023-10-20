@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use rend3::graph::{
     RenderGraph, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets, RenderTargetHandle,
@@ -42,18 +42,19 @@ use crate::{
 };
 
 pub struct TerminalWrapper {
-    terminal: Weak<Terminal>,
+    terminal: Arc<Terminal>,
     draw_state: TerminalDrawState,
 }
 
 impl TerminalWrapper {
     pub fn update(&mut self) -> bool {
-        if let Some(terminal) = self.terminal.upgrade() {
-            terminal.update_draw_state(&mut self.draw_state);
-            true
-        } else {
-            false
+        let quit = self.terminal.should_quit();
+
+        if !quit {
+            self.terminal.update_draw_state(&mut self.draw_state);
         }
+
+        !quit
     }
 }
 
@@ -224,11 +225,9 @@ impl TerminalStore {
     }
 
     /// Inserts a new terminal into this store.
-    ///
-    /// When the last `Arc` owning this terminal is dropped, this terminal will stop being rendered.
     pub fn insert_terminal(&mut self, terminal: &Arc<Terminal>) {
         self.terminals.push(TerminalWrapper {
-            terminal: Arc::downgrade(terminal),
+            terminal: terminal.to_owned(),
             draw_state: TerminalDrawState::new(
                 self.device.to_owned(),
                 self.queue.to_owned(),

@@ -112,7 +112,14 @@ impl Default for TerminalState {
         let mut colors = Colors::default();
 
         let maps = [
-            (Black, Rgb { r: 0, g: 0, b: 0 }),
+            (
+                Black,
+                Rgb {
+                    r: 16,
+                    g: 16,
+                    b: 16,
+                },
+            ),
             (Red, Rgb { r: 255, g: 0, b: 0 }),
             (Green, Rgb { r: 0, g: 255, b: 0 }),
             (Blue, Rgb { r: 0, g: 0, b: 255 }),
@@ -385,6 +392,10 @@ impl Terminal {
         drop(term); // get off the mutex
 
         canvas.apply_to_state(draw);
+    }
+
+    pub fn quit(&self) {
+        self.should_quit.store(true, Ordering::Relaxed);
     }
 
     pub fn should_quit(&self) -> bool {
