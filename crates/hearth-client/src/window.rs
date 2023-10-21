@@ -214,8 +214,7 @@ impl Window {
             surface_tex: frame,
         };
 
-        let size = self.window.inner_size();
-        let resolution = glam::UVec2::new(size.width, size.height);
+        let resolution = glam::UVec2::new(self.config.width, self.config.height);
 
         let eye = glam::Vec3::new(3.0, 3.0, 5.0);
         let center = glam::Vec3::ZERO;
