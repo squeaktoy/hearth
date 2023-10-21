@@ -34,6 +34,8 @@ use hearth_rend3::Rend3Plugin;
 use tokio::{net::TcpStream, sync::oneshot};
 use tracing::{debug, error, info};
 
+use crate::window::WindowCtx;
+
 mod window;
 
 /// Client program to the Hearth virtual space server.
@@ -70,32 +72,25 @@ fn main() {
         .build()
         .unwrap();
 
-    let (window_tx, window_rx) = tokio::sync::oneshot::channel();
-    let window = window::WindowCtx::new(&runtime, window_tx);
+    let (window, mut window_offer) = runtime.block_on(WindowCtx::new());
+    let mut join_main = runtime.spawn(async_main(args, window_offer.rend3_plugin));
 
-    runtime.block_on(async {
-        let mut window = window_rx.await.unwrap();
-        let mut join_main = runtime.spawn(async move {
-            async_main(args, window.rend3_plugin).await;
-        });
-
-        runtime.spawn(async move {
-            loop {
-                tokio::select! {
-                    event = window.event_tx.recv() => {
-                        debug!("window event: {:?}", event);
-                        if let Some(window::WindowTxMessage::Quit) = event {
-                            break;
-                        }
-                    }
-                    _ = &mut join_main => {
-                        debug!("async_main joined");
-                        window.event_rx.send_event(window::WindowRxMessage::Quit).unwrap();
+    runtime.spawn(async move {
+        loop {
+            tokio::select! {
+                event = window_offer.outgoing.recv() => {
+                    debug!("window event: {:?}", event);
+                    if let Some(window::WindowTxMessage::Quit) = event {
                         break;
                     }
                 }
+                _ = &mut join_main => {
+                    debug!("async_main joined");
+                    window_offer.incoming.send_event(window::WindowRxMessage::Quit).unwrap();
+                    break;
+                }
             }
-        });
+        }
     });
 
     debug!("Running window event loop");
