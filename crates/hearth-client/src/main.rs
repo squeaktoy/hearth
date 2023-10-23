@@ -27,7 +27,7 @@ use std::{
 use clap::Parser;
 use hearth_core::{
     process::{context::Capability, Process},
-    runtime::{Runtime, RuntimeBuilder, RuntimeConfig},
+    runtime::{Plugin, Runtime, RuntimeBuilder, RuntimeConfig},
 };
 use hearth_network::{auth::login, connection::Connection};
 use hearth_rend3::Rend3Plugin;
@@ -42,9 +42,8 @@ mod window;
 #[derive(Parser, Debug)]
 pub struct Args {
     /// IP address and port of the server to connect to.
-    // TODO support DNS resolution too
     #[clap(short, long)]
-    pub server: String,
+    pub server: Option<String>,
 
     /// Password to use to authenticate to the server. Defaults to empty.
     #[clap(short, long, default_value = "")]
@@ -103,118 +102,139 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
     let config_file = hearth_core::load_config(&config_path).unwrap();
 
-    let (network_root_tx, network_root_rx) = oneshot::channel();
-    let mut init = hearth_init::InitPlugin::new(args.init);
-    init.add_hook("hearth.init.Client".into(), network_root_tx);
-
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_cognito::WasmPlugin::default());
+    builder.add_plugin(hearth_init::InitPlugin::new(args.init));
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(rend3_plugin);
     builder.add_plugin(hearth_terminal::TerminalPlugin::default());
-    builder.add_plugin(init);
     builder.add_plugin(hearth_daemon::DaemonPlugin::default());
-    let runtime = builder.run(config).await;
 
-    tokio::spawn(async move {
-        connect(network_root_rx, runtime, args.server, args.password).await;
-    });
+    if let (Some(server), password) = (args.server, args.password) {
+        builder.add_plugin(ClientPlugin { server, password });
+    } else {
+        info!("Running in serverless mode");
+    }
+
+    let _runtime = builder.run(config).await;
 
     hearth_core::wait_for_interrupt().await;
     info!("Ctrl+C hit; quitting client");
 }
 
-async fn connect(
-    on_network_root: oneshot::Receiver<(Process, usize)>,
-    runtime: Arc<Runtime>,
-    server: String,
-    password: String,
-) {
-    info!("Waiting for network root cap hook");
-    let network_root = on_network_root.await.unwrap();
+/// The plugin that implements the client side of a network connection.
+pub struct ClientPlugin {
+    pub server: String,
+    pub password: String,
+}
 
-    info!("Resolving {}", server);
-    let server = match SocketAddr::from_str(&server) {
-        Err(_) => {
-            info!(
-                "Failed to parse \'{}\' to SocketAddr, attempting DNS resolution",
-                server
-            );
-            match server.to_socket_addrs() {
-                Err(err) => {
-                    error!("Failed to resolve IP: {:?}", err);
-                    return;
+impl Plugin for ClientPlugin {
+    fn finalize(self, builder: &mut RuntimeBuilder) {
+        let init = builder
+            .get_plugin_mut::<hearth_init::InitPlugin>()
+            .expect("init plugin was not found");
+
+        let (network_root_tx, network_root_rx) = oneshot::channel();
+        init.add_hook("hearth.init.Client".into(), network_root_tx);
+
+        builder.add_runner(move |runtime| {
+            tokio::spawn(self.connect(network_root_rx, runtime));
+        });
+    }
+}
+
+impl ClientPlugin {
+    pub async fn connect(
+        self,
+        on_network_root: oneshot::Receiver<(Process, usize)>,
+        runtime: Arc<Runtime>,
+    ) {
+        info!("Waiting for network root cap hook");
+        let network_root = on_network_root.await.unwrap();
+
+        info!("Resolving {}", self.server);
+        let server = match SocketAddr::from_str(&self.server) {
+            Err(_) => {
+                info!(
+                    "Failed to parse \'{}\' to SocketAddr, attempting DNS resolution",
+                    self.server
+                );
+                match self.server.to_socket_addrs() {
+                    Err(err) => {
+                        error!("Failed to resolve IP: {:?}", err);
+                        return;
+                    }
+                    Ok(addrs) => match addrs.last() {
+                        None => return,
+                        Some(addr) => addr,
+                    },
                 }
-                Ok(addrs) => match addrs.last() {
-                    None => return,
-                    Some(addr) => addr,
-                },
             }
-        }
-        Ok(addr) => addr,
-    };
+            Ok(addr) => addr,
+        };
 
-    info!("Connecting to server at {:?}", server);
-    let mut socket = match TcpStream::connect(server).await {
-        Ok(s) => s,
-        Err(err) => {
-            error!("Failed to connect to server: {:?}", err);
-            return;
-        }
-    };
-
-    info!("Authenticating");
-    let session_key = match login(&mut socket, password.as_bytes()).await {
-        Ok(key) => key,
-        Err(err) => {
-            error!("Failed to authenticate with server: {:?}", err);
-            return;
-        }
-    };
-
-    use hearth_network::encryption::{AsyncDecryptor, AsyncEncryptor, Key};
-    let client_key = Key::from_client_session(&session_key);
-    let server_key = Key::from_server_session(&session_key);
-
-    let (server_rx, server_tx) = tokio::io::split(socket);
-    let server_rx = AsyncDecryptor::new(&server_key, server_rx);
-    let server_tx = AsyncEncryptor::new(&client_key, server_tx);
-    let conn = Connection::new(server_rx, server_tx);
-
-    let (root_cap_tx, root_cap) = tokio::sync::oneshot::channel();
-    let on_root_cap = {
-        let store = runtime.process_store.clone();
-        move |root: Capability| {
-            if let Err(dropped) = root_cap_tx.send(root) {
-                dropped.free(store.as_ref());
+        info!("Connecting to server at {:?}", server);
+        let mut socket = match TcpStream::connect(server).await {
+            Ok(s) => s,
+            Err(err) => {
+                error!("Failed to connect to server: {:?}", err);
+                return;
             }
-        }
-    };
+        };
 
-    info!("Beginning connection");
-    let conn = hearth_core::process::remote::Connection::new(
-        runtime.process_store.clone(),
-        conn.op_rx,
-        conn.op_tx,
-        Some(Box::new(on_root_cap)),
-    );
+        info!("Authenticating");
+        let session_key = match login(&mut socket, self.password.as_bytes()).await {
+            Ok(key) => key,
+            Err(err) => {
+                error!("Failed to authenticate with server: {:?}", err);
+                return;
+            }
+        };
 
-    info!("Sending the server our root cap");
-    let (root_ctx, root_handle) = network_root;
-    root_ctx
-        .export_connection_root(root_handle, conn.lock().deref_mut())
-        .unwrap();
+        use hearth_network::encryption::{AsyncDecryptor, AsyncEncryptor, Key};
+        let client_key = Key::from_client_session(&session_key);
+        let server_key = Key::from_server_session(&session_key);
 
-    info!("Waiting for server's root cap...");
-    let root_cap = match root_cap.await {
-        Ok(cap) => cap,
-        Err(err) => {
-            eprintln!("Server's root cap was never received: {:?}", err);
-            return;
-        }
-    };
+        let (server_rx, server_tx) = tokio::io::split(socket);
+        let server_rx = AsyncDecryptor::new(&server_key, server_rx);
+        let server_tx = AsyncEncryptor::new(&client_key, server_tx);
+        let conn = Connection::new(server_rx, server_tx);
 
-    root_cap.free(runtime.process_store.as_ref());
+        let (root_cap_tx, root_cap) = tokio::sync::oneshot::channel();
+        let on_root_cap = {
+            let store = runtime.process_store.clone();
+            move |root: Capability| {
+                if let Err(dropped) = root_cap_tx.send(root) {
+                    dropped.free(store.as_ref());
+                }
+            }
+        };
 
-    info!("Successfully connected!");
+        info!("Beginning connection");
+        let conn = hearth_core::process::remote::Connection::new(
+            runtime.process_store.clone(),
+            conn.op_rx,
+            conn.op_tx,
+            Some(Box::new(on_root_cap)),
+        );
+
+        info!("Sending the server our root cap");
+        let (root_ctx, root_handle) = network_root;
+        root_ctx
+            .export_connection_root(root_handle, conn.lock().deref_mut())
+            .unwrap();
+
+        info!("Waiting for server's root cap...");
+        let root_cap = match root_cap.await {
+            Ok(cap) => cap,
+            Err(err) => {
+                eprintln!("Server's root cap was never received: {:?}", err);
+                return;
+            }
+        };
+
+        root_cap.free(runtime.process_store.as_ref());
+
+        info!("Successfully connected!");
+    }
 }
