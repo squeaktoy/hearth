@@ -66,6 +66,9 @@ fn main() {
     let args = Args::parse();
     hearth_core::init_logging();
 
+    // winit requires that running its event loop takes over the calling thread,
+    // so we need to manually create a Tokio runtime so that we can use this
+    // main thread for the event loop.
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
