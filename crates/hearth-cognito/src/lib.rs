@@ -525,6 +525,21 @@ pub struct WasmPlugin {
     engine: Arc<Engine>,
 }
 
+impl Default for WasmPlugin {
+    fn default() -> Self {
+        let mut config = Config::new();
+        config.async_support(true);
+        config.epoch_interruption(true);
+        config.memory_init_cow(true);
+
+        let engine = Engine::new(&config).unwrap();
+
+        Self {
+            engine: Arc::new(engine),
+        }
+    }
+}
+
 impl Plugin for WasmPlugin {
     fn build(&mut self, builder: &mut RuntimeBuilder) {
         let mut linker = Linker::new(&self.engine);
@@ -549,21 +564,6 @@ impl Plugin for WasmPlugin {
                 self.engine.increment_epoch();
             }
         });
-    }
-}
-
-impl WasmPlugin {
-    pub fn new() -> Self {
-        let mut config = Config::new();
-        config.async_support(true);
-        config.epoch_interruption(true);
-        config.memory_init_cow(true);
-
-        let engine = Engine::new(&config).unwrap();
-
-        Self {
-            engine: Arc::new(engine),
-        }
     }
 }
 

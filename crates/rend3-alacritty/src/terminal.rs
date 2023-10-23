@@ -187,7 +187,6 @@ impl Default for TerminalState {
 pub struct FaceWithMetrics {
     atlas: Arc<FaceAtlas>,
     ascender: f32,
-    descender: f32,
     width: f32,
     height: f32,
     strikeout_pos: f32,
@@ -225,7 +224,6 @@ impl From<Arc<FaceAtlas>> for FaceWithMetrics {
         Self {
             atlas,
             ascender,
-            descender,
             height,
             width,
             strikeout_pos,
@@ -290,6 +288,9 @@ impl Terminal {
             },
             ..Default::default()
         };
+
+        // setup environment variables
+        alacritty_terminal::tty::setup_env(&term_config);
 
         let term_listener = Listener::new(sender.clone());
 

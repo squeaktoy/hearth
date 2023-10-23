@@ -41,55 +41,6 @@ use crate::{
     text::FontSet,
 };
 
-/// Generates a pipeline for either a glyph shader or a solid shader.
-fn make_pipeline(
-    device: &Device,
-    label: Option<&str>,
-    shader_module: &ShaderModule,
-    vertex_shader: &str,
-    fragment_shader: &str,
-    vertex_layout: VertexBufferLayout,
-    layout: &PipelineLayout,
-    output_format: TextureFormat,
-) -> RenderPipeline {
-    device.create_render_pipeline(&RenderPipelineDescriptor {
-        label,
-        layout: Some(layout),
-        vertex: VertexState {
-            module: shader_module,
-            entry_point: vertex_shader,
-            buffers: &[vertex_layout],
-        },
-        depth_stencil: Some(DepthStencilState {
-            format: TextureFormat::Depth32Float,
-            depth_write_enabled: false,
-            depth_compare: CompareFunction::GreaterEqual,
-            stencil: StencilState::default(),
-            bias: DepthBiasState::default(),
-        }),
-        primitive: PrimitiveState {
-            topology: PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: FrontFace::Ccw,
-            cull_mode: None,
-            unclipped_depth: false,
-            polygon_mode: PolygonMode::Fill,
-            conservative: false,
-        },
-        multisample: MultisampleState::default(),
-        fragment: Some(FragmentState {
-            module: shader_module,
-            entry_point: fragment_shader,
-            targets: &[ColorTargetState {
-                format: output_format,
-                blend: Some(BlendState::ALPHA_BLENDING),
-                write_mask: ColorWrites::COLOR,
-            }],
-        }),
-        multiview: None,
-    })
-}
-
 pub struct TerminalWrapper {
     terminal: Weak<Terminal>,
     draw_state: TerminalDrawState,
@@ -173,26 +124,59 @@ impl TerminalStore {
                 push_constant_ranges: &[],
             });
 
+        let make_pipeline = |label, vs, fs, vert_layout| {
+            renderer
+                .device
+                .create_render_pipeline(&RenderPipelineDescriptor {
+                    label: Some(label),
+                    layout: Some(&layout),
+                    vertex: VertexState {
+                        module: &shader,
+                        entry_point: vs,
+                        buffers: &[vert_layout],
+                    },
+                    depth_stencil: Some(DepthStencilState {
+                        format: TextureFormat::Depth32Float,
+                        depth_write_enabled: false,
+                        depth_compare: CompareFunction::GreaterEqual,
+                        stencil: StencilState::default(),
+                        bias: DepthBiasState::default(),
+                    }),
+                    primitive: PrimitiveState {
+                        topology: PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: FrontFace::Ccw,
+                        cull_mode: None,
+                        unclipped_depth: false,
+                        polygon_mode: PolygonMode::Fill,
+                        conservative: false,
+                    },
+                    multisample: MultisampleState::default(),
+                    fragment: Some(FragmentState {
+                        module: &shader,
+                        entry_point: fs,
+                        targets: &[ColorTargetState {
+                            format,
+                            blend: Some(BlendState::ALPHA_BLENDING),
+                            write_mask: ColorWrites::COLOR,
+                        }],
+                    }),
+                    multiview: None,
+                })
+        };
+
         let solid_pipeline = make_pipeline(
-            &renderer.device,
-            Some("AlacrittyRoutine solid pipeline"),
-            &shader,
+            "AlacrittyRoutine solid pipeline",
             "solid_vs",
             "solid_fs",
             SolidVertex::LAYOUT,
-            &layout,
-            format,
         );
 
         let glyph_pipeline = make_pipeline(
-            &renderer.device,
-            Some("AlacrittyRoutine glyph pipeline"),
-            &shader,
+            "AlacrittyRoutine glyph pipeline",
             "glyph_vs",
             "glyph_fs",
             GlyphVertex::LAYOUT,
-            &layout,
-            format,
         );
 
         let atlas_sampler = renderer.device.create_sampler(&SamplerDescriptor {
