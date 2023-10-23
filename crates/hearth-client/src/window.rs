@@ -20,7 +20,6 @@ use std::sync::Arc;
 
 use hearth_rend3::{rend3, wgpu, FrameRequest, Rend3Plugin};
 use rend3::{InstanceAdapterDevice, Renderer};
-use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
@@ -42,24 +41,28 @@ pub enum WindowTxMessage {
 
 /// Message sent from the window on initialization.
 pub struct WindowOffer {
-    pub event_rx: EventLoopProxy<WindowRxMessage>,
-    pub event_tx: mpsc::UnboundedReceiver<WindowTxMessage>,
+    /// A sender of [WindowRxMessage] to this window.
+    pub incoming: EventLoopProxy<WindowRxMessage>,
+
+    /// A receiver for [WindowTxMessage] from the window.
+    pub outgoing: mpsc::UnboundedReceiver<WindowTxMessage>,
+
+    /// A [Rend3Plugin] compatible with this window.
     pub rend3_plugin: Rend3Plugin,
 }
 
-pub struct Window {
-    event_tx: mpsc::UnboundedSender<WindowTxMessage>,
+struct Window {
+    outgoing_tx: mpsc::UnboundedSender<WindowTxMessage>,
     window: WinitWindow,
     iad: InstanceAdapterDevice,
     surface: Arc<wgpu::Surface>,
     config: wgpu::SurfaceConfiguration,
-    renderer: Arc<Renderer>,
     frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
     _directional_handle: rend3::types::ResourceHandle<rend3::types::DirectionalLight>,
 }
 
 impl Window {
-    pub async fn new(event_loop: &EventLoop<WindowRxMessage>) -> (Self, WindowOffer) {
+    async fn new(event_loop: &EventLoop<WindowRxMessage>) -> (Self, WindowOffer) {
         let window = WindowBuilder::new()
             .with_title("Hearth Client")
             .with_inner_size(winit::dpi::LogicalSize::new(128.0, 128.0))
@@ -81,7 +84,7 @@ impl Window {
         };
 
         surface.configure(&iad.device, &config);
-        let (event_rx, event_tx) = mpsc::unbounded_channel();
+        let (outgoing_tx, outgoing_rx) = mpsc::unbounded_channel();
         let rend3_plugin = Rend3Plugin::new(iad.to_owned(), swapchain_format);
         let renderer = rend3_plugin.renderer.to_owned();
         let frame_request_tx = rend3_plugin.frame_request_tx.clone();
@@ -94,19 +97,18 @@ impl Window {
         });
 
         let window = Self {
-            event_tx: event_rx,
+            outgoing_tx,
             window,
             iad,
             surface,
             config,
-            renderer,
             frame_request_tx,
             _directional_handle: directional_handle,
         };
 
         let offer = WindowOffer {
-            event_rx: event_loop.create_proxy(),
-            event_tx,
+            incoming: event_loop.create_proxy(),
+            outgoing: outgoing_rx,
             rend3_plugin,
         };
 
@@ -118,8 +120,6 @@ impl Window {
         self.config.height = size.height;
         self.surface.configure(&self.iad.device, &self.config);
         self.window.request_redraw();
-        self.renderer
-            .set_aspect_ratio(size.width as f32 / size.height as f32);
     }
 
     pub fn on_draw(&mut self) {
@@ -141,8 +141,7 @@ impl Window {
             surface_tex: frame,
         };
 
-        let size = self.window.inner_size();
-        let resolution = glam::UVec2::new(size.width, size.height);
+        let resolution = glam::UVec2::new(self.config.width, self.config.height);
 
         let eye = glam::Vec3::new(1.0, 2.0, 5.0);
         let center = glam::Vec3::ZERO;
@@ -176,24 +175,22 @@ impl Window {
 
 pub struct WindowCtx {
     event_loop: EventLoop<WindowRxMessage>,
-    inner: Window,
+    window: Window,
 }
 
 impl WindowCtx {
-    pub fn new(runtime: &Runtime, offer_sender: oneshot::Sender<WindowOffer>) -> Self {
+    pub async fn new() -> (Self, WindowOffer) {
         let event_loop = EventLoopBuilder::with_user_event().build();
-        let (inner, offer) = runtime.block_on(async { Window::new(&event_loop).await });
-
-        if offer_sender.send(offer).is_err() {
-            tracing::warn!("WindowOffer receiver hung up");
-        }
-
-        Self { event_loop, inner }
+        let (window, offer) = Window::new(&event_loop).await;
+        (Self { event_loop, window }, offer)
     }
 
     pub fn run(self) -> ! {
-        let Self { event_loop, inner } = self;
-        let mut window = inner;
+        let Self {
+            event_loop,
+            mut window,
+        } = self;
+
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
 
@@ -207,7 +204,7 @@ impl WindowCtx {
                     }
                     WindowEvent::CloseRequested => {
                         *control_flow = ControlFlow::Exit;
-                        window.event_tx.send(WindowTxMessage::Quit).unwrap();
+                        window.outgoing_tx.send(WindowTxMessage::Quit).unwrap();
                     }
                     _ => {}
                 },
