@@ -117,6 +117,8 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
 
     if let (Some(server), password) = (args.server, args.password) {
         builder.add_plugin(ClientPlugin { server, password });
+    } else {
+        info!("Running in serverless mode");
     }
 
     let _runtime = builder.run(config).await;
@@ -125,6 +127,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     info!("Ctrl+C hit; quitting client");
 }
 
+/// The plugin that implements the client side of a network connection.
 pub struct ClientPlugin {
     pub server: String,
     pub password: String,
