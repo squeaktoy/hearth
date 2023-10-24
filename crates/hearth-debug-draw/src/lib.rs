@@ -134,9 +134,7 @@ impl Routine for DebugDrawRoutine {
                     .into_iter()
                     .map(|v| Vertex {
                         position: v.position,
-                        color: ((v.color[2] as u32) << 16)
-                            | ((v.color[1] as u32) << 8)
-                            | (v.color[0] as u32),
+                        color: v.color.0,
                     })
                     .collect();
 
