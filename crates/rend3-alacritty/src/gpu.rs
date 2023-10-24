@@ -116,10 +116,7 @@ impl<T: Pod> GpuVector<T> {
         if self.capacity >= data.len() as u64 {
             queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(data));
         } else {
-            while self.capacity < data.len() as u64 {
-                self.capacity += self.capacity >> 1;
-            }
-
+            self.capacity = data.len().next_power_of_two() as u64;
             let mut contents: Vec<u8> = bytemuck::cast_slice(data).to_vec();
             let size = self.capacity as usize * std::mem::size_of::<T>();
             contents.resize(size, 0);
