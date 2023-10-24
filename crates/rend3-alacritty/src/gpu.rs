@@ -82,6 +82,7 @@ impl GlyphVertex {
     };
 }
 
+/// A growable array of GPU memory.
 pub struct GpuVector<T> {
     buffer: Buffer,
     length: u64,
@@ -92,6 +93,7 @@ pub struct GpuVector<T> {
 }
 
 impl<T: Pod> GpuVector<T> {
+    /// Creates a new GPU vector.
     pub fn new(device: &Device, label: Option<String>, usage: BufferUsages) -> Self {
         let capacity = 128;
         let size = capacity * std::mem::size_of::<T>() as u64;
@@ -112,6 +114,7 @@ impl<T: Pod> GpuVector<T> {
         }
     }
 
+    /// Updates the GPU-side contents of this vector, increasing capacity if needed.
     pub fn update(&mut self, device: &Device, queue: &Queue, data: &[T]) {
         if self.capacity >= data.len() as u64 {
             queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(data));
@@ -131,21 +134,25 @@ impl<T: Pod> GpuVector<T> {
         self.length = data.len() as u64;
     }
 
+    /// Retrieves the length in elements of this vector.
     pub fn len(&self) -> u64 {
         self.length
     }
 
+    /// Gets a handle to the underlying GPU buffer.
     pub fn get_buffer(&self) -> &Buffer {
         &self.buffer
     }
 }
 
+/// Dynamically-allocated GPU mesh data.
 pub struct DynamicMesh<T> {
     vertices: GpuVector<T>,
     indices: GpuVector<u32>,
 }
 
 impl<T: Pod> DynamicMesh<T> {
+    /// Creates a new dynamic mesh.
     pub fn new(device: &Device, label: Option<String>) -> Self {
         Self {
             vertices: GpuVector::new(device, label.clone(), BufferUsages::VERTEX),
@@ -153,11 +160,14 @@ impl<T: Pod> DynamicMesh<T> {
         }
     }
 
+    /// Update the mesh with the given vertices and indices, increasing
+    /// capacity if needed.
     pub fn update(&mut self, device: &Device, queue: &Queue, vertices: &[T], indices: &[u32]) {
         self.vertices.update(device, queue, vertices);
         self.indices.update(device, queue, indices);
     }
 
+    /// Bind this mesh to the given render pass and perform a draw operation.
     pub fn draw<'a>(&'a self, rpass: &mut RenderPass<'a>) {
         let vs = self.vertices.get_buffer();
         let is = self.indices.get_buffer();
