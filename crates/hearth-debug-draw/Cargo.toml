@@ -11,4 +11,5 @@ glam = { workspace = true }
 hearth-core.workspace = true
 hearth-rend3.workspace = true
 hearth-types.workspace = true
+itertools = "0.11"
 rend3-alacritty.workspace = true

@@ -34,6 +34,7 @@ use hearth_rend3::{
     Node, Rend3Plugin, Routine, RoutineInfo,
 };
 use hearth_types::{debug_draw::*, Flags};
+use itertools::Itertools;
 use rend3_alacritty::gpu::DynamicMesh;
 
 #[repr(C)]
@@ -86,48 +87,69 @@ pub struct DebugDrawRoutine {
 
 impl Routine for DebugDrawRoutine {
     fn build_node(&mut self) -> Box<dyn Node + '_> {
-        let mut updates = HashMap::new();
+        // vec of updates received in order by each ID
+        let updates = self.update_rx.drain().into_group_map();
 
-        while let Ok((id, update)) = self.update_rx.try_recv() {
-            updates.insert(id, update);
-        }
+        for (id, mut updates) in updates {
+            // only write the latest property from the update queue
+            let mut new_contents = None;
+            let mut new_hide = None;
 
-        for (id, update) in updates {
-            let new_draw = || DebugDraw {
+            // whether a destroy message has been received
+            let mut destroy = false;
+
+            // read from update queue in reverse order to fetch latest properties
+            while let Some(update) = updates.pop() {
+                use DebugDrawUpdate::*;
+                match update {
+                    Contents(mesh) if new_contents.is_none() => {
+                        new_contents = Some(mesh);
+                    }
+                    Hide(hide) if new_hide.is_none() => {
+                        new_hide = Some(hide);
+                    }
+                    Destroy => {
+                        destroy = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+
+            // if the draw has been destroyed, remove it and discard updates
+            if destroy {
+                self.draws.remove(&id);
+                continue;
+            }
+
+            // retrieve the draw by ID or init it if it doesn't exist yet
+            let draw = self.draws.entry(id).or_insert_with(|| DebugDraw {
                 mesh: DynamicMesh::new(self.device.as_ref(), Some(format!("debug draw #{id}"))),
                 hide: false,
-            };
+            });
 
-            use DebugDrawUpdate::*;
-            match update {
-                Contents(mesh) => {
-                    let draw = self.draws.entry(id).or_insert_with(new_draw);
+            if let Some(mesh) = new_contents {
+                let vertices: Vec<_> = mesh
+                    .vertices
+                    .into_iter()
+                    .map(|v| Vertex {
+                        position: v.position,
+                        color: ((v.color[2] as u32) << 16)
+                            | ((v.color[1] as u32) << 8)
+                            | (v.color[0] as u32),
+                    })
+                    .collect();
 
-                    let vertices: Vec<_> = mesh
-                        .vertices
-                        .into_iter()
-                        .map(|v| Vertex {
-                            position: v.position,
-                            color: ((v.color[2] as u32) << 16)
-                                | ((v.color[1] as u32) << 8)
-                                | (v.color[0] as u32),
-                        })
-                        .collect();
+                draw.mesh.update(
+                    self.device.as_ref(),
+                    self.queue.as_ref(),
+                    &vertices,
+                    &mesh.indices,
+                );
+            }
 
-                    draw.mesh.update(
-                        self.device.as_ref(),
-                        self.queue.as_ref(),
-                        &vertices,
-                        &mesh.indices,
-                    );
-                }
-                Hide(hide) => {
-                    let draw = self.draws.entry(id).or_insert_with(new_draw);
-                    draw.hide = hide;
-                }
-                Destroy => {
-                    self.draws.remove(&id);
-                }
+            if let Some(hide) = new_hide {
+                draw.hide = hide;
             }
         }
 
