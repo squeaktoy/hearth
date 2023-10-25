@@ -25,12 +25,15 @@ use tracing::warn;
 
 use crate::utils::{RequestInfo, RequestResponseProcess, ResponseInfo};
 
+/// A builder to initialize the service entries in a [Registry], since they
+/// can't be modified once the registry has started.
 pub struct RegistryBuilder {
     pub table: Table,
     pub inner: Registry,
 }
 
 impl RegistryBuilder {
+    /// Creates a new registry builder for the given post office.
     pub fn new(post: Arc<PostOffice>) -> Self {
         Self {
             table: Table::new(post),
@@ -38,6 +41,13 @@ impl RegistryBuilder {
         }
     }
 
+    /// Adds a service by its serving mailbox to this registry.
+    ///
+    /// The capability has the send permission so that it can receive requests,
+    /// and the link permission so that users of the services can observe if
+    /// the service becomes unavailable.
+    ///
+    /// Logs a warning if the name is already taken.
     pub fn add(&mut self, name: String, mailbox: &Mailbox) {
         let perms = Permissions::SEND | Permissions::LINK;
         let cap = self.table.import(mailbox, perms);
@@ -50,6 +60,16 @@ impl RegistryBuilder {
     }
 }
 
+/// A host-side implementation of an immutable registry.
+///
+/// A Hearth registry is a process that stores capabilities to other processes
+/// by names, which are user-friendly strings. Then, it provides those
+/// capabilities to other processes who request access to those capabilities
+/// using their names. The capabilities stored in a registry are referred to
+/// as "services".
+///
+/// This registry implementation is constructed using [RegistryBuilder] and is
+/// immutable once created.
 #[derive(Default)]
 pub struct Registry {
     services: HashMap<String, usize>,

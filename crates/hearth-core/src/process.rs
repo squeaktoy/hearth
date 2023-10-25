@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+#![warn(missing_docs)]
+
 use std::sync::{atomic::AtomicUsize, Arc};
 
 use flue::{Mailbox, MailboxStore, PostOffice, Table};
@@ -24,10 +26,34 @@ use hearth_types::ProcessLogLevel;
 use ouroboros::self_referencing;
 use tracing::debug;
 
+/// A local Hearth process. The main entrypoint for Hearth programming.
+#[self_referencing]
+pub struct Process {
+    /// This process's [Table].
+    pub table: Table,
+
+    /// This process's [ProcessInfo].
+    pub info: ProcessInfo,
+
+    /// This process's [MailboxStore].
+    #[borrows(table)]
+    #[covariant]
+    pub store: MailboxStore<'this>,
+
+    /// A mailbox that receives signals from this process's parent.
+    ///
+    /// This field lasts the entire lifetime of a process and cannot be dropped.
+    /// This is so that local processes can always be killed by their parents
+    /// and can't go rogue.
+    #[borrows(store)]
+    #[covariant]
+    pub parent: Mailbox<'this>,
+}
+
 /// Static metadata about a process.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default)]
-pub struct ProcessInfo {
+pub struct ProcessMetadata {
     /// A short, human-readable identifier for this process's function.
     pub name: Option<String>,
 
@@ -47,12 +73,14 @@ pub struct ProcessInfo {
     pub license: Option<String>,
 }
 
+/// A factory for making local instances of [Process].
 pub struct ProcessFactory {
     post: Arc<PostOffice>,
     pid_gen: AtomicUsize,
 }
 
 impl ProcessFactory {
+    /// Creates a new process factory in the given post office.
     pub fn new(post: Arc<PostOffice>) -> Self {
         Self {
             post,
@@ -60,13 +88,16 @@ impl ProcessFactory {
         }
     }
 
-    /// Spawns a process with an existing [Table].
-    pub fn spawn_with_table(&self, info: ProcessInfo, table: Table) -> Process {
+    /// Spawns a process with an existing [Table] in this factory's [PostOffice].
+    pub fn spawn_with_table(&self, meta: ProcessMetadata, table: Table) -> Process {
+        // this results in guessable PIDs, but access to PIDs and operations
+        // consuming PIDs is limited to the debugging infrastructure, which
+        // should not be given to untrusted processes.
         let pid = self
             .pid_gen
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        debug!("spawning PID {}: {:?}", pid, info);
+        debug!("spawning PID {}: {:?}", pid, meta);
 
         let (log_tx, log_rx) = flume::unbounded();
 
@@ -76,7 +107,7 @@ impl ProcessFactory {
             }
         });
 
-        let id = ProcessIdentity { pid, log_tx, info };
+        let id = ProcessInfo { pid, log_tx, meta };
 
         Process::new(
             table,
@@ -86,59 +117,41 @@ impl ProcessFactory {
         )
     }
 
-    /// Spawns a new process.
-    pub fn spawn(&self, info: ProcessInfo) -> Process {
-        self.spawn_with_table(info, Table::new(self.post.clone()))
+    /// Spawns a new process in this factory's [PostOffice].
+    pub fn spawn(&self, meta: ProcessMetadata) -> Process {
+        self.spawn_with_table(meta, Table::new(self.post.clone()))
     }
 }
 
 /// Log event emitted by a process.
 #[derive(Clone, Debug, Hash)]
 pub struct ProcessLogEvent {
+    /// The level of this log event.
     pub level: ProcessLogLevel,
+
+    /// Provides context to the event's location, such as a script module.
     pub module: String,
+
+    /// The main message body of the log event.
     pub content: String,
     // TODO optional source code location?
     // TODO serializeable timestamp?
 }
 
-/// Metadata of a running process with data distinguishing it from other processes.
-pub struct ProcessIdentity {
+/// Information about a unning process with data distinguishing it from other processes.
+pub struct ProcessInfo {
     /// The process ID of this process.
     pub pid: usize,
 
     /// A sender to this process's log.
     pub log_tx: Sender<ProcessLogEvent>,
 
-    /// This process's [ProcessInfo].
-    pub info: ProcessInfo,
+    /// This process's [ProcessMetdata].
+    pub meta: ProcessMetadata,
 }
 
-impl Drop for ProcessIdentity {
+impl Drop for ProcessInfo {
     fn drop(&mut self) {
         debug!("despawning PID {}", self.pid);
     }
-}
-
-#[self_referencing]
-pub struct Process {
-    /// This process's [Table].
-    pub table: Table,
-
-    /// This process's [ProcessIdentity].
-    pub id: ProcessIdentity,
-
-    /// This process's [MailboxStore].
-    #[borrows(table)]
-    #[covariant]
-    pub store: MailboxStore<'this>,
-
-    /// A mailbox that receives signals from this process's parent.
-    ///
-    /// This field lasts the entire lifetime of a process and cannot be dropped.
-    /// This is so that local processes can always be killed by their parents
-    /// and can't go rogue.
-    #[borrows(store)]
-    #[covariant]
-    pub parent: Mailbox<'this>,
 }

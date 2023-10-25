@@ -16,6 +16,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+// TODO get rid of this when connections are implemented
+#![allow(unused)]
+
 use std::{collections::HashMap, sync::Arc};
 
 use flue::{CapabilityHandle, Mailbox, MailboxStore, OwnedCapability, PostOffice, Table};
@@ -48,6 +51,9 @@ struct Exports<'a> {
     inner: Mutex<HashMap<u32, Export<'a>>>,
 }
 
+/// A data structure implementing the capability exchange protocol.
+///
+/// Currently unimplemented.
 #[self_referencing]
 pub struct Connection {
     table: Table,

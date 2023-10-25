@@ -24,22 +24,24 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, trace, warn};
 
 use crate::{
-    process::{Process, ProcessInfo},
+    process::{Process, ProcessMetadata},
     runtime::{Plugin, Runtime, RuntimeBuilder},
 };
 
-/// Helper macro to initialize [ProcessInfo] using Cargo environment variables.
+/// Helper macro to initialize [ProcessMetadata] using Cargo environment variables.
 ///
-/// This macro initializes these [ProcessInfo] fields with `CARGO_PKG_*` flags:
+/// This macro initializes these [ProcessMetadata] fields with `CARGO_PKG_*`
+/// environment variables:
 /// - `authors`: `CARGO_PKG_AUTHORS`
 /// - `repository`: `CARGO_PKG_REPOSITORY`
 /// - `homepage`: `CARGO_PKG_HOMEPAGE`
 /// - `license`: `CARGO_PKG_LICENSE`
 #[macro_export]
-macro_rules! cargo_process_info {
+macro_rules! cargo_process_metadata {
     () => {{
-        let mut info = ::hearth_core::process::ProcessInfo::default();
+        let mut info = ProcessMetadata::default();
 
+        // returns `None` if the string is empty, or `Some(str)` otherwise.
         let some_or_empty = |str: &str| {
             if str.is_empty() {
                 None
@@ -57,6 +59,9 @@ macro_rules! cargo_process_info {
         info
     }};
 }
+
+// export the macro so we can use it in other modules in this crate
+pub(crate) use cargo_process_metadata;
 
 /// Context for an incoming message in [SinkProcess].
 pub struct MessageInfo<'a, T> {
@@ -167,9 +172,9 @@ where
             });
 
             let (data, caps) = match recv.await {
-                Some(Some(msg)) => msg,
-                Some(None) => continue,
-                None => break,
+                Some(Some(msg)) => msg, // handle a message
+                Some(None) => continue, // not a message; try again
+                None => break,          // killed; quit
             };
 
             let caps: Vec<_> = caps
@@ -190,7 +195,7 @@ where
 
             self.on_message(MessageInfo {
                 label: &label,
-                process: &ctx,
+                process: ctx,
                 runtime: &runtime,
                 data,
                 caps: &caps,
@@ -249,10 +254,10 @@ where
 pub trait ServiceRunner: ProcessRunner {
     const NAME: &'static str;
 
-    /// Gets the [ProcessInfo] for this service.
+    /// Gets the [ProcessMetadata] for this service.
     ///
     /// The `name` field of this struct is overridden by [Self::NAME].
-    fn get_process_info() -> ProcessInfo;
+    fn get_process_metadata() -> ProcessMetadata;
 }
 
 impl<T> Plugin for T
@@ -261,7 +266,7 @@ where
 {
     fn finalize(self, builder: &mut RuntimeBuilder) {
         let name = Self::NAME.to_string();
-        let mut info = Self::get_process_info();
+        let mut info = Self::get_process_metadata();
         info.name = Some(name.clone());
         builder.add_service(name, info, self);
     }

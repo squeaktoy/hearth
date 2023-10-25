@@ -33,7 +33,7 @@ use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
-use crate::process::{Process, ProcessFactory, ProcessInfo};
+use crate::process::{Process, ProcessFactory, ProcessMetadata};
 use crate::registry::RegistryBuilder;
 use crate::utils::ProcessRunner;
 
@@ -181,7 +181,7 @@ impl RuntimeBuilder {
     pub fn add_service(
         &mut self,
         name: String,
-        info: ProcessInfo,
+        info: ProcessMetadata,
         process: impl ProcessRunner + 'static,
     ) -> &mut Self {
         if self.services.contains(&name) {
@@ -256,24 +256,11 @@ impl RuntimeBuilder {
             inner: registry_inner,
         } = self.registry_builder;
 
-        let mut info = ProcessInfo::default();
-        info.name = Some("Registry".to_string());
-        info.description = Some("Hearth's native service registry.".to_string());
-
-        let some_or_empty = |str: &str| {
-            if str.is_empty() {
-                None
-            } else {
-                Some(str.to_string())
-            }
+        let info = ProcessMetadata {
+            name: Some("Registry".to_string()),
+            description: Some("Hearth's native service registry.".to_string()),
+            ..crate::utils::cargo_process_metadata!()
         };
-
-        info.authors = some_or_empty(env!("CARGO_PKG_AUTHORS"))
-            .map(|authors| authors.split(':').map(ToString::to_string).collect());
-
-        info.repository = some_or_empty(env!("CARGO_PKG_REPOSITORY"));
-        info.homepage = some_or_empty(env!("CARGO_PKG_HOMEPAGE"));
-        info.license = some_or_empty(env!("CARGO_PKG_LICENSE"));
 
         let ctx = self.process_factory.spawn_with_table(info, registry_table);
         let registry = Arc::new(ctx);

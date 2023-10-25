@@ -37,9 +37,6 @@ pub mod connection;
 /// Lump loading and storage.
 pub mod lump;
 
-/// Publish-subscribe utility struct for making pub-sub services.
-// pub mod pubsub;
-
 /// Local process spawning and management.
 pub mod process;
 
