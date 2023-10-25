@@ -567,8 +567,8 @@ impl RequestResponseProcess for WasmProcessSpawner {
         };
 
         debug!("Spawning module {}", request.data.lump);
-        let info = ProcessMetadata::default();
-        let child = request.runtime.process_factory.spawn(info);
+        let meta = ProcessMetadata::default();
+        let child = request.runtime.process_factory.spawn(meta);
 
         // create a capability to this child's parent mailbox
         let perms = Permissions::SEND | Permissions::LINK | Permissions::KILL;
