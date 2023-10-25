@@ -89,10 +89,10 @@ impl Plugin for InitPlugin {
                 };
 
                 debug!("Running init system");
-                let mut info = cargo_process_metadata!();
-                info.name = Some("init system parent".to_string());
+                let mut meta = cargo_process_metadata!();
+                meta.name = Some("init system parent".to_string());
 
-                let parent = runtime.process_factory.spawn(info);
+                let parent = runtime.process_factory.spawn(meta);
                 let response = parent.borrow_store().create_mailbox().unwrap();
                 let response_cap = response.make_capability(Permissions::SEND);
 
