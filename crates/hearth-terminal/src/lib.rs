@@ -19,9 +19,9 @@
 use std::sync::Arc;
 
 use hearth_core::{
-    async_trait, cargo_process_info,
+    async_trait, cargo_process_metadata,
     flue::Permissions,
-    process::ProcessInfo,
+    process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     tokio::{
         self,
@@ -153,11 +153,11 @@ impl RequestResponseProcess for TerminalFactory {
             inner: Some(terminal),
         };
 
-        let mut info = cargo_process_info!();
-        info.name = Some("TerminalSink".to_string());
-        info.description = Some("An instance of a terminal. Accepts TerminalUpdate.".to_string());
+        let mut meta = cargo_process_metadata!();
+        meta.name = Some("TerminalSink".to_string());
+        meta.description = Some("An instance of a terminal. Accepts TerminalUpdate.".to_string());
 
-        let child = request.runtime.process_factory.spawn(info);
+        let child = request.runtime.process_factory.spawn(meta);
         let perms = Permissions::SEND | Permissions::KILL;
         let child_cap = request
             .process
@@ -185,14 +185,13 @@ impl RequestResponseProcess for TerminalFactory {
 impl ServiceRunner for TerminalFactory {
     const NAME: &'static str = "hearth.terminal.TerminalFactory";
 
-    fn get_process_info() -> ProcessInfo {
-        let mut info = cargo_process_info!();
-        info.name = Some("TerminalFactory".to_string());
-        info.description = Some(
+    fn get_process_metadata() -> ProcessMetadata {
+        let mut meta = cargo_process_metadata!();
+        meta.description = Some(
             "The native terminal emulator factory service. Accepts FactoryRequest.".to_string(),
         );
 
-        info
+        meta
     }
 }
 
