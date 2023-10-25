@@ -34,9 +34,11 @@ async fn main() {
     let response = parent.borrow_store().create_mailbox().unwrap();
     let response_cap = response.make_capability(Permissions::SEND);
 
-    let registry = runtime.registry.borrow_parent();
-    let registry = parent.borrow_table().import(registry, Permissions::SEND);
-    let registry = parent.borrow_table().wrap_handle(registry).unwrap();
+    // import a cap to the registry's mailbox into the parent process
+    let table = parent.borrow_table();
+    let registry_mb = runtime.registry.borrow_parent();
+    let registry_handle = table.import(registry_mb, Permissions::SEND);
+    let registry = table.wrap_handle(registry_handle).unwrap();
 
     let request = RegistryRequest::Get {
         name: "hearth.cognito.WasmProcessSpawner".to_string(),
