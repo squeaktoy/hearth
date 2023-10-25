@@ -39,7 +39,7 @@ use crate::{
 #[macro_export]
 macro_rules! cargo_process_metadata {
     () => {{
-        let mut info = ProcessMetadata::default();
+        let mut meta = ProcessMetadata::default();
 
         // returns `None` if the string is empty, or `Some(str)` otherwise.
         let some_or_empty = |str: &str| {
@@ -50,13 +50,13 @@ macro_rules! cargo_process_metadata {
             }
         };
 
-        info.authors = some_or_empty(env!("CARGO_PKG_AUTHORS"))
+        meta.authors = some_or_empty(env!("CARGO_PKG_AUTHORS"))
             .map(|authors| authors.split(':').map(ToString::to_string).collect());
 
-        info.repository = some_or_empty(env!("CARGO_PKG_REPOSITORY"));
-        info.homepage = some_or_empty(env!("CARGO_PKG_HOMEPAGE"));
-        info.license = some_or_empty(env!("CARGO_PKG_LICENSE"));
-        info
+        meta.repository = some_or_empty(env!("CARGO_PKG_REPOSITORY"));
+        meta.homepage = some_or_empty(env!("CARGO_PKG_HOMEPAGE"));
+        meta.license = some_or_empty(env!("CARGO_PKG_LICENSE"));
+        meta
     }};
 }
 

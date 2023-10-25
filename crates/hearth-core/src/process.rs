@@ -50,6 +50,24 @@ pub struct Process {
     pub parent: Mailbox<'this>,
 }
 
+/// Information about a running process with data distinguishing it from other processes.
+pub struct ProcessInfo {
+    /// The process ID of this process.
+    pub pid: usize,
+
+    /// A sender to this process's log.
+    pub log_tx: Sender<ProcessLogEvent>,
+
+    /// This process's [ProcessMetdata].
+    pub meta: ProcessMetadata,
+}
+
+impl Drop for ProcessInfo {
+    fn drop(&mut self) {
+        debug!("despawning PID {}", self.pid);
+    }
+}
+
 /// Static metadata about a process.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default)]
@@ -88,7 +106,7 @@ impl ProcessFactory {
         }
     }
 
-    /// Spawns a process with an existing [Table] in this factory's [PostOffice].
+    /// Spawns a process with an existing [Table].
     pub fn spawn_with_table(&self, meta: ProcessMetadata, table: Table) -> Process {
         // this results in guessable PIDs, but access to PIDs and operations
         // consuming PIDs is limited to the debugging infrastructure, which
@@ -117,7 +135,7 @@ impl ProcessFactory {
         )
     }
 
-    /// Spawns a new process in this factory's [PostOffice].
+    /// Spawns a process with a new table in this factory's [PostOffice].
     pub fn spawn(&self, meta: ProcessMetadata) -> Process {
         self.spawn_with_table(meta, Table::new(self.post.clone()))
     }
@@ -136,22 +154,4 @@ pub struct ProcessLogEvent {
     pub content: String,
     // TODO optional source code location?
     // TODO serializeable timestamp?
-}
-
-/// Information about a unning process with data distinguishing it from other processes.
-pub struct ProcessInfo {
-    /// The process ID of this process.
-    pub pid: usize,
-
-    /// A sender to this process's log.
-    pub log_tx: Sender<ProcessLogEvent>,
-
-    /// This process's [ProcessMetdata].
-    pub meta: ProcessMetadata,
-}
-
-impl Drop for ProcessInfo {
-    fn drop(&mut self) {
-        debug!("despawning PID {}", self.pid);
-    }
 }
