@@ -266,8 +266,8 @@ where
 {
     fn finalize(self, builder: &mut RuntimeBuilder) {
         let name = Self::NAME.to_string();
-        let mut info = Self::get_process_metadata();
-        info.name = Some(name.clone());
-        builder.add_service(name, info, self);
+        let mut meta = Self::get_process_metadata();
+        meta.name = Some(name.clone());
+        builder.add_service(name, meta, self);
     }
 }

@@ -181,7 +181,7 @@ impl RuntimeBuilder {
     pub fn add_service(
         &mut self,
         name: String,
-        info: ProcessMetadata,
+        meta: ProcessMetadata,
         process: impl ProcessRunner + 'static,
     ) -> &mut Self {
         if self.services.contains(&name) {
@@ -192,7 +192,7 @@ impl RuntimeBuilder {
         let service_start_tx = self.service_start_tx.clone();
         self.service_num += 1;
 
-        let ctx = self.process_factory.spawn(info);
+        let ctx = self.process_factory.spawn(meta);
         self.registry_builder.add(name.clone(), ctx.borrow_parent());
         self.services.insert(name.clone());
 
@@ -256,13 +256,13 @@ impl RuntimeBuilder {
             inner: registry_inner,
         } = self.registry_builder;
 
-        let info = ProcessMetadata {
+        let meta = ProcessMetadata {
             name: Some("Registry".to_string()),
             description: Some("Hearth's native service registry.".to_string()),
             ..crate::utils::cargo_process_metadata!()
         };
 
-        let ctx = self.process_factory.spawn_with_table(info, registry_table);
+        let ctx = self.process_factory.spawn_with_table(meta, registry_table);
         let registry = Arc::new(ctx);
 
         let runtime = Arc::new(Runtime {
