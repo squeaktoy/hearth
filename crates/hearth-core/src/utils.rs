@@ -19,9 +19,9 @@
 use std::{any::type_name, fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
-use flue::{CapabilityHandle, ContextSignal};
+use flue::{CapabilityHandle, OwnedContextSignal};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 use crate::{
     process::{Process, ProcessMetadata},
@@ -154,6 +154,12 @@ pub trait SinkProcess: Send + Sync {
 
     /// A callback to call when messages are received by this process.
     async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, Self::Message>);
+
+    /// A callback to call when a down signal is received by this process.
+    ///
+    /// The capability passed is the capability in the down signal; a version
+    /// of the monitored capability with no permissions.
+    async fn on_down<'a>(&'a mut self, _cap: CapabilityHandle<'a>) {}
 }
 
 #[async_trait]
@@ -163,46 +169,38 @@ where
 {
     async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: &Process) {
         loop {
-            let recv = ctx.borrow_parent().recv(|signal| match signal {
-                ContextSignal::Message { data, caps } => Some((data.to_owned(), caps.to_owned())),
-                signal => {
-                    warn!("{:?} expected message but received: {:?}", label, signal);
-                    None
+            let recv = ctx.borrow_parent().recv_owned().await;
+
+            use OwnedContextSignal::*;
+            match recv {
+                Some(Message { data, caps }) => {
+                    let data: T::Message = match serde_json::from_slice(&data) {
+                        Ok(request) => request,
+                        Err(err) => {
+                            // TODO make this a process log
+                            debug!("Failed to parse {}: {:?}", type_name::<T::Message>(), err);
+                            continue;
+                        }
+                    };
+
+                    trace!("{:?} received {:?}", label, data);
+
+                    self.on_message(MessageInfo {
+                        label: &label,
+                        process: ctx,
+                        runtime: &runtime,
+                        data,
+                        caps: &caps,
+                    })
+                    .await;
+
+                    trace!("{:?} finished processing message", label);
                 }
-            });
-
-            let (data, caps) = match recv.await {
-                Some(Some(msg)) => msg, // handle a message
-                Some(None) => continue, // not a message; try again
-                None => break,          // killed; quit
-            };
-
-            let caps: Vec<_> = caps
-                .into_iter()
-                .map(|cap| ctx.borrow_table().wrap_handle(cap).unwrap())
-                .collect();
-
-            let data: T::Message = match serde_json::from_slice(&data) {
-                Ok(request) => request,
-                Err(err) => {
-                    // TODO make this a process log
-                    debug!("Failed to parse {}: {:?}", type_name::<T::Message>(), err);
-                    continue;
+                Some(Unlink { handle }) => {
+                    self.on_down(handle).await;
                 }
-            };
-
-            trace!("{:?} received {:?}", label, data);
-
-            self.on_message(MessageInfo {
-                label: &label,
-                process: ctx,
-                runtime: &runtime,
-                data,
-                caps: &caps,
-            })
-            .await;
-
-            trace!("{:?} finished processing message", label);
+                None => break, // killed; quit
+            }
         }
     }
 }
@@ -216,6 +214,12 @@ pub trait RequestResponseProcess: Send + Sync {
         &'a mut self,
         request: &mut RequestInfo<'a, Self::Request>,
     ) -> ResponseInfo<'a, Self::Response>;
+
+    /// A callback to call when a down signal is received by this process.
+    ///
+    /// The capability passed is the capability in the down signal; a version
+    /// of the monitored capability with no permissions.
+    async fn on_down<'a>(&'a mut self, _cap: CapabilityHandle<'a>) {}
 }
 
 #[async_trait]
@@ -248,6 +252,11 @@ where
         if let Err(err) = result {
             debug!("{:?} reply error: {:?}", message.label, err);
         }
+    }
+
+    async fn on_down<'a>(&'a mut self, cap: CapabilityHandle<'a>) {
+        // clarify trait so we don't make this function recursive
+        <T as RequestResponseProcess>::on_down(self, cap).await;
     }
 }
 
