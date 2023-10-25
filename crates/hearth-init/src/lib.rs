@@ -19,10 +19,10 @@
 use std::{path::PathBuf, sync::Arc};
 
 use hearth_core::{
-    async_trait, cargo_process_info,
+    async_trait, cargo_process_metadata,
     flue::{ContextSignal, OwnedCapability, Permissions},
     hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo},
-    process::Process,
+    process::{Process, ProcessMetadata},
     runtime::{Plugin, Runtime, RuntimeBuilder},
     tokio::{spawn, sync::oneshot::Sender},
     utils::ProcessRunner,
@@ -70,11 +70,11 @@ pub struct InitPlugin {
 impl Plugin for InitPlugin {
     fn finalize(self, builder: &mut RuntimeBuilder) {
         for hook in self.hooks {
-            let mut info = cargo_process_info!();
-            info.name = Some(hook.service.clone());
-            info.description = Some("An init hook. Send a message with no data and a single capability to initialize it.".to_string());
+            let mut meta = cargo_process_metadata!();
+            meta.name = Some(hook.service.clone());
+            meta.description = Some("An init hook. Send a message with no data and a single capability to initialize it.".to_string());
 
-            builder.add_service(hook.service.clone(), info, hook);
+            builder.add_service(hook.service.clone(), meta, hook);
         }
 
         builder.add_runner(move |runtime| {
@@ -89,7 +89,7 @@ impl Plugin for InitPlugin {
                 };
 
                 debug!("Running init system");
-                let mut info = cargo_process_info!();
+                let mut info = cargo_process_metadata!();
                 info.name = Some("init system parent".to_string());
 
                 let parent = runtime.process_factory.spawn(info);
