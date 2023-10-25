@@ -23,11 +23,10 @@ use hearth_core::anyhow::{self, bail, Context};
 use hearth_core::asset::AssetLoader;
 use hearth_core::flue::{ContextSignal, Mailbox, MailboxStore, Permissions, Table};
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
-use hearth_core::process::{Process, ProcessInfo, ProcessLogEvent};
+use hearth_core::process::{Process, ProcessLogEvent, ProcessMetadata};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
-use hearth_core::utils::*;
 use hearth_core::{async_trait, hearth_types};
-use hearth_core::{cargo_process_info, tokio};
+use hearth_core::{cargo_process_metadata, tokio, utils::*};
 use hearth_macros::impl_wasm_linker;
 use hearth_types::wasm::WasmSpawnInfo;
 use hearth_types::{LumpId, SignalKind};
@@ -62,7 +61,7 @@ impl LogAbi {
             content: memory.get_str(content_ptr, content_len)?.to_string(),
         };
 
-        self.process.borrow_id().log_tx.send(event)?;
+        self.process.borrow_info().log_tx.send(event)?;
 
         Ok(())
     }
@@ -488,7 +487,7 @@ struct WasmProcess {
 
 impl WasmProcess {
     async fn run(mut self, runtime: Arc<Runtime>, ctx: Process) {
-        let pid = ctx.borrow_id().pid;
+        let pid = ctx.borrow_info().pid;
 
         match self
             .run_inner(runtime, ctx)
@@ -568,7 +567,7 @@ impl RequestResponseProcess for WasmProcessSpawner {
         };
 
         debug!("Spawning module {}", request.data.lump);
-        let info = ProcessInfo::default();
+        let info = ProcessMetadata::default();
         let child = request.runtime.process_factory.spawn(info);
 
         // create a capability to this child's parent mailbox
@@ -614,12 +613,12 @@ impl RequestResponseProcess for WasmProcessSpawner {
 impl ServiceRunner for WasmProcessSpawner {
     const NAME: &'static str = "hearth.cognito.WasmProcessSpawner";
 
-    fn get_process_info() -> ProcessInfo {
-        let mut info = cargo_process_info!();
-        info.description =
+    fn get_process_metadata() -> ProcessMetadata {
+        let mut meta = cargo_process_metadata!();
+        meta.description =
             Some("The native WebAssembly process spawner. Accepts WasmSpawnInfo.".to_string());
 
-        info
+        meta
     }
 }
 

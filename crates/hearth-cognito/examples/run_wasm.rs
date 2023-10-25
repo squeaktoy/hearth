@@ -1,6 +1,7 @@
 use hearth_core::{
-    cargo_process_info,
+    cargo_process_metadata,
     flue::{ContextSignal, Permissions},
+    process::ProcessMetadata,
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
 use hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo};
@@ -29,8 +30,8 @@ async fn main() {
         entrypoint: None,
     };
 
-    let info = cargo_process_info!();
-    let parent = runtime.process_factory.spawn(info);
+    let meta = cargo_process_metadata!();
+    let parent = runtime.process_factory.spawn(meta);
     let response = parent.borrow_store().create_mailbox().unwrap();
     let response_cap = response.make_capability(Permissions::SEND);
 
