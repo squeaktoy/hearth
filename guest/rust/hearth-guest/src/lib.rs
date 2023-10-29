@@ -285,6 +285,17 @@ impl Mailbox {
         }
     }
 
+    /// Waits for one of many mailboxes to receive a signal.
+    pub fn poll(mailboxes: &[&Self]) -> (usize, Signal) {
+        let handles: Vec<_> = mailboxes.iter().map(|mb| mb.0).collect();
+        let ptr = handles.as_ptr() as u32;
+        let len = handles.len() as u32;
+        let result = unsafe { abi::mailbox::poll(ptr, len) };
+        let index = (result >> 32) as usize;
+        let signal = unsafe { Signal::from_handle(result as u32) };
+        (index, signal)
+    }
+
     /// Receives a JSON message. Panics if the next signal isn't a message or
     /// if deserialization fails.
     pub fn recv_json<T>(&self) -> (T, Vec<Capability>)
@@ -434,6 +445,7 @@ mod abi {
             pub fn link(mailbox: u32, cap: u32);
             pub fn recv(handle: u32) -> u32;
             pub fn try_recv(handle: u32) -> u32;
+            pub fn poll(handles_ptr: u32, handles_len: u32) -> u64;
             pub fn destroy_signal(handle: u32);
             pub fn get_signal_kind(handle: u32) -> u32;
             pub fn get_unlink_capability(handle: u32) -> u32;
