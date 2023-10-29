@@ -32,6 +32,7 @@ fn abi_string(str: &str) -> (u32, u32) {
 
 /// Fetches the lump ID of the module used to spawn the current process.
 pub fn this_lump() -> LumpId {
+    // load lump ID from the host
     let mut id = LumpId(Default::default());
     unsafe { abi::lump::this_lump(&mut id as *const LumpId as u32) }
     id
@@ -39,14 +40,14 @@ pub fn this_lump() -> LumpId {
 
 /// A helper struct for request-response capabilities.
 pub struct RequestResponse<Request, Response> {
-    process: Process,
+    cap: Capability,
     _request: PhantomData<Request>,
     _response: PhantomData<Response>,
 }
 
-impl<Request, Response> AsRef<Process> for RequestResponse<Request, Response> {
-    fn as_ref(&self) -> &Process {
-        &self.process
+impl<Request, Response> AsRef<Capability> for RequestResponse<Request, Response> {
+    fn as_ref(&self) -> &Capability {
+        &self.cap
     }
 }
 
@@ -55,24 +56,24 @@ where
     Request: Serialize,
     Response: for<'a> Deserialize<'a>,
 {
-    pub const fn new(process: Process) -> Self {
+    pub const fn new(cap: Capability) -> Self {
         Self {
-            process,
+            cap,
             _request: PhantomData,
             _response: PhantomData,
         }
     }
 
-    pub fn request(&self, request: Request, args: &[&Process]) -> (Response, Vec<Process>) {
+    pub fn request(&self, request: Request, args: &[&Capability]) -> (Response, Vec<Capability>) {
         let reply = Mailbox::new();
         let reply_cap = reply.make_capability(Permissions::SEND);
-        reply.link(&self.process);
+        reply.link(&self.cap);
 
         let mut caps = Vec::with_capacity(args.len() + 1);
         caps.push(&reply_cap);
         caps.extend_from_slice(args);
 
-        self.process.send_json(&request, caps.as_slice());
+        self.cap.send_json(&request, caps.as_slice());
 
         reply.recv_json()
     }
@@ -81,7 +82,7 @@ where
 pub type Registry = RequestResponse<registry::RegistryRequest, registry::RegistryResponse>;
 
 impl Registry {
-    pub fn get_service(&self, name: &str) -> Option<Process> {
+    pub fn get_service(&self, name: &str) -> Option<Capability> {
         let request = registry::RegistryRequest::Get {
             name: name.to_string(),
         };
@@ -101,40 +102,54 @@ impl Registry {
 }
 
 /// A capability to the registry that this process has base access to.
-pub static REGISTRY: Registry = RequestResponse::new(Process(0));
+pub static REGISTRY: Registry = RequestResponse::new(Capability(0));
 
 lazy_static::lazy_static! {
     /// A lazily-initialized handle to the WebAssembly spawner service.
     pub static ref WASM_SPAWNER: RequestResponse<wasm::WasmSpawnInfo, ()> = {
-        RequestResponse::new(REGISTRY.get_service("hearth.cognito.WasmProcessSpawner").unwrap())
+        RequestResponse::new(REGISTRY.get_service("hearth.cognito.WasmCapabilitySpawner").unwrap())
     };
 }
 
-/// A capability to a process.
+/// An integer handle to a capability to a route.
+///
+/// If two capabilities are to the same route and have the same permissions,
+/// then testing their equality (`cap1 == cap2`) will evaluate to true.
+/// However, if the permissions are different on either capability, they will
+/// never be identical.
+///
+/// Capability handles are reference-counted, so you can clone and drop this
+/// type to increase and decrease the reference count of this capability in the
+/// underlying capability table host-side.
 #[repr(transparent)]
 #[derive(Debug, Hash, PartialEq, Eq)]
-pub struct Process(u32);
+pub struct Capability(u32);
 
-impl Clone for Process {
+impl Clone for Capability {
     fn clone(&self) -> Self {
+        // increase the reference count in the host table
         unsafe { abi::table::inc_ref(self.0) }
-        Process(self.0)
+        Capability(self.0)
     }
 }
 
-impl Drop for Process {
+impl Drop for Capability {
     fn drop(&mut self) {
+        // decrease the reference count in the host table
         unsafe { abi::table::dec_ref(self.0) }
     }
 }
 
-impl Process {
+impl Capability {
     /// Spawns a child process for the given function.
-    pub fn spawn(cb: fn(), registry: Option<Process>) -> Self {
+    pub fn spawn(cb: fn(), registry: Option<Capability>) -> Self {
+        // directly transmute a Rust function pointer to a Wasm function index
+        let entrypoint = unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32;
+
         let ((), mut caps) = WASM_SPAWNER.request(
             wasm::WasmSpawnInfo {
                 lump: this_lump(),
-                entrypoint: Some(unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32),
+                entrypoint: Some(entrypoint),
             },
             &[registry.as_ref().unwrap_or(REGISTRY.as_ref())],
         );
@@ -142,9 +157,9 @@ impl Process {
         caps.remove(0)
     }
 
-    /// Sends a message to this process.
-    pub fn send(&self, data: &[u8], caps: &[&Process]) {
-        let caps: Vec<u32> = caps.iter().map(|process| (*process).borrow().0).collect();
+    /// Sends a message to this capability.
+    pub fn send(&self, data: &[u8], caps: &[&Capability]) {
+        let caps: Vec<u32> = caps.iter().map(|cap| (*cap).borrow().0).collect();
         unsafe {
             abi::table::send(
                 self.0,
@@ -156,24 +171,24 @@ impl Process {
         }
     }
 
-    /// Sends a type, serialized as JSON, to this process.
-    pub fn send_json(&self, data: &impl Serialize, caps: &[&Process]) {
+    /// Sends a type, serialized as JSON, to this capability.
+    pub fn send_json(&self, data: &impl Serialize, caps: &[&Capability]) {
         let msg = serde_json::to_string(data).unwrap();
         self.send(&msg.into_bytes(), caps);
     }
 
-    /// Kills this process.
+    /// Kills this capability.
     pub fn kill(&self) {
         unsafe { abi::table::kill(self.0) }
     }
 
-    /// Demotes this process handle to an owned process with fewer permissions.
-    pub fn demote(&self, new_perms: Permissions) -> Process {
+    /// Demotes this capability to a capability with fewer permissions.
+    pub fn demote(&self, new_perms: Permissions) -> Capability {
         let handle = unsafe { abi::table::demote(self.0, new_perms.bits()) };
-        Process(handle)
+        Capability(handle)
     }
 
-    /// Gets the flags for this process.
+    /// Gets the permission flags for this capability.
     pub fn get_flags(&self) -> Permissions {
         Permissions::from_bits_retain(unsafe { abi::table::get_permissions(self.0) })
     }
@@ -182,7 +197,7 @@ impl Process {
 /// A signal.
 #[derive(Clone, Debug)]
 pub enum Signal {
-    Unlink { subject: Process },
+    Unlink { subject: Capability },
     Message(Message),
 }
 
@@ -198,7 +213,7 @@ impl Signal {
             SignalKind::Message => Signal::Message(Message::load_from_handle(handle)),
             SignalKind::Unlink => {
                 let handle = abi::mailbox::get_unlink_capability(handle);
-                let subject = Process(handle);
+                let subject = Capability(handle);
                 Signal::Unlink { subject }
             }
         };
@@ -212,29 +227,44 @@ impl Signal {
 /// An un-closeable mailbox that receives signals from the parent of this process.
 pub static PARENT: Mailbox = Mailbox(0);
 
+/// A receiver of signals.
+///
+/// Make a capability to this mailbox using [Mailbox::make_capability] and send
+/// it to other processes to allow other processes to interact with it.
+///
+/// If a mailbox is destroyed, it revokes the permission to kill this process
+/// using a capability to the destroyed mailbox.
 pub struct Mailbox(u32);
 
 impl Drop for Mailbox {
     fn drop(&mut self) {
+        // free this mailbox handle from the host API
         unsafe { abi::mailbox::destroy(self.0) }
     }
 }
 
 impl Mailbox {
+    /// Creates a fresh mailbox with no capabilities to it.
     pub fn new() -> Self {
         let handle = unsafe { abi::mailbox::create() };
         Self(handle)
     }
 
-    pub fn make_capability(&self, perms: Permissions) -> Process {
+    /// Make a capability to this mailbox with the given permission flags.
+    pub fn make_capability(&self, perms: Permissions) -> Capability {
         let handle = unsafe { abi::mailbox::make_capability(self.0, perms.bits()) };
-        Process(handle)
+        Capability(handle)
     }
 
-    pub fn link(&self, subject: &Process) {
+    /// Observe a subject capability for when it becomes unavailable.
+    ///
+    /// When it does, this mailbox will receive [Signal::Down] with a
+    /// capability equivalent to the subject's but with no permissions.
+    pub fn link(&self, subject: &Capability) {
         unsafe { abi::mailbox::link(self.0, subject.0) }
     }
 
+    /// Wait for this mailbox to receive a [Signal].
     pub fn recv(&self) -> Signal {
         unsafe {
             let handle = abi::mailbox::recv(self.0);
@@ -242,6 +272,7 @@ impl Mailbox {
         }
     }
 
+    /// Check if this mailbox has received any signals without waiting.
     pub fn try_recv(&self) -> Option<Signal> {
         unsafe {
             let handle = abi::mailbox::try_recv(self.0);
@@ -256,7 +287,7 @@ impl Mailbox {
 
     /// Receives a JSON message. Panics if the next signal isn't a message or
     /// if deserialization fails.
-    pub fn recv_json<T>(&self) -> (T, Vec<Process>)
+    pub fn recv_json<T>(&self) -> (T, Vec<Capability>)
     where
         T: for<'a> Deserialize<'a>,
     {
@@ -275,7 +306,7 @@ impl Mailbox {
 #[derive(Clone, Debug)]
 pub struct Message {
     pub data: Vec<u8>,
-    pub caps: Vec<Process>,
+    pub caps: Vec<Capability>,
 }
 
 impl Message {
@@ -438,6 +469,7 @@ extern "C" fn _hearth_init() {
 
 #[no_mangle]
 extern "C" fn _hearth_spawn_by_index(function: u32) {
+    // unsafely get a function pointer directly from the Wasm function index
     let function: fn() = unsafe { std::mem::transmute(function as usize) };
     function();
 }
