@@ -344,6 +344,29 @@ impl MailboxAbi {
         }
     }
 
+    async fn poll(
+        &mut self,
+        memory: GuestMemory<'_>,
+        handles_ptr: u32,
+        handles_len: u32,
+    ) -> Result<u64> {
+        let handles = memory.get_memory_slice(handles_ptr, handles_len)?;
+
+        let mbs = handles
+            .iter()
+            .map(|handle| self.get_mb(*handle))
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .map(|mb| mb.recv(|signal| Signal::from(signal)))
+            .map(Box::pin);
+
+        let (signal, index, _) = futures_util::future::select_all(mbs).await;
+        let signal = signal.context("process has been killed")?;
+        let handle = self.with_signals_mut(|signals| signals.insert(signal));
+        let result = ((index as u64) << 32) | (handle as u64);
+        Ok(result)
+    }
+
     fn destroy_signal(&mut self, handle: u32) -> Result<()> {
         self.with_signals_mut(|signals| signals.try_remove(handle as usize))
             .map(|_| ())
