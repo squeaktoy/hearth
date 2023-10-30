@@ -132,6 +132,11 @@ impl<T: Pod> GpuVector<T> {
         self.length = data.len() as u64;
     }
 
+    /// Tests if this vector is empty.
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
     /// Retrieves the length in elements of this vector.
     pub fn len(&self) -> u64 {
         self.length
