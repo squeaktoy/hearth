@@ -47,6 +47,7 @@ pub struct TerminalWrapper {
 }
 
 impl TerminalWrapper {
+    /// Updates this terminal's draw state. Returns true if this terminal has not quit.
     pub fn update(&mut self) -> bool {
         let quit = self.terminal.should_quit();
 
