@@ -95,19 +95,17 @@ pub struct GpuVector<T> {
 impl<T: Pod> GpuVector<T> {
     /// Creates a new GPU vector.
     pub fn new(device: &Device, label: Option<String>, usage: BufferUsages) -> Self {
-        let capacity = 128;
-        let size = capacity * std::mem::size_of::<T>() as u64;
         let usage = usage | BufferUsages::COPY_DST;
 
         Self {
             buffer: device.create_buffer(&BufferDescriptor {
                 label: label.as_deref(),
-                size,
+                size: 0,
                 usage,
                 mapped_at_creation: false,
             }),
             length: 0,
-            capacity,
+            capacity: 0,
             label,
             usage,
             _data: PhantomData,
