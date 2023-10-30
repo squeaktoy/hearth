@@ -7,5 +7,5 @@ license = "AGPL-3.0-or-later"
 [dependencies]
 bincode = "1.3"
 hearth-types = { workspace = true }
-tokio = { version = "1.24", features = ["io-util", "net"] }
+tokio = { version = "1.24", features = ["io-util", "net", "sync"] }
 tracing = { workspace = true }
