@@ -16,28 +16,29 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{collections::HashMap, fmt::Display, process::exit};
+use std::{collections::HashMap, fmt::Display, process::ExitCode};
 
 use clap::{Parser, Subcommand};
 use hearth_ipc::Connection;
-use yacexits::{EX_OK, EX_PROTOCOL};
+
+pub const EX_PROTOCOL: i32 = 76;
 
 pub struct DaemonOffer {}
 
 pub struct CommandError {
     message: String,
-    exit_code: u32,
+    exit_code: i32,
 }
 
 trait ToCommandError<T, E> {
-    fn to_command_error<C: Display>(self, context: C, exit_code: u32) -> Result<T, CommandError>;
+    fn to_command_error<C: Display>(self, context: C, exit_code: i32) -> Result<T, CommandError>;
 }
 
 impl<T, E> ToCommandError<T, E> for Result<T, E>
 where
     E: Display,
 {
-    fn to_command_error<C: Display>(self, context: C, exit_code: u32) -> Result<T, CommandError> {
+    fn to_command_error<C: Display>(self, context: C, exit_code: i32) -> Result<T, CommandError> {
         match self {
             Ok(ok) => Ok(ok),
             Err(e) => Err(CommandError {
@@ -49,7 +50,7 @@ where
 }
 
 impl<T> ToCommandError<T, ()> for Option<T> {
-    fn to_command_error<C: Display>(self, context: C, exit_code: u32) -> Result<T, CommandError> {
+    fn to_command_error<C: Display>(self, context: C, exit_code: i32) -> Result<T, CommandError> {
         match self {
             Some(val) => Ok(val),
             None => Err(CommandError {
@@ -82,15 +83,18 @@ impl Commands {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() {
+async fn main() -> ExitCode {
     let args = Args::parse();
-    match args.command.run().await {
-        Ok(_) => exit(EX_OK as i32),
+
+    let exit_code = match args.command.run().await {
+        Ok(_) => 0,
         Err(e) => {
             eprintln!("ERROR: {}", e.message);
-            exit(e.exit_code as i32)
+            e.exit_code
         }
-    }
+    };
+
+    std::process::exit(exit_code);
 }
 
 async fn get_daemon() -> CommandResult<Connection> {
