@@ -126,7 +126,7 @@ impl TerminalStore {
                 push_constant_ranges: &[],
             });
 
-        let make_pipeline = |label, vs, fs, vert_layout, depth_write_enabled| {
+        let make_pipeline = |label, vs, fs, vert_layout| {
             renderer
                 .device
                 .create_render_pipeline(&RenderPipelineDescriptor {
@@ -139,7 +139,7 @@ impl TerminalStore {
                     },
                     depth_stencil: Some(DepthStencilState {
                         format: TextureFormat::Depth32Float,
-                        depth_write_enabled,
+                        depth_write_enabled: false,
                         depth_compare: CompareFunction::GreaterEqual,
                         stencil: StencilState::default(),
                         bias: DepthBiasState::default(),
@@ -172,7 +172,6 @@ impl TerminalStore {
             "solid_vs",
             "solid_fs",
             SolidVertex::LAYOUT,
-            false,
         );
 
         let glyph_pipeline = make_pipeline(
@@ -180,7 +179,6 @@ impl TerminalStore {
             "glyph_vs",
             "glyph_fs",
             GlyphVertex::LAYOUT,
-            true,
         );
 
         let atlas_sampler = renderer.device.create_sampler(&SamplerDescriptor {
