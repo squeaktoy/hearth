@@ -8,5 +8,5 @@ license = "AGPL-3.0-or-later"
 bincode = "1.3"
 flume = { workspace = true }
 hearth-types = { workspace = true }
-tokio = { version = "1.24", features = ["io-util", "net"] }
+tokio = { version = "1.24", features = ["io-util", "net", "sync"] }
 tracing = { workspace = true }

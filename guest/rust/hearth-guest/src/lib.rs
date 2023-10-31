@@ -16,6 +16,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+//! Safe Rust bindings over the Hearth host API.
+
+#![warn(missing_docs)]
+
 use std::{borrow::Borrow, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
@@ -56,6 +60,7 @@ where
     Request: Serialize,
     Response: for<'a> Deserialize<'a>,
 {
+    /// Wrap a raw capability with the request-response API.
     pub const fn new(cap: Capability) -> Self {
         Self {
             cap,
@@ -64,6 +69,9 @@ where
         }
     }
 
+    /// Perform a request on this capability.
+    ///
+    /// Fails if the capability is unavailable.
     pub fn request(&self, request: Request, args: &[&Capability]) -> (Response, Vec<Capability>) {
         let reply = Mailbox::new();
         let reply_cap = reply.make_capability(Permissions::SEND);
@@ -79,9 +87,11 @@ where
     }
 }
 
+/// A wrapper for capabilities implementing the [registry] protocol.
 pub type Registry = RequestResponse<registry::RegistryRequest, registry::RegistryResponse>;
 
 impl Registry {
+    /// Gets a service by its name. Returns `None` if the service doesn't exist.
     pub fn get_service(&self, name: &str) -> Option<Capability> {
         let request = registry::RegistryRequest::Get {
             name: name.to_string(),
@@ -197,7 +207,13 @@ impl Capability {
 /// A signal.
 #[derive(Clone, Debug)]
 pub enum Signal {
-    Unlink { subject: Capability },
+    /// A down signal. Sent when a monitored capability's route is closed.
+    Unlink {
+        /// A capability to the monitored route with no permissions.
+        subject: Capability,
+    },
+
+    /// A [Message] signal.
     Message(Message),
 }
 
@@ -316,7 +332,10 @@ impl Mailbox {
 /// A message that has been received from another process.
 #[derive(Clone, Debug)]
 pub struct Message {
+    /// The raw data payload of this message.
     pub data: Vec<u8>,
+
+    /// The list of capabilities that were transferred in this message.
     pub caps: Vec<Capability>,
 }
 

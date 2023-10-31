@@ -42,6 +42,9 @@ pub struct LogAbi {
 
 #[impl_wasm_linker(module = "hearth::log")]
 impl LogAbi {
+    /// Logs an event for this process.
+    ///
+    /// Each argument corresponds to a field in [ProcessLogEvent].
     async fn log(
         &self,
         memory: GuestMemory<'_>,
@@ -84,12 +87,17 @@ pub struct LumpAbi {
 
 #[impl_wasm_linker(module = "hearth::lump")]
 impl LumpAbi {
+    /// Retrieves the [LumpId] of the WebAssembly module lump of the currently
+    /// running process.
     async fn this_lump(&self, memory: GuestMemory<'_>, ptr: u32) -> Result<()> {
         let id: &mut LumpId = memory.get_memory_ref(ptr)?;
         *id = self.this_lump;
         Ok(())
     }
 
+    /// Load a lump from its [LumpId].
+    ///
+    /// Fails if the lump is not found in the lump store.
     async fn from_id(&mut self, memory: GuestMemory<'_>, id_ptr: u32) -> Result<u32> {
         let id: LumpId = *memory.get_memory_ref(id_ptr)?;
         let bytes = self
@@ -100,6 +108,7 @@ impl LumpAbi {
         Ok(self.lump_handles.insert(LocalLump { id, bytes }) as u32)
     }
 
+    /// Loads a lump from guest memory.
     async fn load(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<u32> {
         let bytes: Bytes = memory.get_slice(ptr, len)?.to_vec().into();
         let id = self.lump_store.add_lump(bytes.clone()).await;
@@ -108,6 +117,7 @@ impl LumpAbi {
         Ok(handle)
     }
 
+    /// Gets the [LumpId] of a loaded lump by handle.
     fn get_id(&self, memory: GuestMemory<'_>, handle: u32, id_ptr: u32) -> Result<()> {
         let lump = self.get_lump(handle)?;
         let id: &mut LumpId = memory.get_memory_ref(id_ptr)?;
@@ -115,10 +125,15 @@ impl LumpAbi {
         Ok(())
     }
 
+    /// Gets the length of a loaded lump by handle.
     fn get_len(&self, handle: u32) -> Result<u32> {
         self.get_lump(handle).map(|lump| lump.bytes.len() as u32)
     }
 
+    /// Gets the data of a loaded lump by handle.
+    ///
+    /// The length required to copy the lump into guest memory can be accessed
+    /// using [Self::get_len].
     fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
         let lump = self.get_lump(handle)?;
         let len = lump.bytes.len() as u32;
@@ -127,6 +142,7 @@ impl LumpAbi {
         Ok(())
     }
 
+    /// Unloads a lump by handle.
     fn free(&mut self, handle: u32) -> Result<()> {
         self.lump_handles
             .try_remove(handle as usize)
@@ -144,6 +160,7 @@ impl LumpAbi {
         }
     }
 
+    /// Helper function to get a lump reference from a handle.
     fn get_lump(&self, handle: u32) -> Result<&LocalLump> {
         self.lump_handles
             .get(handle as usize)
@@ -151,6 +168,7 @@ impl LumpAbi {
     }
 }
 
+/// Implements the `hearth::table` ABI module.
 pub struct TableAbi {
     process: Arc<Process>,
 }
@@ -163,6 +181,14 @@ impl AsRef<Table> for TableAbi {
 
 #[impl_wasm_linker(module = "hearth::table")]
 impl TableAbi {
+    /// Increments the reference count of this capability.
+    ///
+    /// Guest-side capabilities will typically share handles, and making copies
+    /// of them should use this function to communicate to the host that the
+    /// guest is using that capability. If the guest plays along, this means
+    /// that the host can reuse capability handles for identical capabilities,
+    /// and inform the guest that incoming capabilities from messages or down
+    /// signals are identical because of their shared handle.
     fn inc_ref(&self, handle: u32) -> Result<()> {
         self.as_ref()
             .inc_ref(handle as usize)
@@ -171,6 +197,10 @@ impl TableAbi {
         Ok(())
     }
 
+    /// Decrements the reference count of this capability.
+    ///
+    /// If the reference count of this handle drops to 0, it will be removed
+    /// from the table.
     fn dec_ref(&self, handle: u32) -> Result<()> {
         self.as_ref()
             .dec_ref(handle as usize)
@@ -179,6 +209,7 @@ impl TableAbi {
         Ok(())
     }
 
+    /// Gets the permission flags of a capability.
     fn get_permissions(&self, handle: u32) -> Result<u32> {
         let perms = self
             .as_ref()
@@ -188,6 +219,10 @@ impl TableAbi {
         Ok(perms.bits())
     }
 
+    /// Create a new capability from an existing one with a subset of the
+    /// original's permissions.
+    ///
+    /// Fails if the desired permissions are not a subset of the original's.
     fn demote(&self, handle: u32, perms: u32) -> Result<u32> {
         let perms = Permissions::from_bits(perms).context("unknown permission bits set")?;
 
@@ -199,6 +234,13 @@ impl TableAbi {
         Ok(handle.try_into().unwrap())
     }
 
+    /// Sends a message to a capability.
+    ///
+    /// `data_ptr` and `data_len` comprise a byte vector that is sent in the
+    /// data payload of the message. `caps_ptr` and `caps_len` point to an
+    /// array of `u32`-sized capability handles to be sent in the message.
+    ///
+    /// Fails if the capability does not have the send permission.
     async fn send(
         &self,
         memory: GuestMemory<'_>,
@@ -220,6 +262,9 @@ impl TableAbi {
         Ok(())
     }
 
+    /// Kills a capability.
+    ///
+    /// Fails if the capability does not have the kill permission.
     fn kill(&self, handle: u32) -> Result<()> {
         self.as_ref()
             .kill(handle as usize)
@@ -229,6 +274,7 @@ impl TableAbi {
     }
 }
 
+/// A form of signal mapped to a process's table.
 enum Signal {
     Unlink { handle: u32 },
     Message { data: Vec<u8>, caps: Vec<u32> },
@@ -248,12 +294,14 @@ impl<'a> From<ContextSignal<'a>> for Signal {
     }
 }
 
+/// A data structure to contain a dynamically-allocated slab of mailboxes.
 struct MailboxArena<'a> {
     store: &'a MailboxStore<'a>,
     mbs: Slab<Mailbox<'a>>,
 }
 
 impl<'a> MailboxArena<'a> {
+    /// Creates a new mailbox handle, if the process hasn't been killed.
     fn create(&mut self) -> Result<u32> {
         let mb = self
             .store
@@ -265,6 +313,7 @@ impl<'a> MailboxArena<'a> {
     }
 }
 
+/// Implements the `hearth::mailbox` ABI module.
 #[ouroboros::self_referencing]
 pub struct MailboxAbi {
     process: Arc<Process>,
@@ -277,10 +326,12 @@ pub struct MailboxAbi {
 
 #[impl_wasm_linker(module = "hearth::mailbox")]
 impl MailboxAbi {
+    /// Creates a new mailbox and returns its handle.
     fn create(&mut self) -> Result<u32> {
         Ok(self.with_arena_mut(|arena| arena.create())? + 1)
     }
 
+    /// Destroys a mailbox by handle.
     fn destroy(&mut self, handle: u32) -> Result<()> {
         if handle == 0 {
             bail!("attempted to destroy parent mailbox");
@@ -296,6 +347,8 @@ impl MailboxAbi {
         Ok(())
     }
 
+    /// Make a capability in this process's table to a mailbox with the given
+    /// permissions.
     fn make_capability(&self, handle: u32, perms: u32) -> Result<u32> {
         let mb = self.get_mb(handle)?;
         let perms = Permissions::from_bits(perms).context("unknown permission bits set")?;
@@ -303,6 +356,8 @@ impl MailboxAbi {
         Ok(cap.into_handle().try_into().unwrap())
     }
 
+    /// Monitors a capability by its handle in this process's table. When the
+    /// capability is closed, the mailbox will receive a down signal.
     fn link(&self, mailbox: u32, cap: u32) -> Result<()> {
         let cap = cap as usize;
         let mb = self.get_mb(mailbox)?;
@@ -315,6 +370,7 @@ impl MailboxAbi {
         Ok(())
     }
 
+    /// Waits for a signal to be received by a mailbox.
     async fn recv(&mut self, handle: u32) -> Result<u32> {
         let mb = self.get_mb(handle)?;
 
@@ -328,6 +384,10 @@ impl MailboxAbi {
         Ok(handle.try_into().unwrap())
     }
 
+    /// Checks if a mailbox has received any signals without waiting.
+    ///
+    /// Returns `u32::MAX` (or `0xFFFFFFFF`) if the mailbox's queue is empty.
+    /// Otherwise, returns the handle to the received signal.
     fn try_recv(&mut self, handle: u32) -> Result<u32> {
         let mb = self.get_mb(handle)?;
 
@@ -344,6 +404,15 @@ impl MailboxAbi {
         }
     }
 
+    /// Waits for one of multiple mailboxes to receive a signal.
+    ///
+    /// `handles_ptr` and `handles_len` point to an array of `u32`-sized
+    /// mailbox handles in guest memory.
+    ///
+    /// Returns two 32-bit values encoded in a 64-bit integer. The upper 32
+    /// bits of the return value encode the index of the mailbox in the handles
+    /// array that received the signal. The lower 32 bits encode the handle of
+    /// the received signal itself.
     async fn poll(
         &mut self,
         memory: GuestMemory<'_>,
@@ -367,12 +436,16 @@ impl MailboxAbi {
         Ok(result)
     }
 
+    /// Frees a signal by handle.
     fn destroy_signal(&mut self, handle: u32) -> Result<()> {
         self.with_signals_mut(|signals| signals.try_remove(handle as usize))
             .map(|_| ())
             .context("invalid handle")
     }
 
+    /// Gets the kind of a signal by its handle.
+    ///
+    /// See [SignalKind] for the possible values.
     fn get_signal_kind(&self, handle: u32) -> Result<u32> {
         let signal = self.get_signal(handle)?;
 
@@ -384,6 +457,9 @@ impl MailboxAbi {
         Ok(kind.into())
     }
 
+    /// Gets the inner capability handle of a down signal.
+    ///
+    /// Fails if the given signal is not a down signal.
     fn get_unlink_capability(&self, handle: u32) -> Result<u32> {
         let signal = self.get_signal(handle)?;
 
@@ -394,11 +470,20 @@ impl MailboxAbi {
         Ok(*handle)
     }
 
+    /// Gets the length of the data in a message signal.
+    ///
+    /// Fails if the given signal is not a message signal.
     fn get_message_data_len(&self, handle: u32) -> Result<u32> {
         let (data, _caps) = self.get_message(handle)?;
         Ok(data.len().try_into().unwrap())
     }
 
+    /// Gets the data in a message signal.
+    ///
+    /// The required size of the data can be retrieved with
+    /// [Self::get_message_data_len].
+    ///
+    /// Fails if the given signal is not a message signal.
     fn get_message_data(&self, memory: GuestMemory<'_>, handle: u32, dst_ptr: u32) -> Result<()> {
         let (data, _caps) = self.get_message(handle)?;
         let dst_len = data.len().try_into().unwrap();
@@ -407,11 +492,20 @@ impl MailboxAbi {
         Ok(())
     }
 
+    /// Gets the length of the capability list in a message signal.
+    ///
+    /// Fails if the given signal is not a message signal.
     fn get_message_caps_num(&self, handle: u32) -> Result<u32> {
         let (_data, caps) = self.get_message(handle)?;
         Ok(caps.len().try_into().unwrap())
     }
 
+    /// Gets the capability list in a message signal.
+    ///
+    /// The required number of handles can be retrieved with
+    /// [Self::get_message_caps_len].
+    ///
+    /// Fails if the given signal is not a message signal.
     fn get_message_caps(&self, memory: GuestMemory<'_>, handle: u32, dst_ptr: u32) -> Result<()> {
         let (_data, caps) = self.get_message(handle)?;
         let dst_len = caps.len().try_into().unwrap();
@@ -422,6 +516,9 @@ impl MailboxAbi {
 }
 
 impl MailboxAbi {
+    /// Helper function to get a reference to a mailbox by its handle.
+    ///
+    /// Fails if the handle is invalid.
     fn get_mb(&self, handle: u32) -> Result<&Mailbox> {
         if handle == 0 {
             Ok(self.borrow_process().borrow_parent())
@@ -431,11 +528,17 @@ impl MailboxAbi {
         }
     }
 
+    /// Helper function to get a reference to a signal by its handle.
+    ///
+    /// Fails if the handle is invalid.
     fn get_signal(&self, handle: u32) -> Result<&Signal> {
         self.with_signals(|signals| signals.get(handle as usize))
             .context("invalid handle")
     }
 
+    /// Helper function to get a message signal by its handle.
+    ///
+    /// Fails if the handle is invalid or if the signal is not a message.
     fn get_message(&self, handle: u32) -> Result<(&[u8], &[u32])> {
         let signal = self.get_signal(handle)?;
 
@@ -447,7 +550,7 @@ impl MailboxAbi {
     }
 }
 
-/// This contains all script-accessible process-related stuff.
+/// Encapsulates an instance of each guest ABI data structure.
 pub struct ProcessData {
     pub log: LogAbi,
     pub lump: LumpAbi,
@@ -509,6 +612,7 @@ struct WasmProcess {
 }
 
 impl WasmProcess {
+    /// Executes a Wasm process.
     async fn run(mut self, runtime: Arc<Runtime>, ctx: Process) {
         let pid = ctx.borrow_info().pid;
 
@@ -524,6 +628,7 @@ impl WasmProcess {
         }
     }
 
+    /// Performs the actual process execution using easy error handling.
     async fn run_inner(&mut self, runtime: Arc<Runtime>, ctx: Process) -> Result<()> {
         // TODO log using the process log instead of tracing?
         let data = ProcessData::new(runtime.as_ref(), ctx, self.this_lump);
