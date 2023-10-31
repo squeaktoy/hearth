@@ -1,24 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-  "crates/font-mud",
-  "crates/hearth-client",
-  "crates/hearth-ctl",
-  "crates/hearth-cognito",
-  "crates/hearth-core",
-  "crates/hearth-daemon",
-  "crates/hearth-init",
-  "crates/hearth-ipc",
-  "crates/hearth-fs",
-  "crates/hearth-macros",
-  "crates/hearth-network",
-  "crates/hearth-rend3",
-  "crates/hearth-server",
-  "crates/hearth-terminal",
-  "crates/hearth-types",
-  "crates/hearth-wasm",
-  "crates/rend3-alacritty",
-]
+members = [ "crates/*" ]
 
 [workspace.dependencies]
 bytemuck = "1.13"
