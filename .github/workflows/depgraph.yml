@@ -1,7 +1,10 @@
 name: Update Depgraph
 
 on:
+  workflow_dispatch:
   push:
+    paths:
+      - "**/Cargo.toml"
     branches:
       - main
 
