@@ -18,6 +18,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - uses: Swatinem/rust-cache@v2.2.0
+    - name: Install graphviz
+      run: sudo apt install graphviz
     - name: Install cargo-depgraph
       uses: actions-rs/cargo@v1
       with:
