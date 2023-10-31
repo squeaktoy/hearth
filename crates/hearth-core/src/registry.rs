@@ -19,7 +19,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use flue::{Mailbox, Permissions, PostOffice, Table};
+use flue::{CapabilityHandle, Mailbox, Permissions, PostOffice, Table};
 use hearth_types::registry::*;
 use tracing::warn;
 
@@ -49,13 +49,14 @@ impl RegistryBuilder {
     ///
     /// Logs a warning if the name is already taken.
     pub fn add(&mut self, name: String, mailbox: &Mailbox) {
-        let perms = Permissions::SEND | Permissions::LINK;
-        let cap = self.table.import(mailbox, perms);
+        let perms = Permissions::SEND | Permissions::MONITOR;
+        // Panic if table has a different post office than mailbox:w
+        let cap = mailbox.export(perms, &self.table).unwrap();
 
         if self.inner.services.contains_key(&name) {
             warn!("attempted to add service {:?} again", name);
         } else {
-            self.inner.services.insert(name, cap);
+            self.inner.services.insert(name, cap.into_handle());
         }
     }
 }
@@ -72,7 +73,7 @@ impl RegistryBuilder {
 /// immutable once created.
 #[derive(Default)]
 pub struct Registry {
-    services: HashMap<String, usize>,
+    services: HashMap<String, CapabilityHandle>,
 }
 
 #[async_trait]

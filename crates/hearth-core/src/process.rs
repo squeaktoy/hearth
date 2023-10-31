@@ -20,7 +20,7 @@
 
 use std::sync::{atomic::AtomicUsize, Arc};
 
-use flue::{Mailbox, MailboxStore, PostOffice, Table};
+use flue::{Mailbox, MailboxGroup, PostOffice, Table};
 use flume::Sender;
 use hearth_types::ProcessLogLevel;
 use ouroboros::self_referencing;
@@ -38,7 +38,7 @@ pub struct Process {
     /// This process's [MailboxStore].
     #[borrows(table)]
     #[covariant]
-    pub store: MailboxStore<'this>,
+    pub store: MailboxGroup<'this>,
 
     /// A mailbox that receives signals from this process's parent.
     ///
@@ -130,7 +130,7 @@ impl ProcessFactory {
         Process::new(
             table,
             id,
-            |table| MailboxStore::new(table),
+            |table| MailboxGroup::new(table),
             |store| store.create_mailbox().unwrap(),
         )
     }

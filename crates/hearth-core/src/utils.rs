@@ -19,7 +19,7 @@
 use std::{any::type_name, fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
-use flue::{CapabilityHandle, OwnedContextSignal};
+use flue::{CapabilityRef, OwnedTableSignal};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 
@@ -78,7 +78,7 @@ pub struct MessageInfo<'a, T> {
     pub data: T,
 
     /// The capabilities from this message.
-    pub caps: &'a [CapabilityHandle<'a>],
+    pub caps: &'a [CapabilityRef<'a>],
 }
 
 /// Context for an incoming message in [RequestResponseProcess].
@@ -90,10 +90,10 @@ pub struct RequestInfo<'a, T> {
     pub process: &'a Process,
 
     /// The capability handle of the first capability from the message.
-    pub reply: CapabilityHandle<'a>,
+    pub reply: CapabilityRef<'a>,
 
     /// The rest of the capabilities from the message.
-    pub cap_args: &'a [CapabilityHandle<'a>],
+    pub cap_args: &'a [CapabilityRef<'a>],
 
     /// A handle to the [Runtime] this process is running in.
     pub runtime: &'a Arc<Runtime>,
@@ -107,7 +107,7 @@ where
     T: Send,
 {
     pub data: T,
-    pub caps: Vec<CapabilityHandle<'a>>,
+    pub caps: Vec<CapabilityRef<'a>>,
 }
 
 impl<'a, T> From<T> for ResponseInfo<'a, T>
@@ -159,7 +159,7 @@ pub trait SinkProcess: Send + Sync {
     ///
     /// The capability passed is the capability in the down signal; a version
     /// of the monitored capability with no permissions.
-    async fn on_down<'a>(&'a mut self, _cap: CapabilityHandle<'a>) {}
+    async fn on_down<'a>(&'a mut self, _cap: CapabilityRef<'a>) {}
 }
 
 #[async_trait]
@@ -171,7 +171,7 @@ where
         loop {
             let recv = ctx.borrow_parent().recv_owned().await;
 
-            use OwnedContextSignal::*;
+            use OwnedTableSignal::*;
             match recv {
                 Some(Message { data, caps }) => {
                     let data: T::Message = match serde_json::from_slice(&data) {
@@ -196,7 +196,7 @@ where
 
                     trace!("{:?} finished processing message", label);
                 }
-                Some(Unlink { handle }) => {
+                Some(Down { handle }) => {
                     self.on_down(handle).await;
                 }
                 None => break, // killed; quit
@@ -219,7 +219,7 @@ pub trait RequestResponseProcess: Send + Sync {
     ///
     /// The capability passed is the capability in the down signal; a version
     /// of the monitored capability with no permissions.
-    async fn on_down<'a>(&'a mut self, _cap: CapabilityHandle<'a>) {}
+    async fn on_down<'a>(&'a mut self, _cap: CapabilityRef<'a>) {}
 }
 
 #[async_trait]
@@ -254,7 +254,7 @@ where
         }
     }
 
-    async fn on_down<'a>(&'a mut self, cap: CapabilityHandle<'a>) {
+    async fn on_down<'a>(&'a mut self, cap: CapabilityRef<'a>) {
         // clarify trait so we don't make this function recursive
         <T as RequestResponseProcess>::on_down(self, cap).await;
     }

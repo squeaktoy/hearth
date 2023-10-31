@@ -21,7 +21,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use flue::{CapabilityHandle, Mailbox, MailboxStore, OwnedCapability, PostOffice, Table};
+use flue::{CapabilityRef, Mailbox, MailboxGroup, OwnedCapability, PostOffice, Table};
 use flume::{Receiver, Sender};
 use hearth_types::protocol::{CapOperation, LocalCapOperation, RemoteCapOperation};
 use ouroboros::self_referencing;
@@ -34,7 +34,7 @@ pub type RootCapSender = oneshot::Sender<OwnedCapability>;
 struct Import<'a> {
     conn: &'a Connection,
 
-    store: MailboxStore<'a>,
+    store: MailboxGroup<'a>,
 
     #[borrows(store)]
     #[covariant]
@@ -42,7 +42,7 @@ struct Import<'a> {
 }
 
 struct Export<'a> {
-    cap: CapabilityHandle<'a>,
+    cap: CapabilityRef<'a>,
     revoked: bool,
 }
 
@@ -90,8 +90,8 @@ impl Connection {
         self.with_exports(|exports| {
             let table = exports.table;
             let mut exports = exports.inner.lock();
-            let handle = table.insert_owned(cap).unwrap();
-            let id: u32 = handle.try_into().unwrap();
+            let handle = table.import_owned(cap).unwrap();
+            let id: u32 = handle.0.try_into().unwrap();
 
             if exports.contains_key(&id) {
                 // cap is already exported, so drop this reference
@@ -155,7 +155,7 @@ impl Connection {
         }
     }
 
-    fn with_export(&self, id: u32, mut cb: impl FnMut(&CapabilityHandle<'_>)) {
+    fn with_export(&self, id: u32, mut cb: impl FnMut(&CapabilityRef<'_>)) {
         self.with_exports(|exports| {
             let inner = exports.inner.lock();
             if let Some(cap) = inner.get(&id) {
