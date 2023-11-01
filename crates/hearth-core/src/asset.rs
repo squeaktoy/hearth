@@ -16,14 +16,15 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::any::{Any, TypeId};
+use std::any::{type_name, Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::lump::LumpStoreImpl;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use hearth_types::LumpId;
+use serde::Deserialize;
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error};
 
@@ -33,6 +34,29 @@ pub trait AssetLoader: Send + Sync + 'static {
 
     async fn load_asset(&self, data: &[u8]) -> Result<Self::Asset>;
 }
+
+/// Helper trait to implement [AssetLoader] for asset loaders that load from
+/// JSON-encoded data.
+#[async_trait]
+pub trait JsonAssetLoader: Send + Sync + 'static {
+    type Asset: Send + Sync + 'static;
+    type Data: for<'a> Deserialize<'a> + Send;
+
+    async fn load_asset(&self, data: Self::Data) -> Result<Self::Asset>;
+}
+
+#[async_trait]
+impl<T: JsonAssetLoader> AssetLoader for T {
+    type Asset = T::Asset;
+
+    async fn load_asset(&self, data: &[u8]) -> Result<T::Asset> {
+        let data: T::Data = serde_json::from_slice(data)
+            .with_context(|| format!("Deserializing asset from {}", type_name::<T::Data>()))?;
+
+        self.load_asset(data).await
+    }
+}
+
 /// Loads and caches assets loaded from a loader.
 pub struct AssetPool<T: AssetLoader> {
     loader: Mutex<T>,
