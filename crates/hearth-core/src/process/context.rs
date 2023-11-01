@@ -203,7 +203,7 @@ impl<Store: ProcessStoreTrait> ProcessContext<Store> {
             }
 
             match self.mailbox.recv().await? {
-                Signal::Kill => {}
+                Signal::Kill => return None,
                 Signal::Unlink { subject } => {
                     let handles = self
                         .caps
