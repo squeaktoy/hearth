@@ -34,9 +34,9 @@ pub type RootCapSender = oneshot::Sender<OwnedCapability>;
 struct Import<'a> {
     conn: &'a Connection,
 
-    store: MailboxGroup<'a>,
+    group: MailboxGroup<'a>,
 
-    #[borrows(store)]
+    #[borrows(group)]
     #[covariant]
     mb: Mailbox<'this>,
 }

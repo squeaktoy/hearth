@@ -35,17 +35,17 @@ pub struct Process {
     /// This process's [ProcessInfo].
     pub info: ProcessInfo,
 
-    /// This process's [MailboxStore].
+    /// This process's [MailboxGroup].
     #[borrows(table)]
     #[covariant]
-    pub store: MailboxGroup<'this>,
+    pub group: MailboxGroup<'this>,
 
     /// A mailbox that receives signals from this process's parent.
     ///
     /// This field lasts the entire lifetime of a process and cannot be dropped.
     /// This is so that local processes can always be killed by their parents
     /// and can't go rogue.
-    #[borrows(store)]
+    #[borrows(group)]
     #[covariant]
     pub parent: Mailbox<'this>,
 }
