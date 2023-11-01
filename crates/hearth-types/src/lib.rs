@@ -21,6 +21,9 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
+/// Debug draw protocol
+pub mod debug_draw;
+
 /// Filesystem native service protocol.
 pub mod fs;
 
@@ -148,4 +151,30 @@ macro_rules! impl_serialize_json_display {
             }
         }
     };
+}
+
+/// An ARGB color value with 8 bits per channel.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Color(pub u32);
+
+impl Color {
+    /// Create a color from individual RGB components and an opaque alpha.
+    pub fn from_rgb(r: u8, g: u8, b: u8) -> Self {
+        Self::from_argb(0xff, r, g, b)
+    }
+
+    /// Create a color from individual ARGB components.
+    pub fn from_argb(a: u8, r: u8, g: u8, b: u8) -> Self {
+        Self(((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32))
+    }
+
+    /// Extracts each color channel.
+    pub fn to_argb(&self) -> (u8, u8, u8, u8) {
+        (
+            (self.0 >> 24) as u8,
+            (self.0 >> 16) as u8,
+            (self.0 >> 8) as u8,
+            self.0 as u8,
+        )
+    }
 }
