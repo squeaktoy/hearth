@@ -50,10 +50,16 @@ pub struct Process {
     pub parent: Mailbox<'this>,
 }
 
+/// The integer identifier for a local process.
+///
+/// Hidden from most guest-side code, but is used host-side for human-readable
+/// process identifiers.
+pub type ProcessId = usize;
+
 /// Information about a running process with data distinguishing it from other processes.
 pub struct ProcessInfo {
-    /// The process ID of this process.
-    pub pid: usize,
+    /// The [ProcessId] of this process.
+    pub pid: ProcessId,
 
     /// A sender to this process's log.
     pub log_tx: Sender<ProcessLogEvent>,
