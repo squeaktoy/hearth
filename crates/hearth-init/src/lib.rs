@@ -20,7 +20,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use hearth_core::{
     async_trait, cargo_process_metadata,
-    flue::{ContextSignal, OwnedCapability, Permissions},
+    flue::{OwnedCapability, Permissions, TableSignal},
     hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo},
     process::{Process, ProcessMetadata},
     runtime::{Plugin, Runtime, RuntimeBuilder},
@@ -40,7 +40,7 @@ impl ProcessRunner for Hook {
         while let Some(hook) = ctx
             .borrow_parent()
             .recv(|signal| {
-                let ContextSignal::Message { data: _, caps } = signal else {
+                let TableSignal::Message { data: _, caps } = signal else {
                     tracing::error!("expected message, got {:?}", signal);
                     return None;
                 };
@@ -93,14 +93,12 @@ impl Plugin for InitPlugin {
                 meta.name = Some("init system parent".to_string());
 
                 let parent = runtime.process_factory.spawn(meta);
-                let response = parent.borrow_store().create_mailbox().unwrap();
-                let response_cap = response.make_capability(Permissions::SEND);
-
-                let registry = runtime.registry.borrow_parent();
+                let response = parent.borrow_group().create_mailbox().unwrap();
                 let table = parent.borrow_table();
-                let perms = Permissions::SEND | Permissions::LINK;
-                let registry = table.import(registry, perms);
-                let registry = table.wrap_handle(registry).unwrap();
+                let response_cap = response.export(Permissions::SEND, table).unwrap();
+
+                let perms = Permissions::SEND | Permissions::MONITOR;
+                let registry = parent.borrow_parent().export(perms, table).unwrap();
 
                 let request = RegistryRequest::Get {
                     name: "hearth.cognito.WasmProcessSpawner".to_string(),
@@ -113,7 +111,7 @@ impl Plugin for InitPlugin {
 
                 let spawner = response
                     .recv(|signal| {
-                        let ContextSignal::Message { mut caps, .. } = signal else {
+                        let TableSignal::Message { mut caps, .. } = signal else {
                             panic!("expected message, got {:?}", signal);
                         };
 
