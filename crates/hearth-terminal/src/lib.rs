@@ -166,7 +166,6 @@ impl RequestResponseProcess for TerminalFactory {
             .wrap_handle(child_cap)
             .unwrap();
 
-
         let runtime = request.runtime.clone();
         tokio::spawn(async move {
             sink.run("TerminalSink".to_string(), runtime, &child).await;
