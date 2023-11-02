@@ -159,16 +159,19 @@ impl RequestResponseProcess for TerminalFactory {
 
         let child = request.runtime.process_factory.spawn(meta);
         let perms = Permissions::SEND | Permissions::KILL;
+        // TODO https://github.com/hearth-rs/flue/pull/9 makes this cleaner
+        let child_cap = child.borrow_parent().export_owned(perms);
         let child_cap = request
             .process
             .borrow_table()
-            .import(child.borrow_parent(), perms);
-
+            .import_owned(child_cap)
+            .unwrap();
         let child_cap = request
             .process
             .borrow_table()
             .wrap_handle(child_cap)
             .unwrap();
+
 
         let runtime = request.runtime.clone();
         tokio::spawn(async move {
