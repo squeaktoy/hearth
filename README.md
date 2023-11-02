@@ -134,9 +134,9 @@ hearth-server --help # prints usage info for the Hearth server
 
 # Workspace Layout
 
-Hearth's code is divided into many Rust crates in a shared workspace, each of
-which has a dedicated, purpose function. Here are a few specific, important
-ones to be aware of:
+Hearth's codebase is composed of a single Rust workspace divided into many
+crates, each with a dedicated purpose. Here are a few specific, important crates
+to be aware of:
 
 - **hearth-core**: a common library that provides the APIs for plugins, asset
     loading, the lump store, and runtime building. Because the `hearth-core`
@@ -145,7 +145,7 @@ ones to be aware of:
 - **hearth-types**: a schema crate that defines the guest-to-host message
     protocols. Since the purpose of most Hearth crates is to provide some kind
     of native resource to guest processes, most crates depend on `hearth-types`.
-- **hearth-client** and **hearth-server**: the main Hearth entrypoint programs,
+- **hearth-client** and **hearth-server**: the main Hearth application binaries,
     implementing the client and server, respectively. Each depends on a variety
     of plugin crates, since they build and run the runtimes that use those
     plugins.
