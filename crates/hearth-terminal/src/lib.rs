@@ -147,6 +147,8 @@ impl RequestResponseProcess for TerminalFactory {
 
         let sink = TerminalSink { inner: terminal };
 
+        // create metadata for the child TerminalSink since it's a sink, not a
+        // service, and it doesn't have get_process_metadata()
         let mut meta = cargo_process_metadata!();
         meta.name = Some("TerminalSink".to_string());
         meta.description = Some("An instance of a terminal. Accepts TerminalUpdate.".to_string());
