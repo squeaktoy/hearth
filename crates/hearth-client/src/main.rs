@@ -109,6 +109,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     builder.add_plugin(hearth_init::InitPlugin::new(args.init));
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(rend3_plugin);
+    builder.add_plugin(hearth_debug_draw::DebugDrawPlugin::default());
     builder.add_plugin(hearth_terminal::TerminalPlugin::default());
     builder.add_plugin(hearth_daemon::DaemonPlugin::default());
 

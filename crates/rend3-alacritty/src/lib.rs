@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use rend3::graph::{
     RenderGraph, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets, RenderTargetHandle,
@@ -42,18 +42,20 @@ use crate::{
 };
 
 pub struct TerminalWrapper {
-    terminal: Weak<Terminal>,
+    terminal: Arc<Terminal>,
     draw_state: TerminalDrawState,
 }
 
 impl TerminalWrapper {
+    /// Updates this terminal's draw state. Returns true if this terminal has not quit.
     pub fn update(&mut self) -> bool {
-        if let Some(terminal) = self.terminal.upgrade() {
-            terminal.update_draw_state(&mut self.draw_state);
-            true
-        } else {
-            false
+        let quit = self.terminal.should_quit();
+
+        if !quit {
+            self.terminal.update_draw_state(&mut self.draw_state);
         }
+
+        !quit
     }
 }
 
@@ -222,12 +224,14 @@ impl TerminalStore {
     }
 
     /// Inserts a new terminal into this store.
-    ///
-    /// When the last `Arc` owning this terminal is dropped, this terminal will stop being rendered.
     pub fn insert_terminal(&mut self, terminal: &Arc<Terminal>) {
         self.terminals.push(TerminalWrapper {
-            terminal: Arc::downgrade(terminal),
-            draw_state: TerminalDrawState::new(self.device.to_owned(), &self.camera_bgl),
+            terminal: terminal.to_owned(),
+            draw_state: TerminalDrawState::new(
+                self.device.to_owned(),
+                self.queue.to_owned(),
+                &self.camera_bgl,
+            ),
         });
     }
 
@@ -292,7 +296,7 @@ impl<'a> TerminalRenderRoutine<'a> {
     ) {
         let mut builder = graph.add_node("alacritty");
         let output_handle = builder.add_render_target_output(output);
-        let depth_handle = builder.add_render_target_input(depth);
+        let depth_handle = builder.add_render_target_output(depth);
         let rpass_handle = builder.add_renderpass(RenderPassTargets {
             targets: vec![RenderPassTarget {
                 color: output_handle,
@@ -301,7 +305,7 @@ impl<'a> TerminalRenderRoutine<'a> {
             }],
             depth_stencil: Some(RenderPassDepthTarget {
                 target: rend3::graph::DepthHandle::RenderTarget(depth_handle),
-                depth_clear: None,
+                depth_clear: Some(0.0),
                 stencil_clear: None,
             }),
         });

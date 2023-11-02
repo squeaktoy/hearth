@@ -18,65 +18,12 @@
 
 use std::sync::Arc;
 
-use hearth_rend3::{rend3, rend3_routine, wgpu, FrameRequest, Rend3Plugin};
-use rend3::InstanceAdapterDevice;
+use hearth_rend3::{rend3, wgpu, FrameRequest, Rend3Plugin};
+use rend3::{InstanceAdapterDevice, Renderer};
 use tokio::sync::{mpsc, oneshot};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
 use winit::window::{Window as WinitWindow, WindowBuilder};
-
-fn vertex(pos: [f32; 3]) -> glam::Vec3 {
-    glam::Vec3::from(pos)
-}
-
-fn create_mesh() -> rend3::types::Mesh {
-    let vertex_positions = [
-        // far side (0.0, 0.0, 1.0)
-        vertex([-1.0, -1.0, 1.0]),
-        vertex([1.0, -1.0, 1.0]),
-        vertex([1.0, 1.0, 1.0]),
-        vertex([-1.0, 1.0, 1.0]),
-        // near side (0.0, 0.0, -1.0)
-        vertex([-1.0, 1.0, -1.0]),
-        vertex([1.0, 1.0, -1.0]),
-        vertex([1.0, -1.0, -1.0]),
-        vertex([-1.0, -1.0, -1.0]),
-        // right side (1.0, 0.0, 0.0)
-        vertex([1.0, -1.0, -1.0]),
-        vertex([1.0, 1.0, -1.0]),
-        vertex([1.0, 1.0, 1.0]),
-        vertex([1.0, -1.0, 1.0]),
-        // left side (-1.0, 0.0, 0.0)
-        vertex([-1.0, -1.0, 1.0]),
-        vertex([-1.0, 1.0, 1.0]),
-        vertex([-1.0, 1.0, -1.0]),
-        vertex([-1.0, -1.0, -1.0]),
-        // top (0.0, 1.0, 0.0)
-        vertex([1.0, 1.0, -1.0]),
-        vertex([-1.0, 1.0, -1.0]),
-        vertex([-1.0, 1.0, 1.0]),
-        vertex([1.0, 1.0, 1.0]),
-        // bottom (0.0, -1.0, 0.0)
-        vertex([1.0, -1.0, 1.0]),
-        vertex([-1.0, -1.0, 1.0]),
-        vertex([-1.0, -1.0, -1.0]),
-        vertex([1.0, -1.0, -1.0]),
-    ];
-
-    let index_data = &[
-        0, 1, 2, 2, 3, 0, // far
-        4, 5, 6, 6, 7, 4, // near
-        8, 9, 10, 10, 11, 8, // right
-        12, 13, 14, 14, 15, 12, // left
-        16, 17, 18, 18, 19, 16, // top
-        20, 21, 22, 22, 23, 20, // bottom
-    ];
-
-    rend3::types::MeshBuilder::new(vertex_positions.to_vec(), rend3::types::Handedness::Left)
-        .with_indices(index_data.to_vec())
-        .build()
-        .unwrap()
-}
 
 /// A message sent from the rest of the program to a window.
 #[derive(Clone, Debug)]
@@ -111,7 +58,6 @@ struct Window {
     surface: Arc<wgpu::Surface>,
     config: wgpu::SurfaceConfiguration,
     frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
-    _object_handle: rend3::types::ResourceHandle<rend3::types::Object>,
     _directional_handle: rend3::types::ResourceHandle<rend3::types::DirectionalLight>,
 }
 
@@ -143,24 +89,6 @@ impl Window {
         let renderer = rend3_plugin.renderer.to_owned();
         let frame_request_tx = rend3_plugin.frame_request_tx.clone();
 
-        let mesh = create_mesh();
-        let mesh_handle = renderer.add_mesh(mesh);
-
-        let material = rend3_routine::pbr::PbrMaterial {
-            albedo: rend3_routine::pbr::AlbedoComponent::Value(glam::Vec4::new(0.0, 0.5, 0.5, 1.0)),
-            ..Default::default()
-        };
-
-        let material_handle = renderer.add_material(material);
-
-        let object = rend3::types::Object {
-            mesh_kind: rend3::types::ObjectMeshKind::Static(mesh_handle),
-            material: material_handle,
-            transform: glam::Mat4::IDENTITY,
-        };
-
-        let object_handle = renderer.add_object(object);
-
         let directional_handle = renderer.add_directional_light(rend3::types::DirectionalLight {
             color: glam::Vec3::ONE,
             intensity: 10.0,
@@ -175,7 +103,6 @@ impl Window {
             surface,
             config,
             frame_request_tx,
-            _object_handle: object_handle,
             _directional_handle: directional_handle,
         };
 
@@ -216,7 +143,7 @@ impl Window {
 
         let resolution = glam::UVec2::new(self.config.width, self.config.height);
 
-        let eye = glam::Vec3::new(3.0, 3.0, 5.0);
+        let eye = glam::Vec3::new(1.0, 2.0, 5.0);
         let center = glam::Vec3::ZERO;
         let up = glam::Vec3::Y;
         let view = glam::Mat4::look_at_rh(eye, center, up);
