@@ -1,6 +1,6 @@
 use hearth_core::{
     cargo_process_metadata,
-    flue::{TableSignal, Permissions},
+    flue::{Permissions, TableSignal},
     process::ProcessMetadata,
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
@@ -33,7 +33,9 @@ async fn main() {
     let meta = cargo_process_metadata!();
     let parent = runtime.process_factory.spawn(meta);
     let response = parent.borrow_group().create_mailbox().unwrap();
-    let response_cap = response.export(Permissions::SEND, parent.borrow_table()).unwrap();
+    let response_cap = response
+        .export(Permissions::SEND, parent.borrow_table())
+        .unwrap();
 
     // import a cap to the registry's mailbox into the parent process
     let table = parent.borrow_table();
