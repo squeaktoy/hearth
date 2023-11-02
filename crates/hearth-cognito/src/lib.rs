@@ -21,7 +21,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use hearth_core::anyhow::{self, bail, Context};
 use hearth_core::asset::AssetLoader;
-use hearth_core::flue::{ContextSignal, Mailbox, MailboxStore, Permissions, Table};
+use hearth_core::flue::{CapabilityHandle, Mailbox, MailboxGroup, Permissions, Table, TableSignal};
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_core::process::{Process, ProcessLogEvent, ProcessMetadata};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
@@ -191,7 +191,7 @@ impl TableAbi {
     /// signals are identical because of their shared handle.
     fn inc_ref(&self, handle: u32) -> Result<()> {
         self.as_ref()
-            .inc_ref(handle as usize)
+            .inc_ref(CapabilityHandle(handle as usize))
             .with_context(|| format!("inc_ref({handle})"))?;
 
         Ok(())
@@ -203,7 +203,7 @@ impl TableAbi {
     /// from the table.
     fn dec_ref(&self, handle: u32) -> Result<()> {
         self.as_ref()
-            .dec_ref(handle as usize)
+            .dec_ref(CapabilityHandle(handle as usize))
             .with_context(|| format!("dec_ref({handle})"))?;
 
         Ok(())
@@ -213,7 +213,7 @@ impl TableAbi {
     fn get_permissions(&self, handle: u32) -> Result<u32> {
         let perms = self
             .as_ref()
-            .get_permissions(handle as usize)
+            .get_permissions(CapabilityHandle(handle as usize))
             .with_context(|| format!("get_permissions({handle})"))?;
 
         Ok(perms.bits())
@@ -228,10 +228,10 @@ impl TableAbi {
 
         let handle = self
             .as_ref()
-            .demote(handle as usize, perms)
+            .demote(CapabilityHandle(handle as usize), perms)
             .with_context(|| format!("demote({handle})"))?;
 
-        Ok(handle.try_into().unwrap())
+        Ok(handle.0.try_into().unwrap())
     }
 
     /// Sends a message to a capability.
@@ -252,10 +252,13 @@ impl TableAbi {
     ) -> Result<()> {
         let data = memory.get_slice(data_ptr, data_len)?;
         let caps = memory.get_memory_slice::<u32>(caps_ptr, caps_len)?;
-        let caps: Vec<_> = caps.iter().map(|cap| *cap as usize).collect();
+        let caps: Vec<_> = caps
+            .iter()
+            .map(|cap| CapabilityHandle(*cap as usize))
+            .collect();
         self.process
             .borrow_table()
-            .send(handle as usize, data, &caps)
+            .send(CapabilityHandle(handle as usize), data, &caps)
             .await
             .with_context(|| format!("send({handle})"))?;
 
@@ -267,7 +270,7 @@ impl TableAbi {
     /// Fails if the capability does not have the kill permission.
     fn kill(&self, handle: u32) -> Result<()> {
         self.as_ref()
-            .kill(handle as usize)
+            .kill(CapabilityHandle(handle as usize))
             .with_context(|| format!("kill({handle})"))?;
 
         Ok(())
@@ -280,15 +283,16 @@ enum Signal {
     Message { data: Vec<u8>, caps: Vec<u32> },
 }
 
-impl<'a> From<ContextSignal<'a>> for Signal {
-    fn from(signal: ContextSignal<'a>) -> Signal {
+impl<'a> From<TableSignal<'a>> for Signal {
+    fn from(signal: TableSignal<'a>) -> Signal {
         match signal {
-            ContextSignal::Unlink { handle } => Signal::Unlink {
-                handle: handle as u32,
+            TableSignal::Down { handle } => Signal::Unlink {
+                //TODO impl into for handles?
+                handle: handle.0 as u32,
             },
-            ContextSignal::Message { data, caps } => Signal::Message {
+            TableSignal::Message { data, caps } => Signal::Message {
                 data: data.to_vec(),
-                caps: caps.iter().map(|cap| *cap as u32).collect(),
+                caps: caps.iter().map(|cap| cap.0 as u32).collect(),
             },
         }
     }
@@ -296,7 +300,7 @@ impl<'a> From<ContextSignal<'a>> for Signal {
 
 /// A data structure to contain a dynamically-allocated slab of mailboxes.
 struct MailboxArena<'a> {
-    store: &'a MailboxStore<'a>,
+    group: &'a MailboxGroup<'a>,
     mbs: Slab<Mailbox<'a>>,
 }
 
@@ -304,7 +308,7 @@ impl<'a> MailboxArena<'a> {
     /// Creates a new mailbox handle, if the process hasn't been killed.
     fn create(&mut self) -> Result<u32> {
         let mb = self
-            .store
+            .group
             .create_mailbox()
             .context("process has been killed")?;
 
@@ -352,20 +356,22 @@ impl MailboxAbi {
     fn make_capability(&self, handle: u32, perms: u32) -> Result<u32> {
         let mb = self.get_mb(handle)?;
         let perms = Permissions::from_bits(perms).context("unknown permission bits set")?;
-        let cap = mb.make_capability(perms);
-        Ok(cap.into_handle().try_into().unwrap())
+        let cap = mb
+            .export(perms, self.borrow_process().borrow_table())
+            .unwrap();
+        Ok(cap.into_handle().0.try_into().unwrap())
     }
 
     /// Monitors a capability by its handle in this process's table. When the
     /// capability is closed, the mailbox will receive a down signal.
     fn link(&self, mailbox: u32, cap: u32) -> Result<()> {
-        let cap = cap as usize;
+        let cap = CapabilityHandle(cap as usize);
         let mb = self.get_mb(mailbox)?;
 
         self.borrow_process()
             .borrow_table()
-            .link(cap, mb)
-            .with_context(|| format!("link(mailbox = {mailbox}, cap = {cap})"))?;
+            .monitor(cap, mb)
+            .with_context(|| format!("link(mailbox = {}, cap = {})", mailbox, cap.0))?;
 
         Ok(())
     }
@@ -571,7 +577,7 @@ impl ProcessData {
                 process: process.clone(),
             },
             mailbox: MailboxAbi::new(process, Slab::new(), |process| MailboxArena {
-                store: process.borrow_store(),
+                group: process.borrow_group(),
                 mbs: Slab::new(),
             }),
         }
@@ -699,12 +705,14 @@ impl RequestResponseProcess for WasmProcessSpawner {
         let child = request.runtime.process_factory.spawn(meta);
 
         // create a capability to this child's parent mailbox
-        let perms = Permissions::SEND | Permissions::LINK | Permissions::KILL;
+        let perms = Permissions::SEND | Permissions::MONITOR | Permissions::KILL;
+        // TODO https://github.com/hearth-rs/flue/pull/9 makes this cleaner
+        let child_cap = child.borrow_parent().export_owned(perms);
         let child_cap = request
             .process
             .borrow_table()
-            .import(child.borrow_parent(), perms);
-
+            .import_owned(child_cap)
+            .unwrap();
         let child_cap = request
             .process
             .borrow_table()
