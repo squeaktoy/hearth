@@ -1,6 +1,6 @@
 use hearth_core::{
     cargo_process_metadata,
-    flue::{ContextSignal, Permissions},
+    flue::{TableSignal, Permissions},
     process::ProcessMetadata,
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
@@ -32,14 +32,13 @@ async fn main() {
 
     let meta = cargo_process_metadata!();
     let parent = runtime.process_factory.spawn(meta);
-    let response = parent.borrow_store().create_mailbox().unwrap();
-    let response_cap = response.make_capability(Permissions::SEND);
+    let response = parent.borrow_group().create_mailbox().unwrap();
+    let response_cap = response.export(Permissions::SEND, parent.borrow_table()).unwrap();
 
     // import a cap to the registry's mailbox into the parent process
     let table = parent.borrow_table();
     let registry_mb = runtime.registry.borrow_parent();
-    let registry_handle = table.import(registry_mb, Permissions::SEND);
-    let registry = table.wrap_handle(registry_handle).unwrap();
+    let registry = registry_mb.export(Permissions::SEND, table).unwrap();
 
     let request = RegistryRequest::Get {
         name: "hearth.cognito.WasmProcessSpawner".to_string(),
@@ -52,7 +51,7 @@ async fn main() {
 
     let spawner = response
         .recv(|signal| {
-            let ContextSignal::Message { mut caps, .. } = signal else {
+            let TableSignal::Message { mut caps, .. } = signal else {
                 panic!("expected message, got {:?}", signal);
             };
 
