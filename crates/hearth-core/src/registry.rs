@@ -16,7 +16,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{hash_map, HashMap},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use flue::{CapabilityHandle, Mailbox, Permissions, PostOffice, Table};
@@ -53,10 +56,10 @@ impl RegistryBuilder {
         // Panic if table has a different post office than mailbox:w
         let cap = mailbox.export(perms, &self.table).unwrap();
 
-        if self.inner.services.contains_key(&name) {
-            warn!("attempted to add service {:?} again", name);
+        if let hash_map::Entry::Vacant(entry) = self.inner.services.entry(name.clone()) {
+            entry.insert(cap.into_handle());
         } else {
-            self.inner.services.insert(name, cap.into_handle());
+            warn!("attempted to add service {:?} again", name);
         }
     }
 }
