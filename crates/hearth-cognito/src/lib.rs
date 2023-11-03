@@ -78,6 +78,11 @@ pub struct LocalLump {
 }
 
 /// Implements the `hearth::lump` ABI module.
+///
+/// This works with two main data types: lump handles and lump ID pointers.
+/// Handles are lumps that have been "loaded" into this process and can be
+/// directly copied into guest memory. Lump ID pointers refer to a guest-side
+/// [LumpId] data type that is directly read from and written to by the host.
 #[derive(Debug)]
 pub struct LumpAbi {
     pub lump_store: Arc<LumpStoreImpl>,
@@ -88,14 +93,15 @@ pub struct LumpAbi {
 #[impl_wasm_linker(module = "hearth::lump")]
 impl LumpAbi {
     /// Retrieves the [LumpId] of the WebAssembly module lump of the currently
-    /// running process.
-    async fn this_lump(&self, memory: GuestMemory<'_>, ptr: u32) -> Result<()> {
-        let id: &mut LumpId = memory.get_memory_ref(ptr)?;
+    /// running process. Writes the result into the guest memory at the given
+    /// [LumpId] pointer.
+    async fn this_lump(&self, memory: GuestMemory<'_>, id_ptr: u32) -> Result<()> {
+        let id: &mut LumpId = memory.get_memory_ref(id_ptr)?;
         *id = self.this_lump;
         Ok(())
     }
 
-    /// Load a lump from its [LumpId].
+    /// Load a lump from its [LumpId], retrieved from guest memory via pointer.
     ///
     /// Fails if the lump is not found in the lump store.
     async fn from_id(&mut self, memory: GuestMemory<'_>, id_ptr: u32) -> Result<u32> {
@@ -109,15 +115,15 @@ impl LumpAbi {
     }
 
     /// Loads a lump from guest memory.
-    async fn load(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<u32> {
-        let bytes: Bytes = memory.get_slice(ptr, len)?.to_vec().into();
+    async fn load(&mut self, memory: GuestMemory<'_>, data_ptr: u32, data_len: u32) -> Result<u32> {
+        let bytes: Bytes = memory.get_slice(data_ptr, data_len)?.to_vec().into();
         let id = self.lump_store.add_lump(bytes.clone()).await;
         let lump = LocalLump { id, bytes };
         let handle = self.lump_handles.insert(lump) as u32;
         Ok(handle)
     }
 
-    /// Gets the [LumpId] of a loaded lump by handle.
+    /// Writes the [LumpId] of a loaded lump to guest memory via pointer.
     fn get_id(&self, memory: GuestMemory<'_>, handle: u32, id_ptr: u32) -> Result<()> {
         let lump = self.get_lump(handle)?;
         let id: &mut LumpId = memory.get_memory_ref(id_ptr)?;
@@ -130,11 +136,11 @@ impl LumpAbi {
         self.get_lump(handle).map(|lump| lump.bytes.len() as u32)
     }
 
-    /// Gets the data of a loaded lump by handle.
+    /// Copies the data of a loaded lump into guest memory by handle.
     ///
     /// The length required to copy the lump into guest memory can be accessed
     /// using [Self::get_len].
-    fn get_data(&self, memory: GuestMemory<'_>, handle: u32, ptr: u32) -> Result<()> {
+    fn get_data(&self, memory: GuestMemory<'_>, handle: u32, data_ptr: u32) -> Result<()> {
         let lump = self.get_lump(handle)?;
         let len = lump.bytes.len() as u32;
         let dst = memory.get_slice(ptr, len)?;
@@ -234,7 +240,7 @@ impl TableAbi {
         Ok(handle.0.try_into().unwrap())
     }
 
-    /// Sends a message to a capability.
+    /// Sends a message to a capability's route.
     ///
     /// `data_ptr` and `data_len` comprise a byte vector that is sent in the
     /// data payload of the message. `caps_ptr` and `caps_len` point to an
@@ -265,7 +271,7 @@ impl TableAbi {
         Ok(())
     }
 
-    /// Kills a capability.
+    /// Kills a capability's route group.
     ///
     /// Fails if the capability does not have the kill permission.
     fn kill(&self, handle: u32) -> Result<()> {
@@ -305,7 +311,9 @@ struct MailboxArena<'a> {
 }
 
 impl<'a> MailboxArena<'a> {
-    /// Creates a new mailbox handle, if the process hasn't been killed.
+    /// Creates a new mailbox handle.
+    ///
+    /// Fails if the process has been killed.
     fn create(&mut self) -> Result<u32> {
         let mb = self
             .group
