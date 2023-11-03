@@ -27,7 +27,7 @@ use hearth_core::{
     tokio::{spawn, sync::oneshot::Sender},
     utils::ProcessRunner,
 };
-use tracing::debug;
+use tracing::{debug, warn};
 
 struct Hook {
     service: String,
@@ -36,23 +36,24 @@ struct Hook {
 
 #[async_trait]
 impl ProcessRunner for Hook {
-    async fn run(mut self, _label: String, _runtime: Arc<Runtime>, ctx: &Process) {
-        while let Some(hook) = ctx
-            .borrow_parent()
-            .recv(|signal| {
-                let TableSignal::Message { data: _, caps } = signal else {
-                    tracing::error!("expected message, got {:?}", signal);
-                    return None;
-                };
+    async fn run(mut self, label: String, _runtime: Arc<Runtime>, ctx: &Process) {
+        // signal handler. returns `None` until it receives a valid hook message.
+        let recv_cb = |signal| {
+            let TableSignal::Message { data: _, caps } = signal else {
+                tracing::error!("expected message, got {:?}", signal);
+                return None;
+            };
 
-                let Some(init_cap) = caps.first() else {
-                    return None;
-                };
+            let Some(init_cap) = caps.first() else {
+                warn!("{label} hook received message with no caps");
+                return None;
+            };
 
-                Some(*init_cap)
-            })
-            .await
-        {
+            Some(*init_cap)
+        };
+
+        while let Some(hook) = ctx.borrow_parent().recv(recv_cb).await {
+            // if we got a valid hook message, handle it and quit.
             if let Some(init_cap) = hook {
                 let cap = ctx.borrow_table().get_owned(init_cap).unwrap();
                 let _ = self.callback.send(cap);
