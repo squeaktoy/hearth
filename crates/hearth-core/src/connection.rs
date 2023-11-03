@@ -16,6 +16,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+//! Implements peer-to-peer capability exchange code for remote processes.
+//!
+//! Currently unimplemented.
+
 // TODO get rid of this when connections are implemented
 #![allow(unused)]
 
