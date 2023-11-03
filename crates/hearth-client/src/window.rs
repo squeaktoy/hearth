@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use hearth_rend3::{rend3, wgpu, FrameRequest, Rend3Plugin};
-use rend3::{InstanceAdapterDevice, Renderer};
+use rend3::InstanceAdapterDevice;
 use tokio::sync::{mpsc, oneshot};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
