@@ -37,22 +37,24 @@ struct Hook {
 #[async_trait]
 impl ProcessRunner for Hook {
     async fn run(mut self, label: String, _runtime: Arc<Runtime>, ctx: &Process) {
-        // signal handler. returns `None` until it receives a valid hook message.
-        let recv_cb = |signal| {
-            let TableSignal::Message { data: _, caps } = signal else {
-                tracing::error!("expected message, got {:?}", signal);
-                return None;
-            };
+        // TODO use https://github.com/hearth-rs/flue/pull/11 to break the closure out
+        while let Some(hook) = ctx
+            .borrow_parent()
+            .recv(|signal| {
+                let TableSignal::Message { data: _, caps } = signal else {
+                    tracing::error!("expected message, got {:?}", signal);
+                    return None;
+                };
 
-            let Some(init_cap) = caps.first() else {
-                warn!("{label} hook received message with no caps");
-                return None;
-            };
+                let Some(init_cap) = caps.first() else {
+                    warn!("{label} hook received message with no caps");
+                    return None;
+                };
 
-            Some(*init_cap)
-        };
-
-        while let Some(hook) = ctx.borrow_parent().recv(recv_cb).await {
+                Some(*init_cap)
+            })
+            .await
+        {
             // if we got a valid hook message, handle it and quit.
             if let Some(init_cap) = hook {
                 let cap = ctx.borrow_table().get_owned(init_cap).unwrap();
