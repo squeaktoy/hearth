@@ -22,8 +22,9 @@ use bytemuck::{Pod, Zeroable};
 use flume::{unbounded, Receiver, Sender};
 use glam::Vec3;
 use hearth_core::{
-    async_trait,
-    process::factory::ProcessInfo,
+    async_trait, cargo_process_metadata,
+    flue::Permissions,
+    process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     tokio,
     utils::*,
@@ -33,7 +34,7 @@ use hearth_rend3::{
     wgpu::*,
     Node, Rend3Plugin, Routine, RoutineInfo,
 };
-use hearth_types::{debug_draw::*, Flags};
+use hearth_types::debug_draw::*;
 use itertools::Itertools;
 use rend3_alacritty::gpu::DynamicMesh;
 
@@ -324,16 +325,16 @@ impl Drop for DebugDrawInstance {
 impl SinkProcess for DebugDrawInstance {
     type Message = DebugDrawUpdate;
 
-    async fn on_message(&mut self, request: &mut RequestInfo<'_, Self::Message>) {
+    async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, Self::Message>) {
         if self.destroyed {
             return;
         }
 
-        if let DebugDrawUpdate::Destroy = request.data {
+        if let DebugDrawUpdate::Destroy = message.data {
             self.destroyed = true;
         }
 
-        let _ = self.update_tx.send((self.id, request.data.clone()));
+        let _ = self.update_tx.send((self.id, message.data.clone()));
     }
 }
 
@@ -347,9 +348,9 @@ impl RequestResponseProcess for DebugDrawFactory {
     type Request = ();
     type Response = ();
 
-    async fn on_request(
-        &mut self,
-        request: &mut RequestInfo<'_, Self::Request>,
+    async fn on_request<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, Self::Request>,
     ) -> ResponseInfo<Self::Response> {
         let instance = DebugDrawInstance {
             id: self.next_id,
@@ -359,16 +360,31 @@ impl RequestResponseProcess for DebugDrawFactory {
 
         self.next_id += 1;
 
-        let info = ProcessInfo {};
-        let flags = Flags::SEND | Flags::KILL;
-        let child = request.runtime.process_factory.spawn(info, flags);
-        let child_cap = request.ctx.copy_self_capability(&child);
+        let mut meta = cargo_process_metadata!();
+        meta.name = Some("DebugDrawInstance".into());
+        meta.description = Some("An instance of Debug Draw.".into());
 
-        tokio::spawn(instance.run(
-            "DebugDrawInstance".to_string(),
-            request.runtime.clone(),
-            child,
-        ));
+        let perms = Permissions::SEND | Permissions::KILL;
+        let child = request.runtime.process_factory.spawn(meta);
+        // TODO https://github.com/hearth-rs/flue/pull/9 makes this cleaner
+        let child_cap = child.borrow_parent().export_owned(perms);
+        let child_cap = request
+            .process
+            .borrow_table()
+            .import_owned(child_cap)
+            .unwrap();
+        let child_cap = request
+            .process
+            .borrow_table()
+            .wrap_handle(child_cap)
+            .unwrap();
+
+        let runtime = request.runtime.clone();
+        tokio::spawn(async move {
+            instance
+                .run("DebugDrawInstance".to_string(), runtime, &child)
+                .await;
+        });
 
         ResponseInfo {
             data: (),
@@ -379,6 +395,12 @@ impl RequestResponseProcess for DebugDrawFactory {
 
 impl ServiceRunner for DebugDrawFactory {
     const NAME: &'static str = "hearth.DebugDrawFactory";
+
+    fn get_process_metadata() -> ProcessMetadata {
+        let mut meta = cargo_process_metadata!();
+        meta.description = Some("Native Debug Draw factory service.".into());
+        meta
+    }
 }
 
 #[derive(Default)]

@@ -61,14 +61,11 @@ impl Display for LumpId {
 }
 
 bitflags::bitflags! {
-    /// The permission flags of a capability.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
-    pub struct Flags: u32 {
+    pub struct Permissions: u32 {
         const SEND = 1 << 0;
-        const KILL = 1 << 1;
-        const LINK = 1 << 2;
-        const REGISTER = 1 << 3;
-        const TRUSTED = 1 << 4;
+        const MONITOR = 1 << 1;
+        const KILL = 1 << 2;
     }
 }
 
@@ -115,7 +112,7 @@ impl From<ProcessLogLevel> for u32 {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SignalKind {
     Message,
-    Unlink,
+    Down,
 }
 
 impl TryFrom<u32> for SignalKind {
@@ -125,7 +122,7 @@ impl TryFrom<u32> for SignalKind {
         use SignalKind::*;
         match other {
             0 => Ok(Message),
-            1 => Ok(Unlink),
+            1 => Ok(Down),
             _ => Err(()),
         }
     }
@@ -136,7 +133,7 @@ impl From<SignalKind> for u32 {
         use SignalKind::*;
         match val {
             Message => 0,
-            Unlink => 1,
+            Down => 1,
         }
     }
 }

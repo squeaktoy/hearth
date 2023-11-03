@@ -18,7 +18,6 @@
 
 use std::{
     net::{SocketAddr, ToSocketAddrs},
-    ops::DerefMut,
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -26,7 +25,7 @@ use std::{
 
 use clap::Parser;
 use hearth_core::{
-    process::{context::Capability, Process},
+    flue::OwnedCapability,
     runtime::{Plugin, Runtime, RuntimeBuilder, RuntimeConfig},
 };
 use hearth_network::{auth::login, connection::Connection};
@@ -150,7 +149,7 @@ impl Plugin for ClientPlugin {
 impl ClientPlugin {
     pub async fn connect(
         self,
-        on_network_root: oneshot::Receiver<(Process, usize)>,
+        on_network_root: oneshot::Receiver<OwnedCapability>,
         runtime: Arc<Runtime>,
     ) {
         info!("Waiting for network root cap hook");
@@ -204,40 +203,26 @@ impl ClientPlugin {
         let server_tx = AsyncEncryptor::new(&client_key, server_tx);
         let conn = Connection::new(server_rx, server_tx);
 
-        let (root_cap_tx, root_cap) = tokio::sync::oneshot::channel();
-        let on_root_cap = {
-            let store = runtime.process_store.clone();
-            move |root: Capability| {
-                if let Err(dropped) = root_cap_tx.send(root) {
-                    dropped.free(store.as_ref());
-                }
-            }
-        };
-
         info!("Beginning connection");
-        let conn = hearth_core::process::remote::Connection::new(
-            runtime.process_store.clone(),
+        let (root_cap_tx, root_cap) = tokio::sync::oneshot::channel();
+        let conn = hearth_core::connection::Connection::begin(
+            runtime.post.clone(),
             conn.op_rx,
             conn.op_tx,
-            Some(Box::new(on_root_cap)),
+            Some(root_cap_tx),
         );
 
         info!("Sending the server our root cap");
-        let (root_ctx, root_handle) = network_root;
-        root_ctx
-            .export_connection_root(root_handle, conn.lock().deref_mut())
-            .unwrap();
+        conn.export_root(network_root);
 
         info!("Waiting for server's root cap...");
-        let root_cap = match root_cap.await {
+        let _root_cap = match root_cap.await {
             Ok(cap) => cap,
             Err(err) => {
                 eprintln!("Server's root cap was never received: {:?}", err);
                 return;
             }
         };
-
-        root_cap.free(runtime.process_store.as_ref());
 
         info!("Successfully connected!");
     }

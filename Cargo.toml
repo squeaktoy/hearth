@@ -19,6 +19,7 @@ hearth-rend3 = { path = "crates/hearth-rend3" }
 hearth-terminal = { path = "crates/hearth-terminal" }
 hearth-types = { path = "crates/hearth-types" }
 hearth-wasm = { path = "crates/hearth-wasm" }
+ouroboros = "0.18.0"
 parking_lot = "0.12"
 rend3-alacritty = { path = "crates/rend3-alacritty" }
 serde_json = "1"
