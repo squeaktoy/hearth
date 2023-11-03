@@ -142,8 +142,8 @@ impl LumpAbi {
     /// using [Self::get_len].
     fn get_data(&self, memory: GuestMemory<'_>, handle: u32, data_ptr: u32) -> Result<()> {
         let lump = self.get_lump(handle)?;
-        let len = lump.bytes.len() as u32;
-        let dst = memory.get_slice(ptr, len)?;
+        let data_len = lump.bytes.len() as u32;
+        let dst = memory.get_slice(data_ptr, data_len)?;
         dst.copy_from_slice(&lump.bytes);
         Ok(())
     }
@@ -285,15 +285,15 @@ impl TableAbi {
 
 /// A form of signal mapped to a process's table.
 enum Signal {
-    Unlink { handle: u32 },
+    Down { handle: u32 },
     Message { data: Vec<u8>, caps: Vec<u32> },
 }
 
 impl<'a> From<TableSignal<'a>> for Signal {
     fn from(signal: TableSignal<'a>) -> Signal {
         match signal {
-            TableSignal::Down { handle } => Signal::Unlink {
-                //TODO impl into for handles?
+            TableSignal::Down { handle } => Signal::Down {
+                // TODO impl into for handles?
                 handle: handle.0 as u32,
             },
             TableSignal::Message { data, caps } => Signal::Message {
@@ -372,14 +372,14 @@ impl MailboxAbi {
 
     /// Monitors a capability by its handle in this process's table. When the
     /// capability is closed, the mailbox will receive a down signal.
-    fn link(&self, mailbox: u32, cap: u32) -> Result<()> {
+    fn monitor(&self, mailbox: u32, cap: u32) -> Result<()> {
         let cap = CapabilityHandle(cap as usize);
         let mb = self.get_mb(mailbox)?;
 
         self.borrow_process()
             .borrow_table()
             .monitor(cap, mb)
-            .with_context(|| format!("link(mailbox = {}, cap = {})", mailbox, cap.0))?;
+            .with_context(|| format!("monitor(mailbox = {}, cap = {})", mailbox, cap.0))?;
 
         Ok(())
     }
@@ -464,7 +464,7 @@ impl MailboxAbi {
         let signal = self.get_signal(handle)?;
 
         let kind = match signal {
-            Signal::Unlink { .. } => SignalKind::Unlink,
+            Signal::Down { .. } => SignalKind::Down,
             Signal::Message { .. } => SignalKind::Message,
         };
 
@@ -474,10 +474,10 @@ impl MailboxAbi {
     /// Gets the inner capability handle of a down signal.
     ///
     /// Fails if the given signal is not a down signal.
-    fn get_unlink_capability(&self, handle: u32) -> Result<u32> {
+    fn get_down_capability(&self, handle: u32) -> Result<u32> {
         let signal = self.get_signal(handle)?;
 
-        let Signal::Unlink { handle } = signal else {
+        let Signal::Down { handle } = signal else {
             bail!("invalid signal kind");
         };
 
