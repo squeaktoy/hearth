@@ -104,7 +104,7 @@ impl LumpAbi {
     /// Load a lump from its [LumpId], retrieved from guest memory via pointer.
     ///
     /// Fails if the lump is not found in the lump store.
-    async fn from_id(&mut self, memory: GuestMemory<'_>, id_ptr: u32) -> Result<u32> {
+    async fn load_by_id(&mut self, memory: GuestMemory<'_>, id_ptr: u32) -> Result<u32> {
         let id: LumpId = *memory.get_memory_ref(id_ptr)?;
         let bytes = self
             .lump_store
