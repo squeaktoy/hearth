@@ -75,7 +75,7 @@ where
     pub fn request(&self, request: Request, args: &[&Capability]) -> (Response, Vec<Capability>) {
         let reply = Mailbox::new();
         let reply_cap = reply.make_capability(Permissions::SEND);
-        reply.link(&self.cap);
+        reply.monitor(&self.cap);
 
         let mut caps = Vec::with_capacity(args.len() + 1);
         caps.push(&reply_cap);
@@ -208,7 +208,7 @@ impl Capability {
 #[derive(Clone, Debug)]
 pub enum Signal {
     /// A down signal. Sent when a monitored capability's route is closed.
-    Unlink {
+    Down {
         /// A capability to the monitored route with no permissions.
         subject: Capability,
     },
@@ -227,10 +227,10 @@ impl Signal {
 
         let signal = match kind {
             SignalKind::Message => Signal::Message(Message::load_from_handle(handle)),
-            SignalKind::Unlink => {
-                let handle = abi::mailbox::get_unlink_capability(handle);
+            SignalKind::Down => {
+                let handle = abi::mailbox::get_down_capability(handle);
                 let subject = Capability(handle);
-                Signal::Unlink { subject }
+                Signal::Down { subject }
             }
         };
 
@@ -276,8 +276,8 @@ impl Mailbox {
     ///
     /// When it does, this mailbox will receive [Signal::Down] with a
     /// capability equivalent to the subject's but with no permissions.
-    pub fn link(&self, subject: &Capability) {
-        unsafe { abi::mailbox::link(self.0, subject.0) }
+    pub fn monitor(&self, subject: &Capability) {
+        unsafe { abi::mailbox::monitor(self.0, subject.0) }
     }
 
     /// Wait for this mailbox to receive a [Signal].
@@ -461,13 +461,13 @@ mod abi {
             pub fn create() -> u32;
             pub fn destroy(handle: u32);
             pub fn make_capability(handle: u32, perms: u32) -> u32;
-            pub fn link(mailbox: u32, cap: u32);
+            pub fn monitor(mailbox: u32, cap: u32);
             pub fn recv(handle: u32) -> u32;
             pub fn try_recv(handle: u32) -> u32;
             pub fn poll(handles_ptr: u32, handles_len: u32) -> u64;
             pub fn destroy_signal(handle: u32);
             pub fn get_signal_kind(handle: u32) -> u32;
-            pub fn get_unlink_capability(handle: u32) -> u32;
+            pub fn get_down_capability(handle: u32) -> u32;
             pub fn get_message_data_len(handle: u32) -> u32;
             pub fn get_message_data(handle: u32, dst_ptr: u32);
             pub fn get_message_caps_num(handle: u32) -> u32;
