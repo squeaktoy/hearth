@@ -64,7 +64,7 @@ bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
     pub struct Permissions: u32 {
         const SEND = 1 << 0;
-        const LINK = 1 << 1;
+        const MONITOR = 1 << 1;
         const KILL = 1 << 2;
     }
 }
@@ -112,7 +112,7 @@ impl From<ProcessLogLevel> for u32 {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SignalKind {
     Message,
-    Unlink,
+    Down,
 }
 
 impl TryFrom<u32> for SignalKind {
@@ -122,7 +122,7 @@ impl TryFrom<u32> for SignalKind {
         use SignalKind::*;
         match other {
             0 => Ok(Message),
-            1 => Ok(Unlink),
+            1 => Ok(Down),
             _ => Err(()),
         }
     }
@@ -133,7 +133,7 @@ impl From<SignalKind> for u32 {
         use SignalKind::*;
         match val {
             Message => 0,
-            Unlink => 1,
+            Down => 1,
         }
     }
 }
