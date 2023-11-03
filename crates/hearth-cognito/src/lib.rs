@@ -33,7 +33,7 @@ use hearth_types::{LumpId, SignalKind};
 use hearth_wasm::{GuestMemory, WasmLinker};
 use slab::Slab;
 use tracing::{debug, error};
-use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
+use wasmtime::{Caller, Config, Engine, Linker, Module, Store, UpdateDeadline};
 
 /// Implements the `hearth::log` ABI module.
 pub struct LogAbi {
@@ -639,7 +639,15 @@ impl WasmProcess {
         // TODO log using the process log instead of tracing?
         let data = ProcessData::new(runtime.as_ref(), ctx, self.this_lump);
         let mut store = Store::new(&self.engine, data);
-        store.epoch_deadline_async_yield_and_update(1);
+
+        store.epoch_deadline_callback(move |store| {
+            if store.data().table.process.borrow_group().poll_dead() {
+                bail!("process killed");
+            }
+
+            Ok(UpdateDeadline::Yield(1))
+        });
+
         let instance = self
             .linker
             .instantiate_async(&mut store, &self.module)
