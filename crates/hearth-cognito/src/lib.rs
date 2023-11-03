@@ -364,14 +364,14 @@ impl MailboxAbi {
 
     /// Monitors a capability by its handle in this process's table. When the
     /// capability is closed, the mailbox will receive a down signal.
-    fn link(&self, mailbox: u32, cap: u32) -> Result<()> {
+    fn monitor(&self, mailbox: u32, cap: u32) -> Result<()> {
         let cap = CapabilityHandle(cap as usize);
         let mb = self.get_mb(mailbox)?;
 
         self.borrow_process()
             .borrow_table()
             .monitor(cap, mb)
-            .with_context(|| format!("link(mailbox = {}, cap = {})", mailbox, cap.0))?;
+            .with_context(|| format!("monitor(mailbox = {}, cap = {})", mailbox, cap.0))?;
 
         Ok(())
     }
