@@ -377,9 +377,9 @@ impl Lump {
     }
 
     /// Loads a lump from the ID of an already existing lump.
-    pub fn from_id(id: &LumpId) -> Self {
+    pub fn load_by_id(id: &LumpId) -> Self {
         unsafe {
-            let handle = abi::lump::from_id(id as *const LumpId as u32);
+            let handle = abi::lump::load_by_id(id as *const LumpId as u32);
             Self(handle)
         }
     }
@@ -434,7 +434,7 @@ mod abi {
         #[link(wasm_import_module = "hearth::lump")]
         extern "C" {
             pub fn this_lump(ptr: u32);
-            pub fn from_id(id_ptr: u32) -> u32;
+            pub fn load_by_id(id_ptr: u32) -> u32;
             pub fn load(ptr: u32, len: u32) -> u32;
             pub fn get_id(handle: u32, id_ptr: u32);
             pub fn get_len(handle: u32) -> u32;
