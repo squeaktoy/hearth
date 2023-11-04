@@ -36,6 +36,9 @@ pub mod protocol;
 /// Registry protocol.
 pub mod registry;
 
+/// Renderer protocol.
+pub mod renderer;
+
 /// Terminal protocol.
 pub mod terminal;
 
