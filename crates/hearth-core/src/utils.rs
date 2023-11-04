@@ -148,9 +148,9 @@ pub trait ProcessRunner: Send {
 /// receives new messages of the given data type, and calls [Self::on_message]
 /// with a [RequestInfo].
 #[async_trait]
-pub trait SinkProcess: Send + Sync {
+pub trait SinkProcess: Send {
     /// The deserializeable data type to be received.
-    type Message: for<'a> Deserialize<'a> + Send + Sync + Debug;
+    type Message: for<'a> Deserialize<'a> + Send + Debug;
 
     /// A callback to call when messages are received by this process.
     async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, Self::Message>);
@@ -206,8 +206,8 @@ where
 }
 
 #[async_trait]
-pub trait RequestResponseProcess: Send + Sync {
-    type Request: for<'a> Deserialize<'a> + Send + Sync + Debug;
+pub trait RequestResponseProcess: Send {
+    type Request: for<'a> Deserialize<'a> + Send + Debug;
     type Response: Serialize + Send + Debug;
 
     async fn on_request<'a>(
@@ -271,7 +271,7 @@ pub trait ServiceRunner: ProcessRunner {
 
 impl<T> Plugin for T
 where
-    T: ServiceRunner + Send + Sync + 'static,
+    T: ServiceRunner + 'static,
 {
     fn finalize(self, builder: &mut RuntimeBuilder) {
         let name = Self::NAME.to_string();
