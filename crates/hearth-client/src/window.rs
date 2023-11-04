@@ -18,7 +18,15 @@
 
 use std::sync::Arc;
 
+use glam::Mat4;
+use hearth_core::flue::CapabilityRef;
+use hearth_core::process::ProcessMetadata;
+use hearth_core::runtime::{Plugin, RuntimeBuilder};
+use hearth_core::utils::{MessageInfo, ServiceRunner, SinkProcess};
+use hearth_core::{async_trait, cargo_process_metadata};
 use hearth_rend3::{rend3, wgpu, FrameRequest, Rend3Plugin};
+use hearth_types::window::winit::window::CursorGrabMode;
+use hearth_types::window::*;
 use rend3::InstanceAdapterDevice;
 use tokio::sync::{mpsc, oneshot};
 use winit::event::{Event, WindowEvent};
@@ -28,6 +36,27 @@ use winit::window::{Window as WinitWindow, WindowBuilder};
 /// A message sent from the rest of the program to a window.
 #[derive(Clone, Debug)]
 pub enum WindowRxMessage {
+    /// Update the title.
+    SetTitle(String),
+
+    /// Set the cursor grab mode.
+    SetCursorGrab(CursorGrabMode),
+
+    /// Set the cursor visibility.
+    SetCursorVisible(bool),
+
+    /// Update the renderer camera.
+    SetCamera {
+        /// Vertical field of view in degrees.
+        vfov: f32,
+
+        /// Near plane distance. All projection uses an infinite far plane.
+        near: f32,
+
+        /// The camera's view matrix.
+        view: Mat4,
+    },
+
     /// The window is requested to quit.
     Quit,
 }
@@ -49,6 +78,9 @@ pub struct WindowOffer {
 
     /// A [Rend3Plugin] compatible with this window.
     pub rend3_plugin: Rend3Plugin,
+
+    /// The [WindowPlugin] for this window.
+    pub window_plugin: WindowPlugin,
 }
 
 struct Window {
@@ -106,10 +138,15 @@ impl Window {
             _directional_handle: directional_handle,
         };
 
+        let window_plugin = WindowPlugin {
+            incoming: event_loop.create_proxy(),
+        };
+
         let offer = WindowOffer {
             incoming: event_loop.create_proxy(),
             outgoing: outgoing_rx,
             rend3_plugin,
+            window_plugin,
         };
 
         (window, offer)
@@ -220,5 +257,57 @@ impl WindowCtx {
                 _ => (),
             }
         });
+    }
+}
+
+/// A plugin that provides native window access to guests.
+pub struct WindowPlugin {
+    incoming: EventLoopProxy<WindowRxMessage>,
+}
+
+impl Plugin for WindowPlugin {
+    fn finalize(self, builder: &mut RuntimeBuilder) {
+        builder.add_plugin(WindowService {
+            incoming: self.incoming,
+        });
+    }
+}
+
+/// A service that implements the windowing protocol using winit.
+pub struct WindowService {
+    incoming: EventLoopProxy<WindowRxMessage>,
+}
+
+#[async_trait]
+impl SinkProcess for WindowService {
+    type Message = WindowCommand;
+
+    async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, WindowCommand>) {
+        let send = |event| {
+            self.incoming.send_event(event).unwrap();
+        };
+
+        use WindowCommand::*;
+        match message.data {
+            Subscribe => todo!(), // pubsub subscribe goes here
+            SetTitle(title) => send(WindowRxMessage::SetTitle(title)),
+            SetCursorGrab(grab) => send(WindowRxMessage::SetCursorGrab(grab)),
+            SetCursorVisible(visible) => send(WindowRxMessage::SetCursorVisible(visible)),
+            SetCamera { vfov, near, view } => send(WindowRxMessage::SetCamera { vfov, near, view }),
+        }
+    }
+
+    async fn on_down<'a>(&'a mut self, _cap: CapabilityRef<'a>) {
+        // pubsub unsubscribe goes here
+    }
+}
+
+impl ServiceRunner for WindowService {
+    const NAME: &'static str = SERVICE_NAME;
+
+    fn get_process_metadata() -> ProcessMetadata {
+        let mut meta = cargo_process_metadata!();
+        meta.description = Some("The native window service. Accepts WindowRequest.".to_string());
+        meta
     }
 }

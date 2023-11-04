@@ -32,6 +32,7 @@ use hearth_network::{auth::login, connection::Connection};
 use hearth_rend3::Rend3Plugin;
 use tokio::{net::TcpStream, sync::oneshot};
 use tracing::{debug, error, info};
+use window::WindowPlugin;
 
 use crate::window::WindowCtx;
 
@@ -74,7 +75,11 @@ fn main() {
         .unwrap();
 
     let (window, mut window_offer) = runtime.block_on(WindowCtx::new());
-    let mut join_main = runtime.spawn(async_main(args, window_offer.rend3_plugin));
+    let mut join_main = runtime.spawn(async_main(
+        args,
+        window_offer.rend3_plugin,
+        window_offer.window_plugin,
+    ));
 
     runtime.spawn(async move {
         loop {
@@ -98,7 +103,7 @@ fn main() {
     window.run();
 }
 
-async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
+async fn async_main(args: Args, rend3_plugin: Rend3Plugin, window_plugin: WindowPlugin) {
     let config = RuntimeConfig {};
 
     let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
@@ -109,6 +114,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     builder.add_plugin(hearth_init::InitPlugin::new(args.init));
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(rend3_plugin);
+    builder.add_plugin(window_plugin);
     builder.add_plugin(hearth_debug_draw::DebugDrawPlugin::default());
     builder.add_plugin(hearth_terminal::TerminalPlugin::default());
     builder.add_plugin(hearth_daemon::DaemonPlugin::default());
