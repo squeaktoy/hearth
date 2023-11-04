@@ -98,7 +98,11 @@ impl Plugin for InitPlugin {
                 let response_cap = response.export(Permissions::SEND).unwrap();
 
                 let perms = Permissions::SEND | Permissions::MONITOR;
-                let registry = parent.borrow_parent().export(perms).unwrap();
+                let registry = runtime
+                    .registry
+                    .borrow_parent()
+                    .export_to(perms, parent.borrow_table())
+                    .unwrap();
 
                 let request = RegistryRequest::Get {
                     name: "hearth.cognito.WasmProcessSpawner".to_string(),
