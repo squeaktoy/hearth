@@ -132,25 +132,24 @@ impl JsonAssetLoader for TextureLoader {
 
 impl TextureLoader {
     pub fn load_debug() -> Texture {
-        let cell_size = 16;
-        let grid_size = 16;
+        let cell_size = 8;
+        let grid_size = 32;
         let size = UVec2::splat(cell_size * grid_size);
         let color_a = [0xff, 0x00, 0xff, 0xff];
         let color_b = [0x00, 0x00, 0x00, 0xff];
 
         let mut data = Vec::new();
         for row in 0..grid_size {
-            let (a, b) = if row % 2 == 0 {
-                (color_a, color_b)
-            } else {
-                (color_b, color_a)
-            };
-
             // cell height
             for _ in 0..cell_size {
                 // grid row
                 for col in 0..grid_size {
-                    let color = if col % 2 == 0 { a } else { b };
+                    let color = if (col + row) % 2 == 0 {
+                        color_a
+                    } else {
+                        color_b
+                    };
+
                     data.extend(std::iter::repeat(color).take(cell_size as usize));
                 }
             }
@@ -161,8 +160,8 @@ impl TextureLoader {
             data: data.into_iter().flatten().collect(),
             format: TextureFormat::Rgba8UnormSrgb,
             size,
-            mip_count: MipmapCount::Maximum,
-            mip_source: MipmapSource::Generated,
+            mip_count: MipmapCount::ONE,
+            mip_source: MipmapSource::Uploaded,
         }
     }
 }
