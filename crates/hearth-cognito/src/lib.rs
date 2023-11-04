@@ -364,9 +364,7 @@ impl MailboxAbi {
     fn make_capability(&self, handle: u32, perms: u32) -> Result<u32> {
         let mb = self.get_mb(handle)?;
         let perms = Permissions::from_bits(perms).context("unknown permission bits set")?;
-        let cap = mb
-            .export(perms, self.borrow_process().borrow_table())
-            .unwrap();
+        let cap = mb.export(perms).unwrap();
         Ok(cap.into_handle().0.try_into().unwrap())
     }
 
@@ -720,19 +718,9 @@ impl RequestResponseProcess for WasmProcessSpawner {
         let meta = ProcessMetadata::default();
         let child = request.runtime.process_factory.spawn(meta);
 
-        // create a capability to this child's parent mailbox
-        let perms = Permissions::SEND | Permissions::MONITOR | Permissions::KILL;
-        // TODO https://github.com/hearth-rs/flue/pull/9 makes this cleaner
-        let child_cap = child.borrow_parent().export_owned(perms);
-        let child_cap = request
-            .process
-            .borrow_table()
-            .import_owned(child_cap)
-            .unwrap();
-        let child_cap = request
-            .process
-            .borrow_table()
-            .wrap_handle(child_cap)
+        let child_cap = child
+            .borrow_parent()
+            .export_to(Permissions::all(), request.process.borrow_table())
             .unwrap();
 
         // send initial capabilities
