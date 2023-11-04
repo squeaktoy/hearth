@@ -51,7 +51,7 @@ pub enum WindowEvent {
         input: KeyboardInput,
         is_synthetic: bool,
     },
-    ModifiersChanged(ModifierState),
+    ModifiersChanged(ModifiersState),
     CursorMoved {
         position: PhysicalPosition<f64>,
     },
@@ -72,7 +72,7 @@ pub enum WindowEvent {
     },
 }
 
-#[derive(Clone, Debug, Hash, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum WindowCommand {
     /// Subscribes to all [WindowEvents][WindowEvent] on this window using the
     /// first attached capability.
