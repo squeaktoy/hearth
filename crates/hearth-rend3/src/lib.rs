@@ -28,12 +28,16 @@ use rend3_routine::base::{BaseRenderGraph, BaseRenderGraphIntermediateState};
 use rend3_routine::pbr::PbrRoutine;
 use rend3_routine::skybox::SkyboxRoutine;
 use rend3_routine::tonemapping::TonemappingRoutine;
+use service::RendererPlugin;
 use tokio::sync::{mpsc, oneshot};
 use wgpu::TextureFormat;
 
 pub use rend3;
 pub use rend3_routine;
 pub use wgpu;
+
+/// The implementation of the renderer service protocol.
+pub mod service;
 
 /// The info about a frame passed to [Routine::draw].
 pub struct RoutineInfo<'a, 'graph> {
@@ -97,6 +101,13 @@ pub struct Rend3Plugin {
 }
 
 impl Plugin for Rend3Plugin {
+    fn build(&mut self, builder: &mut RuntimeBuilder) {
+        builder.add_plugin(RendererPlugin {
+            renderer: self.renderer.clone(),
+            command_tx: self.command_tx.clone(),
+        });
+    }
+
     fn finalize(mut self, _builder: &mut RuntimeBuilder) {
         tokio::spawn(async move {
             while let Some(frame) = self.frame_request_rx.recv().await {
