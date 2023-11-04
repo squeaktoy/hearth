@@ -43,6 +43,12 @@ pub const SERVICE_NAME: &str = "hearth.Window";
 // TODO port DeviceId?
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum WindowEvent {
+    /// The window has redrawn.
+    Redraw {
+        /// The time, in seconds, since the last redraw.
+        dt: f32,
+    },
+
     Resized(PhysicalSize<u32>),
     CloseRequested,
     ReceivedCharacter(char),
