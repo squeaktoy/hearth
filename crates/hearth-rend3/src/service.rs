@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use glam::{vec3, vec4, UVec2};
 use hearth_core::{
-    anyhow,
+    anyhow::{self, bail},
     asset::JsonAssetLoader,
     async_trait, cargo_process_metadata,
     hearth_types::renderer::*,
@@ -123,46 +123,24 @@ impl JsonAssetLoader for TextureLoader {
     type Asset = TextureHandle;
     type Data = TextureData;
 
-    async fn load_asset(&self, _data: Self::Data) -> anyhow::Result<Self::Asset> {
-        let texture = Self::load_debug();
+    async fn load_asset(&self, data: Self::Data) -> anyhow::Result<Self::Asset> {
+        let expected_len = (data.size.x * data.size.y * 4) as usize;
+
+        if data.data.len() != expected_len {
+            bail!("invalid texture data length");
+        }
+
+        let texture = Texture {
+            label: data.label,
+            data: data.data,
+            format: TextureFormat::Rgba8UnormSrgb,
+            size: data.size,
+            mip_count: MipmapCount::ONE,
+            mip_source: MipmapSource::Generated,
+        };
+
         let handle = self.0.add_texture_2d(texture);
         Ok(handle)
-    }
-}
-
-impl TextureLoader {
-    pub fn load_debug() -> Texture {
-        let cell_size = 8;
-        let grid_size = 32;
-        let size = UVec2::splat(cell_size * grid_size);
-        let color_a = [0xff, 0x00, 0xff, 0xff];
-        let color_b = [0x00, 0x00, 0x00, 0xff];
-
-        let mut data = Vec::new();
-        for row in 0..grid_size {
-            // cell height
-            for _ in 0..cell_size {
-                // grid row
-                for col in 0..grid_size {
-                    let color = if (col + row) % 2 == 0 {
-                        color_a
-                    } else {
-                        color_b
-                    };
-
-                    data.extend(std::iter::repeat(color).take(cell_size as usize));
-                }
-            }
-        }
-
-        Texture {
-            label: Some("Debug Texture".to_string()),
-            data: data.into_iter().flatten().collect(),
-            format: TextureFormat::Rgba8UnormSrgb,
-            size,
-            mip_count: MipmapCount::ONE,
-            mip_source: MipmapSource::Uploaded,
-        }
     }
 }
 
@@ -173,15 +151,21 @@ impl JsonAssetLoader for CubeTextureLoader {
     type Asset = TextureHandle;
     type Data = TextureData;
 
-    async fn load_asset(&self, _data: Self::Data) -> anyhow::Result<Self::Asset> {
-        let mut texture = TextureLoader::load_debug();
+    async fn load_asset(&self, data: Self::Data) -> anyhow::Result<Self::Asset> {
+        let expected_len = (data.size.x * data.size.y * 24) as usize;
 
-        // duplicate debug texture to six cube faces
-        texture.data = std::iter::repeat(texture.data.iter())
-            .take(6)
-            .flatten()
-            .copied()
-            .collect();
+        if data.data.len() != expected_len {
+            bail!("invalid texture data length");
+        }
+
+        let texture = Texture {
+            label: data.label,
+            data: data.data,
+            format: TextureFormat::Rgba8UnormSrgb,
+            size: data.size,
+            mip_count: MipmapCount::ONE,
+            mip_source: MipmapSource::Generated,
+        };
 
         let handle = self.0.add_texture_cube(texture);
 
