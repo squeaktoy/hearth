@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, UVec2, Vec3, Vec4};
 use serde::{Deserialize, Serialize};
 
 use crate::LumpId;
@@ -123,9 +123,16 @@ pub struct MaterialData {}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MeshData {}
 
-/// A mesh lump's data format.
-///
-/// This data currently contains nothing and is hardcoded on the host to
-/// load a debug texture.
+/// A texture lump's data format.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TextureData {}
+pub struct TextureData {
+    /// An optional label for this texture.
+    pub label: Option<String>,
+
+    /// The size of this texture.
+    pub size: UVec2,
+
+    /// The data of this texture. Currently only supports RGBA sRGB. Must be
+    /// a size equivalent to `size.x * size.y * 4`.
+    pub data: Vec<u8>,
+}
