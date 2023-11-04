@@ -24,11 +24,13 @@ use hearth_core::process::ProcessMetadata;
 use hearth_core::runtime::{Plugin, RuntimeBuilder};
 use hearth_core::utils::{MessageInfo, ServiceRunner, SinkProcess};
 use hearth_core::{async_trait, cargo_process_metadata};
+use hearth_rend3::rend3::types::{Camera, CameraProjection};
 use hearth_rend3::{rend3, wgpu, FrameRequest, Rend3Plugin};
 use hearth_types::window::winit::window::CursorGrabMode;
 use hearth_types::window::*;
 use rend3::InstanceAdapterDevice;
 use tokio::sync::{mpsc, oneshot};
+use tracing::warn;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
 use winit::window::{Window as WinitWindow, WindowBuilder};
@@ -90,6 +92,7 @@ struct Window {
     surface: Arc<wgpu::Surface>,
     config: wgpu::SurfaceConfiguration,
     frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
+    camera: Camera,
     _directional_handle: rend3::types::ResourceHandle<rend3::types::DirectionalLight>,
 }
 
@@ -134,6 +137,7 @@ impl Window {
             iad,
             surface,
             config,
+            camera: Camera::default(),
             frame_request_tx,
             _directional_handle: directional_handle,
         };
@@ -180,22 +184,11 @@ impl Window {
 
         let resolution = glam::UVec2::new(self.config.width, self.config.height);
 
-        let eye = glam::Vec3::new(1.0, 2.0, 5.0);
-        let center = glam::Vec3::ZERO;
-        let up = glam::Vec3::Y;
-        let view = glam::Mat4::look_at_rh(eye, center, up);
-
         let (on_complete, on_complete_rx) = oneshot::channel();
 
         let request = FrameRequest {
             output_frame,
-            camera: rend3::types::Camera {
-                projection: rend3::types::CameraProjection::Perspective {
-                    vfov: 60.0,
-                    near: 0.1,
-                },
-                view,
-            },
+            camera: self.camera.clone(),
             resolution,
             on_complete,
         };
@@ -231,7 +224,7 @@ impl WindowCtx {
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
 
-            match &event {
+            match event {
                 Event::WindowEvent { ref event, .. } => match event {
                     WindowEvent::Resized(size) => {
                         window.on_resize(*size);
@@ -251,9 +244,24 @@ impl WindowCtx {
                 Event::RedrawRequested(_) => {
                     window.on_draw();
                 }
-                Event::UserEvent(WindowRxMessage::Quit) => {
-                    *control_flow = ControlFlow::Exit;
-                }
+                Event::UserEvent(event) => match event {
+                    WindowRxMessage::SetTitle(title) => window.window.set_title(&title),
+                    WindowRxMessage::SetCursorGrab(mode) => {
+                        if let Err(err) = window.window.set_cursor_grab(mode) {
+                            warn!("set cursor grab error: {err:?}");
+                        }
+                    }
+                    WindowRxMessage::SetCursorVisible(visible) => {
+                        window.window.set_cursor_visible(visible)
+                    }
+                    WindowRxMessage::SetCamera { vfov, near, view } => {
+                        window.camera = Camera {
+                            projection: CameraProjection::Perspective { vfov, near },
+                            view,
+                        }
+                    }
+                    WindowRxMessage::Quit => control_flow.set_exit(),
+                },
                 _ => (),
             }
         });
