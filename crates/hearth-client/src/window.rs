@@ -58,7 +58,6 @@ struct Window {
     surface: Arc<wgpu::Surface>,
     config: wgpu::SurfaceConfiguration,
     frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
-    _directional_handle: rend3::types::ResourceHandle<rend3::types::DirectionalLight>,
 }
 
 impl Window {
@@ -86,15 +85,7 @@ impl Window {
         surface.configure(&iad.device, &config);
         let (outgoing_tx, outgoing_rx) = mpsc::unbounded_channel();
         let rend3_plugin = Rend3Plugin::new(iad.to_owned(), swapchain_format);
-        let renderer = rend3_plugin.renderer.to_owned();
         let frame_request_tx = rend3_plugin.frame_request_tx.clone();
-
-        let directional_handle = renderer.add_directional_light(rend3::types::DirectionalLight {
-            color: glam::Vec3::ONE,
-            intensity: 10.0,
-            direction: glam::Vec3::new(-1.0, -4.0, 2.0),
-            distance: 400.0,
-        });
 
         let window = Self {
             outgoing_tx,
@@ -103,7 +94,6 @@ impl Window {
             surface,
             config,
             frame_request_tx,
-            _directional_handle: directional_handle,
         };
 
         let offer = WindowOffer {
