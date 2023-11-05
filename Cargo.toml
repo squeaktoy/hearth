@@ -16,6 +16,7 @@ hearth-fs = { path = "crates/hearth-fs" }
 hearth-macros = { path = "crates/hearth-macros" }
 hearth-network = { path = "crates/hearth-network" }
 hearth-rend3 = { path = "crates/hearth-rend3" }
+hearth-renderer = { path = "crates/hearth-renderer" }
 hearth-terminal = { path = "crates/hearth-terminal" }
 hearth-types = { path = "crates/hearth-types" }
 hearth-wasm = { path = "crates/hearth-wasm" }
