@@ -110,11 +110,11 @@ pub enum ObjectUpdate {
 }
 
 /// A material lump's data format.
-///
-/// This data currently contains nothing and is hardcoded on the host to
-/// load a plain PBR texture.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MaterialData {}
+pub struct MaterialData {
+    /// The lump ID of the [TextureData] to use for the material's albedo.
+    pub albedo: LumpId,
+}
 
 /// A mesh lump's data format.
 ///
