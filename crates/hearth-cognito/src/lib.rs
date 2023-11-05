@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use hearth_core::anyhow::{self, bail, Context};
-use hearth_core::asset::AssetLoader;
+use hearth_core::asset::{AssetLoader, AssetStore};
 use hearth_core::flue::{CapabilityHandle, Mailbox, MailboxGroup, Permissions, Table, TableSignal};
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_core::process::{Process, ProcessLogEvent, ProcessMetadata};
@@ -782,7 +782,7 @@ pub struct WasmModuleLoader {
 impl AssetLoader for WasmModuleLoader {
     type Asset = Module;
 
-    async fn load_asset(&self, data: &[u8]) -> anyhow::Result<Module> {
+    async fn load_asset(&self, _store: &AssetStore, data: &[u8]) -> anyhow::Result<Module> {
         Module::new(&self.engine, data)
     }
 }
