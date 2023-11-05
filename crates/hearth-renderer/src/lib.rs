@@ -23,13 +23,15 @@ use hearth_core::{
     anyhow::{self, bail},
     asset::JsonAssetLoader,
     async_trait, cargo_process_metadata,
+    flue::Permissions,
     hearth_types::renderer::*,
     process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
-    tokio::sync::mpsc::UnboundedSender,
+    tokio::{self, sync::mpsc::UnboundedSender},
     tracing::{error, warn},
     utils::{
-        MessageInfo, RequestInfo, RequestResponseProcess, ResponseInfo, ServiceRunner, SinkProcess,
+        MessageInfo, ProcessRunner, RequestInfo, RequestResponseProcess, ResponseInfo,
+        ServiceRunner, SinkProcess,
     },
 };
 use hearth_rend3::{
@@ -200,8 +202,8 @@ impl SinkProcess for DirectionalLightInstance {
 
 pub struct ObjectInstance {
     renderer: Arc<Renderer>,
-    handle: ResourceHandle<Object>,
-    skeleton: Option<ResourceHandle<Skeleton>>,
+    handle: ObjectHandle,
+    skeleton: Option<SkeletonHandle>,
 }
 
 #[async_trait]
@@ -211,10 +213,12 @@ impl SinkProcess for ObjectInstance {
     async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, Self::Message>) {
         use ObjectUpdate::*;
         match &message.data {
-            Transform(transform) => self.renderer.set_object_transform(&self.handle, *transform),
+            Transform(transform) => {
+                self.renderer.set_object_transform(&self.handle, *transform);
+            }
             JointMatrices(matrices) => {
                 let Some(skeleton) = self.skeleton.as_ref() else {
-                    warn!("tried to update joint matrices on object without skeleton");
+                    warn!("tried to update joint matrices on static object");
                     return;
                 };
 
@@ -226,7 +230,7 @@ impl SinkProcess for ObjectInstance {
                 inverse_bind,
             } => {
                 let Some(skeleton) = self.skeleton.as_ref() else {
-                    warn!("tried to update joint transforms on object without skeleton");
+                    warn!("tried to update joint transforms on static object");
                     return;
                 };
 
@@ -276,7 +280,91 @@ impl RequestResponseProcess for RendererService {
                 skeleton,
                 material,
                 transform,
-            } => todo!(),
+            } => {
+                let mesh = request
+                    .runtime
+                    .asset_store
+                    .load_asset::<MeshLoader>(mesh)
+                    .await;
+
+                let mesh = match mesh {
+                    Ok(mesh) => mesh,
+                    Err(err) => {
+                        error!("failed to load mesh: {err:?}");
+                        return RendererError::LumpError.into();
+                    }
+                };
+
+                let material = request
+                    .runtime
+                    .asset_store
+                    .load_asset::<MaterialLoader>(material)
+                    .await;
+
+                let material = match material {
+                    Ok(material) => material,
+                    Err(err) => {
+                        error!("failed to load material: {err:?}");
+                        return RendererError::LumpError.into();
+                    }
+                };
+
+                let (mesh_kind, skeleton) = if let Some(skeleton) = skeleton.as_ref() {
+                    let skeleton = self.renderer.add_skeleton(Skeleton {
+                        joint_matrices: skeleton.to_owned(),
+                        mesh: mesh.as_ref().to_owned(),
+                    });
+
+                    (ObjectMeshKind::Animated(skeleton.clone()), Some(skeleton))
+                } else {
+                    (ObjectMeshKind::Static(mesh.as_ref().to_owned()), None)
+                };
+
+                let object = Object {
+                    mesh_kind,
+                    material: material.as_ref().to_owned(),
+                    transform: *transform,
+                };
+
+                let handle = self.renderer.add_object(object);
+
+                let instance = ObjectInstance {
+                    renderer: self.renderer.clone(),
+                    handle,
+                    skeleton,
+                };
+
+                let mut meta = cargo_process_metadata!();
+                meta.name = Some("ObjectInstance".to_string());
+                meta.description =
+                    Some("An instance of a renderer object. Accepts ObjectUpdate.".to_string());
+
+                let child = request.runtime.process_factory.spawn(meta);
+                let perms = Permissions::all();
+                // TODO make this cleaner with #195
+                let child_cap = child.borrow_parent().export_owned(perms);
+                let child_cap = request
+                    .process
+                    .borrow_table()
+                    .import_owned(child_cap)
+                    .unwrap();
+                let child_cap = request
+                    .process
+                    .borrow_table()
+                    .wrap_handle(child_cap)
+                    .unwrap();
+
+                let label = "ObjectInstance".to_string();
+                let runtime = request.runtime.clone();
+                tokio::spawn(async move {
+                    instance.run(label, runtime, &child).await;
+                });
+
+                return ResponseInfo {
+                    data: Ok(RendererSuccess::Ok),
+                    caps: vec![child_cap],
+                };
+            }
             SetSkybox { texture } => {
                 let handle = request
                     .runtime
