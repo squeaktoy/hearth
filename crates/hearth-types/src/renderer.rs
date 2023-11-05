@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use glam::{Mat4, UVec2, Vec3, Vec4};
+use glam::{Mat4, UVec2, Vec2, Vec3, Vec4};
 use serde::{Deserialize, Serialize};
 
 use crate::LumpId;
@@ -118,10 +118,19 @@ pub struct MaterialData {}
 
 /// A mesh lump's data format.
 ///
-/// This data currently contains nothing and is hardcoded on the host to
-/// load a cube mesh.
+/// All vertex attributes must be the same length.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MeshData {}
+pub struct MeshData {
+    pub positions: Vec<Vec3>,
+    pub normals: Vec<Vec3>,
+    pub tangents: Vec<Vec3>,
+    pub uv0: Vec<Vec2>,
+    pub uv1: Vec<Vec2>,
+    pub colors: Vec<[u8; 4]>,
+    pub joint_indices: Vec<[u16; 4]>,
+    pub joint_weights: Vec<Vec4>,
+    pub indices: Vec<u32>,
+}
 
 /// A texture lump's data format.
 #[derive(Clone, Debug, Deserialize, Serialize)]
