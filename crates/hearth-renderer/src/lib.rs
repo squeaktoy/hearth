@@ -47,53 +47,18 @@ impl JsonAssetLoader for MeshLoader {
     type Asset = MeshHandle;
     type Data = MeshData;
 
-    async fn load_asset(&self, _data: Self::Data) -> anyhow::Result<Self::Asset> {
-        let vertex_positions = [
-            // far side (0.0, 0.0, 1.0)
-            vec3(-1.0, -1.0, 1.0),
-            vec3(1.0, -1.0, 1.0),
-            vec3(1.0, 1.0, 1.0),
-            vec3(-1.0, 1.0, 1.0),
-            // near side (0.0, 0.0, -1.0)
-            vec3(-1.0, 1.0, -1.0),
-            vec3(1.0, 1.0, -1.0),
-            vec3(1.0, -1.0, -1.0),
-            vec3(-1.0, -1.0, -1.0),
-            // right side (1.0, 0.0, 0.0)
-            vec3(1.0, -1.0, -1.0),
-            vec3(1.0, 1.0, -1.0),
-            vec3(1.0, 1.0, 1.0),
-            vec3(1.0, -1.0, 1.0),
-            // left side (-1.0, 0.0, 0.0)
-            vec3(-1.0, -1.0, 1.0),
-            vec3(-1.0, 1.0, 1.0),
-            vec3(-1.0, 1.0, -1.0),
-            vec3(-1.0, -1.0, -1.0),
-            // top (0.0, 1.0, 0.0)
-            vec3(1.0, 1.0, -1.0),
-            vec3(-1.0, 1.0, -1.0),
-            vec3(-1.0, 1.0, 1.0),
-            vec3(1.0, 1.0, 1.0),
-            // bottom (0.0, -1.0, 0.0)
-            vec3(1.0, -1.0, 1.0),
-            vec3(-1.0, -1.0, 1.0),
-            vec3(-1.0, -1.0, -1.0),
-            vec3(1.0, -1.0, -1.0),
-        ];
-
-        let index_data: &[u32] = &[
-            0, 1, 2, 2, 3, 0, // far
-            4, 5, 6, 6, 7, 4, // near
-            8, 9, 10, 10, 11, 8, // right
-            12, 13, 14, 14, 15, 12, // left
-            16, 17, 18, 18, 19, 16, // top
-            20, 21, 22, 22, 23, 20, // bottom
-        ];
-
-        let mesh = MeshBuilder::new(vertex_positions.to_vec(), Handedness::Left)
-            .with_indices(index_data.to_vec())
-            .build()
-            .unwrap();
+    async fn load_asset(&self, data: Self::Data) -> anyhow::Result<Self::Asset> {
+        let mesh = Mesh {
+            vertex_positions: data.positions,
+            vertex_normals: data.normals,
+            vertex_tangents: data.tangents,
+            vertex_uv0: data.uv0,
+            vertex_uv1: data.uv1,
+            vertex_colors: data.colors,
+            vertex_joint_indices: data.joint_indices,
+            vertex_joint_weights: data.joint_weights,
+            indices: data.indices,
+        };
 
         let handle = self.0.add_mesh(mesh);
 
