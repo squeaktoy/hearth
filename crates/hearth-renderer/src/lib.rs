@@ -18,10 +18,9 @@
 
 use std::sync::Arc;
 
-use glam::{vec3, vec4};
 use hearth_core::{
     anyhow::{self, bail},
-    asset::JsonAssetLoader,
+    asset::{AssetStore, JsonAssetLoader},
     async_trait, cargo_process_metadata,
     flue::Permissions,
     hearth_types::renderer::*,
@@ -47,7 +46,11 @@ impl JsonAssetLoader for MeshLoader {
     type Asset = MeshHandle;
     type Data = MeshData;
 
-    async fn load_asset(&self, data: Self::Data) -> anyhow::Result<Self::Asset> {
+    async fn load_asset(
+        &self,
+        _store: &AssetStore,
+        data: Self::Data,
+    ) -> anyhow::Result<Self::Asset> {
         let mesh = Mesh {
             vertex_positions: data.positions,
             vertex_normals: data.normals,
@@ -73,9 +76,15 @@ impl JsonAssetLoader for MaterialLoader {
     type Asset = MaterialHandle;
     type Data = MaterialData;
 
-    async fn load_asset(&self, _data: Self::Data) -> anyhow::Result<Self::Asset> {
+    async fn load_asset(
+        &self,
+        store: &AssetStore,
+        data: Self::Data,
+    ) -> anyhow::Result<Self::Asset> {
+        let albedo = store.load_asset::<TextureLoader>(&data.albedo).await?;
+
         let material = PbrMaterial {
-            albedo: AlbedoComponent::Value(vec4(0.0, 0.5, 0.5, 1.0)),
+            albedo: AlbedoComponent::Texture(albedo.as_ref().to_owned()),
             ..Default::default()
         };
 
@@ -91,7 +100,11 @@ impl JsonAssetLoader for TextureLoader {
     type Asset = TextureHandle;
     type Data = TextureData;
 
-    async fn load_asset(&self, data: Self::Data) -> anyhow::Result<Self::Asset> {
+    async fn load_asset(
+        &self,
+        _store: &AssetStore,
+        data: Self::Data,
+    ) -> anyhow::Result<Self::Asset> {
         let expected_len = (data.size.x * data.size.y * 4) as usize;
 
         if data.data.len() != expected_len {
@@ -104,7 +117,7 @@ impl JsonAssetLoader for TextureLoader {
             format: TextureFormat::Rgba8UnormSrgb,
             size: data.size,
             mip_count: MipmapCount::ONE,
-            mip_source: MipmapSource::Generated,
+            mip_source: MipmapSource::Uploaded,
         };
 
         let handle = self.0.add_texture_2d(texture);
@@ -119,7 +132,11 @@ impl JsonAssetLoader for CubeTextureLoader {
     type Asset = TextureHandle;
     type Data = TextureData;
 
-    async fn load_asset(&self, data: Self::Data) -> anyhow::Result<Self::Asset> {
+    async fn load_asset(
+        &self,
+        _store: &AssetStore,
+        data: Self::Data,
+    ) -> anyhow::Result<Self::Asset> {
         let expected_len = (data.size.x * data.size.y * 24) as usize;
 
         if data.data.len() != expected_len {
