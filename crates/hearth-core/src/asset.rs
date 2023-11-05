@@ -32,7 +32,7 @@ use tracing::{debug, error};
 pub trait AssetLoader: Send + Sync + 'static {
     type Asset: Send + Sync + 'static;
 
-    async fn load_asset(&self, data: &[u8]) -> Result<Self::Asset>;
+    async fn load_asset(&self, store: &AssetStore, data: &[u8]) -> Result<Self::Asset>;
 }
 
 /// Helper trait to implement [AssetLoader] for asset loaders that load from
@@ -42,18 +42,18 @@ pub trait JsonAssetLoader: Send + Sync + 'static {
     type Asset: Send + Sync + 'static;
     type Data: for<'a> Deserialize<'a> + Send;
 
-    async fn load_asset(&self, data: Self::Data) -> Result<Self::Asset>;
+    async fn load_asset(&self, store: &AssetStore, data: Self::Data) -> Result<Self::Asset>;
 }
 
 #[async_trait]
 impl<T: JsonAssetLoader> AssetLoader for T {
     type Asset = T::Asset;
 
-    async fn load_asset(&self, data: &[u8]) -> Result<T::Asset> {
+    async fn load_asset(&self, store: &AssetStore, data: &[u8]) -> Result<T::Asset> {
         let data: T::Data = serde_json::from_slice(data)
             .with_context(|| format!("Deserializing asset from {}", type_name::<T::Data>()))?;
 
-        self.load_asset(data).await
+        self.load_asset(store, data).await
     }
 }
 
@@ -71,7 +71,12 @@ impl<T: AssetLoader> AssetPool<T> {
         }
     }
 
-    async fn load_asset(&self, lump: &LumpId, data: &[u8]) -> Result<Arc<T::Asset>> {
+    async fn load_asset(
+        &self,
+        store: &AssetStore,
+        lump: &LumpId,
+        data: &[u8],
+    ) -> Result<Arc<T::Asset>> {
         let assets = self.assets.read().await;
         if let Some(asset) = assets.get(lump) {
             Ok(asset.to_owned())
@@ -81,7 +86,7 @@ impl<T: AssetLoader> AssetPool<T> {
             let mut assets = self.assets.write().await;
 
             let loader = self.loader.lock().await;
-            let asset = loader.load_asset(data).await?;
+            let asset = loader.load_asset(store, data).await?;
             let asset = Arc::new(asset);
             assets.insert(*lump, asset.to_owned());
             Ok(asset)
@@ -133,6 +138,6 @@ impl AssetStore {
             .get_lump(lump)
             .await
             .ok_or_else(|| anyhow!("Failed to get lump {}", lump))?;
-        pool.load_asset(lump, &data).await
+        pool.load_asset(self, lump, &data).await
     }
 }
