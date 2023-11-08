@@ -31,12 +31,12 @@ use hearth_core::{
 };
 use hearth_rend3::{
     rend3::graph::{DepthHandle, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets},
+    utils::DynamicMesh,
     wgpu::*,
     Node, Rend3Plugin, Routine, RoutineInfo,
 };
 use hearth_types::debug_draw::*;
 use itertools::Itertools;
-use rend3_alacritty::gpu::DynamicMesh;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
