@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bytemuck = { workspace = true }
 glam = "0.20"
 hearth-core = { workspace = true }
 rend3 = "0.3"
