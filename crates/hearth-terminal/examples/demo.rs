@@ -348,6 +348,6 @@ fn main() {
     let app = Demo::default();
     rend3_framework::start(
         app,
-        winit::window::WindowBuilder::new().with_title("rend3-alacritty demo"),
+        winit::window::WindowBuilder::new().with_title("Hearth Terminal Emulator Demo"),
     );
 }
