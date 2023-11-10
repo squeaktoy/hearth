@@ -5,7 +5,12 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+alacritty_terminal = "0.16"
+bytemuck.workspace = true
+font-mud = { path = "../font-mud" }
+glam.workspace = true
 hearth-core.workspace = true
 hearth-rend3.workspace = true
 hearth-types.workspace = true
-rend3-alacritty.workspace = true
+mio-extras = "2"
+owned_ttf_parser = "0.18.1"

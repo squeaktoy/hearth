@@ -18,6 +18,7 @@
 
 use std::sync::Arc;
 
+use draw::{TerminalDrawState, TerminalPipelines};
 use hearth_core::{
     async_trait, cargo_process_metadata,
     flue::Permissions,
@@ -31,27 +32,52 @@ use hearth_core::{
 };
 use hearth_rend3::*;
 use hearth_types::terminal::*;
-use rend3_alacritty::{
-    terminal::{Terminal, TerminalConfig, TerminalState},
-    text::{FaceAtlas, FontSet},
-    *,
-};
+use terminal::{Terminal, TerminalConfig};
+use text::{FaceAtlas, FontSet};
 
-pub use rend3_alacritty;
+/// Terminal rendering code.
+pub mod draw;
+
+/// Integration with `alacritty_terminal`.
+pub mod terminal;
+
+/// Low-level text and font helpers.
+pub mod text;
+
+/// Contains a terminal and its cached draw state.
+pub struct TerminalWrapper {
+    terminal: Arc<Terminal>,
+    draw_state: TerminalDrawState,
+}
+
+impl TerminalWrapper {
+    /// Updates this terminal's draw state. Returns true if this terminal has not quit.
+    pub fn update(&mut self) -> bool {
+        let quit = self.terminal.should_quit();
+
+        if !quit {
+            self.terminal.update_draw_state(&mut self.draw_state);
+        }
+
+        !quit
+    }
+}
 
 pub struct TerminalRoutine {
-    store: TerminalStore,
+    pipelines: TerminalPipelines,
+    terminals: Vec<TerminalWrapper>,
     new_terminals: UnboundedReceiver<Arc<Terminal>>,
 }
 
 impl TerminalRoutine {
-    pub fn new(
-        config: TerminalConfig,
-        rend3: &Rend3Plugin,
-        new_terminals: UnboundedReceiver<Arc<Terminal>>,
-    ) -> Self {
+    pub fn new(rend3: &Rend3Plugin, new_terminals: UnboundedReceiver<Arc<Terminal>>) -> Self {
         Self {
-            store: TerminalStore::new(config, &rend3.renderer, rend3.surface_format),
+            pipelines: TerminalPipelines::new(
+                rend3.renderer.device.to_owned(),
+                rend3.renderer.queue.to_owned(),
+                rend3.surface_format,
+            ),
+            terminals: vec![],
             new_terminals,
         }
     }
@@ -60,30 +86,39 @@ impl TerminalRoutine {
 impl Routine for TerminalRoutine {
     fn build_node(&mut self) -> Box<dyn Node + '_> {
         while let Ok(terminal) = self.new_terminals.try_recv() {
-            self.store.insert_terminal(&terminal);
+            self.terminals.push(TerminalWrapper {
+                draw_state: TerminalDrawState::new(&self.pipelines, terminal.get_fonts()),
+                terminal,
+            });
         }
 
+        // update draw states and remove terminals that have quit
+        self.terminals.retain_mut(TerminalWrapper::update);
+
         Box::new(TerminalNode {
-            routine: self.store.create_routine(),
+            pipelines: &self.pipelines,
+            draws: self.terminals.iter().map(|term| &term.draw_state).collect(),
         })
     }
 }
 
 pub struct TerminalNode<'a> {
-    routine: TerminalRenderRoutine<'a>,
+    pipelines: &'a TerminalPipelines,
+    draws: Vec<&'a TerminalDrawState>,
 }
 
 impl<'a> Node<'a> for TerminalNode<'a> {
     fn draw<'graph>(&'graph self, info: &mut RoutineInfo<'_, 'graph>) {
         let output = info.graph.add_surface_texture();
         let depth = info.state.depth;
-        self.routine.add_to_graph(info.graph, output, depth);
+        self.pipelines
+            .add_to_graph(self.draws.as_slice(), info.graph, output, depth);
     }
 }
 
-/// Converts a serialized `TerminalState` into a `rend3-alacritty`-friendly [TerminalState].
-pub fn convert_state(state: &hearth_types::terminal::TerminalState) -> TerminalState {
-    TerminalState {
+/// Converts a serialized `TerminalState` into a host-local [TerminalState].
+pub fn convert_state(state: &hearth_types::terminal::TerminalState) -> terminal::TerminalState {
+    terminal::TerminalState {
         position: state.position,
         orientation: state.orientation,
         half_size: state.half_size,
@@ -126,7 +161,7 @@ impl SinkProcess for TerminalSink {
 
 /// Guest-exposed service plugin.
 pub struct TerminalFactory {
-    config: TerminalConfig,
+    fonts: FontSet<Arc<FaceAtlas>>,
     new_terminals_tx: UnboundedSender<Arc<Terminal>>,
 }
 
@@ -141,8 +176,13 @@ impl RequestResponseProcess for TerminalFactory {
     ) -> ResponseInfo<'a, Self::Response> {
         let FactoryRequest::CreateTerminal(state) = &request.data;
 
+        let config = TerminalConfig {
+            fonts: self.fonts.to_owned(),
+            command: None,
+        };
+
         let state = convert_state(state);
-        let terminal = Terminal::new(self.config.clone(), state);
+        let terminal = Terminal::new(config, state);
         let _ = self.new_terminals_tx.send(terminal.clone());
 
         let sink = TerminalSink { inner: terminal };
@@ -222,15 +262,12 @@ impl Plugin for TerminalPlugin {
             Arc::new(face_atlas)
         });
 
-        let command = None;
-        let config = TerminalConfig { fonts, command };
-
         let (new_terminals_tx, new_terminals) = unbounded_channel();
 
-        rend3.add_routine(TerminalRoutine::new(config.clone(), rend3, new_terminals));
+        rend3.add_routine(TerminalRoutine::new(rend3, new_terminals));
 
         builder.add_plugin(TerminalFactory {
-            config,
+            fonts,
             new_terminals_tx,
         });
     }
