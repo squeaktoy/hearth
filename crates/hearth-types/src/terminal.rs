@@ -16,8 +16,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use std::collections::HashMap;
+
 use glam::{Quat, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
+
+use crate::Color;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum FactoryError {
@@ -33,6 +37,7 @@ pub struct TerminalState {
     pub opacity: f32,
     pub padding: Vec2,
     pub units_per_em: f32,
+    pub colors: HashMap<usize, Color>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
