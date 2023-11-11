@@ -23,8 +23,10 @@ use hearth_rend3::rend3::{types::*, Renderer};
 use hearth_rend3::rend3_routine::base::{BaseRenderGraph, BaseRenderGraphIntermediateState};
 use hearth_rend3::wgpu::{self, TextureFormat};
 use hearth_terminal::draw::{TerminalDrawState, TerminalPipelines};
-use hearth_terminal::terminal::{Terminal, TerminalConfig, TerminalState};
+use hearth_terminal::terminal::{Terminal, TerminalConfig};
 use hearth_terminal::text::{FaceAtlas, FontSet};
+use hearth_types::terminal::TerminalState;
+use hearth_types::Color;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::ControlFlow;
@@ -66,13 +68,37 @@ impl DemoInner {
             Arc::new(face_atlas)
         });
 
+        let c = Color::from_rgb;
+
+        let colors = FromIterator::from_iter([
+            (0x0, c(0, 0, 0)),         // black
+            (0x1, c(187, 0, 0)),       // red
+            (0x2, c(0, 187, 0)),       // green
+            (0x3, c(187, 187, 0)),     // yellow
+            (0x4, c(0, 0, 187)),       // blue
+            (0x5, c(187, 0, 187)),     // magenta
+            (0x6, c(0, 187, 187)),     // cyan
+            (0x7, c(187, 187, 187)),   // white
+            (0x8, c(85, 85, 85)),      // bright black
+            (0x9, c(255, 85, 85)),     // bright red
+            (0xA, c(85, 255, 85)),     // bright green
+            (0xB, c(255, 255, 85)),    // bright yellow
+            (0xC, c(85, 85, 255)),     // bright blue
+            (0xD, c(255, 85, 255)),    // bright magenta
+            (0xE, c(85, 255, 255)),    // bright cyan
+            (0xF, c(255, 255, 255)),   // bright white
+            (0x100, c(255, 255, 255)), // foreground
+            (0x101, c(0, 0, 0)),       // background
+        ]);
+
         let state = TerminalState {
             position: glam::Vec3::ZERO,
             orientation: glam::Quat::IDENTITY,
             half_size: Vec2::new(1.2, 0.9),
             padding: Vec2::splat(0.2),
-            opacity: 0.8,
-            ..Default::default()
+            opacity: 0.95,
+            units_per_em: 0.04,
+            colors,
         };
 
         let pipelines = TerminalPipelines::new(

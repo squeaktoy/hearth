@@ -116,19 +116,6 @@ impl<'a> Node<'a> for TerminalNode<'a> {
     }
 }
 
-/// Converts a serialized `TerminalState` into a host-local [TerminalState].
-pub fn convert_state(state: &hearth_types::terminal::TerminalState) -> terminal::TerminalState {
-    terminal::TerminalState {
-        position: state.position,
-        orientation: state.orientation,
-        half_size: state.half_size,
-        opacity: state.opacity,
-        padding: state.padding,
-        units_per_em: state.units_per_em,
-        ..Default::default()
-    }
-}
-
 /// Guest-exposed terminal process.
 pub struct TerminalSink {
     inner: Arc<Terminal>,
@@ -145,15 +132,15 @@ impl SinkProcess for TerminalSink {
     type Message = TerminalUpdate;
 
     async fn on_message<'a>(&'a mut self, request: MessageInfo<'a, Self::Message>) {
-        match &request.data {
+        match request.data {
             TerminalUpdate::Quit => {
                 self.inner.quit();
             }
             TerminalUpdate::Input(input) => {
-                self.inner.send_input(input);
+                self.inner.send_input(&input);
             }
             TerminalUpdate::State(state) => {
-                self.inner.update(convert_state(state));
+                self.inner.update(state);
             }
         }
     }
@@ -181,8 +168,7 @@ impl RequestResponseProcess for TerminalFactory {
             command: None,
         };
 
-        let state = convert_state(state);
-        let terminal = Terminal::new(config, state);
+        let terminal = Terminal::new(config, state.clone());
         let _ = self.new_terminals_tx.send(terminal.clone());
 
         let sink = TerminalSink { inner: terminal };
