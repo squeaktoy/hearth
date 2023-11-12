@@ -833,7 +833,7 @@ impl RequestResponseProcess for WasmProcessSpawner {
 }
 
 impl ServiceRunner for WasmProcessSpawner {
-    const NAME: &'static str = "hearth.cognito.WasmProcessSpawner";
+    const NAME: &'static str = "hearth.wasm.WasmProcessSpawner";
 
     fn get_process_metadata() -> ProcessMetadata {
         let mut meta = cargo_process_metadata!();
