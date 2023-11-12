@@ -154,7 +154,6 @@ to be aware of:
     and `hearth-ipc` to implement OS-specific IPC transport mechanisms.
 
 Outside of these special cases, the rest of the crates in the Hearth codebase
-implement plugins. Here's a dependency graph of the whole workspace, excluding
-`hearth-core` and `hearth-types` to declutter:
+implement plugins. Here's a dependency graph of the whole workspace:
 
 ![A dependency graph of the Hearth codebase.](resources/misc/depgraph.png)
