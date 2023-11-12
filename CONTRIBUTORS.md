@@ -73,9 +73,8 @@ to name them. Examples: `peer-api`, `nonzero-iv`, `lump-asset-loading`.
 When writing a commit message, issue title, or pull request title, we prefix
 the summary of the changes involved with the location of those changes. More
 often than not the changes are in source code, so the location is a crate, such
-as `rend3-alacritty`, `font-mud`, or `hearth-core`. Because so many crates
-begin with `hearth-`, we omit them in locations. `rend3-alacritty` is also
-abridged to `alacritty`. When the changes are in a Markdown document in the
+as `font-mud` or `hearth-core`. Because so many crates begin with `hearth-`,
+we omit them in locations. When the changes are in a Markdown document in the
 repository root the location is the lowercase name of that file. If the changes
 occur in more than one location, omit the location and write only the summary,
 beginning with a capital letter.
@@ -83,7 +82,6 @@ beginning with a capital letter.
 Example titles:
 - commit in `hearth-core`: `core: add ProcessFactoryImpl`
 - commit in `hearth-client`: `client: add cognito dep and WasmPlugin`
-- commit in `rend3-alacritty`: `alacritty: merge shaders into one file`
 - change in `README.md`: `readme: break out design document into separate file`
 - issue for changes in more than one location: `License everything`
 
