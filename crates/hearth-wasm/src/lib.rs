@@ -33,15 +33,24 @@ use slab::Slab;
 use tracing::{debug, error};
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store, UpdateDeadline};
 
+/// An interface for Wasm ABIs: host-side data exposed to WebAssembly through a
+/// set of linked host functions.
+///
+/// Implemented by the [impl_wasm_linker] proc macro.
 pub trait WasmLinker<T: AsMut<Self>> {
-    fn add_to_linker(linker: &mut wasmtime::Linker<T>);
+    /// Add this ABI's functions to the given Linker.
+    fn add_to_linker(linker: &mut Linker<T>);
 }
 
+/// A utility type for safely accessing and interpreting a Wasm guest's memory.
 pub struct GuestMemory<'a> {
     pub bytes: &'a mut [u8],
 }
 
 impl<'a> GuestMemory<'a> {
+    /// Access a Wasm host function's caller's memory.
+    ///
+    /// Fails if the caller does not export its memory correctly.
     pub fn from_caller<T>(caller: &mut Caller<'a, T>) -> Result<Self> {
         let memory = caller
             .get_export("memory")
@@ -54,12 +63,18 @@ impl<'a> GuestMemory<'a> {
         Ok(Self { bytes })
     }
 
+    /// Interprets a region of guest memory as a string.
+    ///
+    /// Fails if out-of-bounds.
     pub fn get_str(&self, ptr: u32, len: u32) -> Result<&'a mut str> {
         let memory = self.get_slice(ptr, len)?;
         std::str::from_utf8_mut(memory)
             .with_context(|| format!("GuestMemory::get_str({}, {})", ptr, len))
     }
 
+    /// Retrieves a byte slice of guest memory by its pointer and length.
+    ///
+    /// Fails if out-of-bounds.
     pub fn get_slice(&self, ptr: u32, len: u32) -> Result<&'a mut [u8]> {
         let ptr = ptr as usize;
         let len = len as usize;
@@ -77,6 +92,9 @@ impl<'a> GuestMemory<'a> {
         }
     }
 
+    /// Interprets a region of guest memory as a data structure.
+    ///
+    /// Fails if out-of-bounds.
     pub fn get_memory_ref<T: bytemuck::Pod>(&self, ptr: u32) -> Result<&'a mut T> {
         let len = std::mem::size_of::<T>() as u32;
         let bytes = self.get_slice(ptr, len)?;
@@ -90,6 +108,9 @@ impl<'a> GuestMemory<'a> {
         })
     }
 
+    /// Interprets a region of guest memory as an array of a data structure.
+    ///
+    /// Fails if out-of-bounds.
     pub fn get_memory_slice<T: bytemuck::Pod>(&self, ptr: u32, num: u32) -> Result<&'a mut [T]> {
         let len = num * std::mem::size_of::<T>() as u32;
         let bytes = self.get_slice(ptr, len)?;
