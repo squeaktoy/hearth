@@ -6,9 +6,14 @@ license = "Apache-2.0"
 
 [dependencies]
 glam = "0.20"
-msdfgen = {version = "0.2.1", default-features = false, features = ["ttf-parser", "png"]}
 ttf-parser = "0.18.1"
 rect_packer = "0.2.1"
+
+[dependencies.msdfgen]
+git = "https://github.com/hearth-rs/msdfgen"
+branch = "fix-mac-ci"
+default-features = false
+features = ["ttf-parser", "png"]
 
 [dev-dependencies]
 png = "0.17"
