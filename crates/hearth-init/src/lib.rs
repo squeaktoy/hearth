@@ -37,24 +37,22 @@ struct Hook {
 #[async_trait]
 impl ProcessRunner for Hook {
     async fn run(mut self, label: String, _runtime: Arc<Runtime>, ctx: &Process) {
-        // TODO use https://github.com/hearth-rs/flue/pull/11 to break the closure out
-        while let Some(hook) = ctx
-            .borrow_parent()
-            .recv(|signal| {
-                let TableSignal::Message { data: _, caps } = signal else {
-                    tracing::error!("expected message, got {:?}", signal);
-                    return None;
-                };
+        // handles incoming signals. returns None until a valid hook message arrives.
+        let on_recv = |signal: TableSignal<'_>| {
+            let TableSignal::Message { data: _, caps } = signal else {
+                tracing::error!("expected message, got {:?}", signal);
+                return None;
+            };
 
-                let Some(init_cap) = caps.first() else {
-                    warn!("{label} hook received message with no caps");
-                    return None;
-                };
+            let Some(init_cap) = caps.first() else {
+                warn!("{label} hook received message with no caps");
+                return None;
+            };
 
-                Some(*init_cap)
-            })
-            .await
-        {
+            Some(*init_cap)
+        };
+
+        while let Some(hook) = ctx.borrow_parent().recv(on_recv).await {
             // if we got a valid hook message, handle it and quit.
             if let Some(init_cap) = hook {
                 let cap = ctx.borrow_table().get_owned(init_cap).unwrap();
@@ -97,14 +95,13 @@ impl Plugin for InitPlugin {
 
                 let parent = runtime.process_factory.spawn(meta);
                 let response = parent.borrow_group().create_mailbox().unwrap();
-                let table = parent.borrow_table();
-                let response_cap = response.export(Permissions::SEND, table).unwrap();
+                let response_cap = response.export(Permissions::SEND).unwrap();
 
                 let perms = Permissions::SEND | Permissions::MONITOR;
                 let registry = runtime
                     .registry
                     .borrow_parent()
-                    .export(perms, table)
+                    .export_to(perms, parent.borrow_table())
                     .unwrap();
 
                 let request = RegistryRequest::Get {
