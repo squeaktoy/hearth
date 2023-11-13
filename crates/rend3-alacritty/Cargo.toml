@@ -10,7 +10,7 @@ bytemuck = { workspace = true }
 font-mud = { path = "../font-mud" }
 glam = "0.20"
 mio-extras = "2"
-owned_ttf_parser = "0.19.2"
+owned_ttf_parser = "0.19"
 rend3 = "0.3"
 rend3-routine = "0.3"
 wgpu = "^0.12"
