@@ -188,7 +188,7 @@ impl Window {
 
         let request = FrameRequest {
             output_frame,
-            camera: self.camera.clone(),
+            camera: self.camera,
             resolution,
             on_complete,
         };
