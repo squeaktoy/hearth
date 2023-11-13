@@ -53,8 +53,8 @@ impl RegistryBuilder {
     /// Logs a warning if the name is already taken.
     pub fn add(&mut self, name: String, mailbox: &Mailbox) {
         let perms = Permissions::SEND | Permissions::MONITOR;
-        // Panic if table has a different post office than mailbox:w
-        let cap = mailbox.export(perms, &self.table).unwrap();
+        // Panic if table has a different post office than mailbox
+        let cap = mailbox.export(perms).unwrap();
 
         if let hash_map::Entry::Vacant(entry) = self.inner.services.entry(name.clone()) {
             entry.insert(cap.into_handle());
