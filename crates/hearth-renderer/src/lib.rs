@@ -263,18 +263,11 @@ impl RequestResponseProcess for RendererService {
                 );
 
                 let child = request.runtime.process_factory.spawn(meta);
+
                 let perms = Permissions::all();
-                // TODO make this cleaner with #195
-                let child_cap = child.borrow_parent().export_owned(perms);
-                let child_cap = request
-                    .process
-                    .borrow_table()
-                    .import_owned(child_cap)
-                    .unwrap();
-                let child_cap = request
-                    .process
-                    .borrow_table()
-                    .wrap_handle(child_cap)
+                let child_cap = child
+                    .borrow_parent()
+                    .export_to(perms, request.process.borrow_table())
                     .unwrap();
 
                 let label = "DirectionalLightInstance".to_string();
@@ -353,18 +346,11 @@ impl RequestResponseProcess for RendererService {
                     Some("An instance of a renderer object. Accepts ObjectUpdate.".to_string());
 
                 let child = request.runtime.process_factory.spawn(meta);
+
                 let perms = Permissions::all();
-                // TODO make this cleaner with #195
-                let child_cap = child.borrow_parent().export_owned(perms);
-                let child_cap = request
-                    .process
-                    .borrow_table()
-                    .import_owned(child_cap)
-                    .unwrap();
-                let child_cap = request
-                    .process
-                    .borrow_table()
-                    .wrap_handle(child_cap)
+                let child_cap = child
+                    .borrow_parent()
+                    .export_to(perms, request.process.borrow_table())
                     .unwrap();
 
                 let label = "ObjectInstance".to_string();
