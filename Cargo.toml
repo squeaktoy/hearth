@@ -6,18 +6,19 @@ members = [ "crates/*" ]
 bytemuck = { version = "1.13", features = ["derive"] }
 flume = "0.11"
 glam = { version = "0.20", features = ["serde"] }
-hearth-core = { path = "crates/hearth-core" }
-hearth-daemon = { path = "crates/hearth-daemon" }
-hearth-debug-draw = { path = "crates/hearth-debug-draw" }
-hearth-init = { path = "crates/hearth-init" }
-hearth-ipc = { path = "crates/hearth-ipc" }
-hearth-fs = { path = "crates/hearth-fs" }
-hearth-macros = { path = "crates/hearth-macros" }
-hearth-network = { path = "crates/hearth-network" }
-hearth-rend3 = { path = "crates/hearth-rend3" }
-hearth-terminal = { path = "crates/hearth-terminal" }
-hearth-types = { path = "crates/hearth-types" }
-hearth-wasm = { path = "crates/hearth-wasm" }
+hearth-cognito.path = "crates/hearth-cognito"
+hearth-core.path = "crates/hearth-core"
+hearth-daemon.path = "crates/hearth-daemon"
+hearth-debug-draw.path = "crates/hearth-debug-draw"
+hearth-init.path = "crates/hearth-init"
+hearth-ipc.path = "crates/hearth-ipc"
+hearth-fs.path = "crates/hearth-fs"
+hearth-macros.path = "crates/hearth-macros"
+hearth-network.path = "crates/hearth-network"
+hearth-rend3.path = "crates/hearth-rend3"
+hearth-terminal.path = "crates/hearth-terminal"
+hearth-types.path = "crates/hearth-types"
+hearth-wasm.path = "crates/hearth-wasm"
 ouroboros = "0.18.0"
 parking_lot = "0.12"
 serde_json = "1"
