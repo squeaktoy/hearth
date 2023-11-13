@@ -6,7 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 glam = "0.20"
-ttf-parser = "0.18.1"
+ttf-parser = "0.19.2"
 rect_packer = "0.2.1"
 
 [dependencies.msdfgen]
