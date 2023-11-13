@@ -81,7 +81,7 @@ beginning with a capital letter.
 
 Example titles:
 - commit in `hearth-core`: `core: add ProcessFactoryImpl`
-- commit in `hearth-client`: `client: add cognito dep and WasmPlugin`
+- commit in `hearth-client`: `client: draw debug draw before terminal`
 - change in `README.md`: `readme: break out design document into separate file`
 - issue for changes in more than one location: `License everything`
 
