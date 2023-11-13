@@ -105,7 +105,7 @@ impl Plugin for InitPlugin {
                     .unwrap();
 
                 let request = RegistryRequest::Get {
-                    name: "hearth.cognito.WasmProcessSpawner".to_string(),
+                    name: "hearth.wasm.WasmProcessSpawner".to_string(),
                 };
 
                 registry

@@ -6,7 +6,6 @@ members = [ "crates/*" ]
 bytemuck = { version = "1.13", features = ["derive"] }
 flume = "0.11"
 glam = { version = "0.20", features = ["serde"] }
-hearth-cognito = { path = "crates/hearth-cognito" }
 hearth-core = { path = "crates/hearth-core" }
 hearth-daemon = { path = "crates/hearth-daemon" }
 hearth-debug-draw = { path = "crates/hearth-debug-draw" }

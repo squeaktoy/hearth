@@ -21,7 +21,7 @@ async fn main() {
     let config_path = hearth_core::get_config_path();
     let config_file = hearth_core::load_config(&config_path).unwrap();
     let mut builder = RuntimeBuilder::new(config_file);
-    builder.add_plugin(hearth_cognito::WasmPlugin::default());
+    builder.add_plugin(hearth_wasm::WasmPlugin::default());
     let runtime = builder.run(config).await;
 
     let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
@@ -40,7 +40,7 @@ async fn main() {
     let registry = registry_mb.export(Permissions::SEND).unwrap();
 
     let request = RegistryRequest::Get {
-        name: "hearth.cognito.WasmProcessSpawner".to_string(),
+        name: "hearth.wasm.WasmProcessSpawner".to_string(),
     };
 
     registry
