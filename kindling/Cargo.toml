@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["panic-test", "init"]
+members = ["init", "services/*"]
 exclude = ["build"]
 
 [workspace.dependencies]
