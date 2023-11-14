@@ -357,21 +357,21 @@ impl TerminalDrawState {
             glyph_bind_group
         });
 
+        let glyph_meshes = FontSet {
+            regular: "Alacritty regular glyph mesh",
+            italic: "Alacritty italic glyph mesh",
+            bold: "Alacritty bold glyph mesh",
+            bold_italic: "Alacritty bold italic glyph mesh",
+        }
+        .map(|name| DynamicMesh::new(device, Some(name.to_string())));
+
         Self {
             model: Mat4::IDENTITY,
             camera_buffer,
             camera_bind_group,
-            bg_mesh: DynamicMesh::new(&device, Some("Alacritty background mesh".into())),
-            glyph_meshes: FontSet {
-                regular: DynamicMesh::new(&device, Some("Alacritty regular glyph mesh".into())),
-                italic: DynamicMesh::new(&device, Some("Alacritty italic glyph mesh".into())),
-                bold: DynamicMesh::new(&device, Some("Alacritty bold glyph mesh".into())),
-                bold_italic: DynamicMesh::new(
-                    &device,
-                    Some("Alacritty bold italic glyph mesh".into()),
-                ),
-            },
-            overlay_mesh: DynamicMesh::new(&device, Some("Alacritty overlay mesh".into())),
+            bg_mesh: DynamicMesh::new(device, Some("Alacritty background mesh".into())),
+            glyph_meshes,
+            overlay_mesh: DynamicMesh::new(device, Some("Alacritty overlay mesh".into())),
             glyph_bind_groups,
             device: pipelines.device.to_owned(),
             queue: pipelines.queue.to_owned(),
