@@ -107,6 +107,8 @@ pub struct TerminalPipelines {
 }
 
 impl TerminalPipelines {
+    /// Initialize a device and queue's GPU state targeting the given output
+    /// surface format.
     pub fn new(device: Arc<Device>, queue: Arc<Queue>, format: TextureFormat) -> Self {
         let shader = device.create_shader_module(&include_wgsl!("shaders.wgsl"));
 
