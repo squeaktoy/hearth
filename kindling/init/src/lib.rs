@@ -54,7 +54,7 @@ pub extern "C" fn run() {
     }
 }
 
-//TODO break these file system operations into
+//TODO break these file system operations into a common crate
 fn request_fs(fs: &Capability, request: fs::Request) -> fs::Success {
     log!(ProcessLogLevel::Debug, "making fs request: {:?}", request);
     let reply = Mailbox::new();
