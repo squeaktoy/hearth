@@ -26,7 +26,7 @@ jobs:
           command: install
           args: cargo-depgraph
     - name: Generate depgraph
-      run: cargo depgraph --workspace-only --dedup-transitive-deps > depgraph.dot
+      run: cargo depgraph --workspace-only --dedup-transitive-deps --exclude kindling-build > depgraph.dot
     - name: Flip depgraph
       run: sed -E 's/([0-9]{1,}) -> ([0-9]{1,})/\2 -> \1/g' -i depgraph.dot
     - name: Visualize depgraph
