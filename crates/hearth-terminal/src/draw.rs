@@ -288,18 +288,36 @@ impl TerminalPipelines {
             bytemuck::cast_slice(&[CameraUniform { mvp: vp * model }]),
         );
 
+        // set the camera bind group for all draw calls
         rpass.set_bind_group(0, &terminal.camera_bind_group, &[]);
+
+        // set the regular glyph bind group for solid geo drawing
         rpass.set_bind_group(1, &terminal.glyph_bind_groups.regular, &[]);
+
+        // draw solid geo
         rpass.set_pipeline(&self.solid_pipeline);
         terminal.bg_mesh.draw(rpass);
+
+        // set the glyph pipeline for all glyph draws
         rpass.set_pipeline(&self.glyph_pipeline);
+
+        // draw regular glyphs
+        // regular glyph bind group is already bound
         terminal.glyph_meshes.regular.draw(rpass);
+
+        // draw italic glyphs
         rpass.set_bind_group(1, &terminal.glyph_bind_groups.italic, &[]);
         terminal.glyph_meshes.italic.draw(rpass);
+
+        // draw bold glyphs
         rpass.set_bind_group(1, &terminal.glyph_bind_groups.bold, &[]);
         terminal.glyph_meshes.bold.draw(rpass);
+
+        // draw bold italic glyphs
         rpass.set_bind_group(1, &terminal.glyph_bind_groups.bold_italic, &[]);
         terminal.glyph_meshes.bold_italic.draw(rpass);
+
+        // draw overlay geo
         rpass.set_pipeline(&self.solid_pipeline);
         terminal.overlay_mesh.draw(rpass);
     }
