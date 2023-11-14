@@ -37,7 +37,9 @@ async fn main() {
 
     // import a cap to the registry's mailbox into the parent process
     let registry_mb = runtime.registry.borrow_parent();
-    let registry = registry_mb.export(Permissions::SEND).unwrap();
+    let registry = registry_mb
+        .export_to(Permissions::SEND, parent.borrow_table())
+        .unwrap();
 
     let request = RegistryRequest::Get {
         name: "hearth.wasm.WasmProcessSpawner".to_string(),
