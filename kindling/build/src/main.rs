@@ -124,20 +124,17 @@ fn build_wasm(package: &str, path: &Path, force_copy: bool) {
     let reader = std::io::BufReader::new(child.stdout.take().unwrap());
     for message in cargo_metadata::Message::parse_stream(reader) {
         use cargo_metadata::Message;
-        match message.unwrap() {
-            Message::CompilerArtifact(artifact) => {
-                for file in artifact.filenames {
-                    if file.as_str().ends_with(".wasm") {
-                        if artifact.fresh && !force_copy {
-                            continue;
-                        }
-
-                        eprintln!("copying {:?} to {:?}", file, path);
-                        std::fs::copy(file, path).unwrap();
+        if let Message::CompilerArtifact(artifact) = message.unwrap() {
+            for file in artifact.filenames {
+                if file.as_str().ends_with(".wasm") {
+                    if artifact.fresh && !force_copy {
+                        continue;
                     }
+
+                    eprintln!("copying {:?} to {:?}", file, path);
+                    std::fs::copy(file, path).unwrap();
                 }
             }
-            _ => {}
         }
     }
 
