@@ -26,6 +26,7 @@ use cargo_metadata::Package;
 
 fn main() {
     let metadata = cargo_metadata::MetadataCommand::new()
+        .current_dir(get_kindling_dir())
         .exec()
         .expect("failed to get cargo metadata");
 
@@ -68,6 +69,11 @@ fn get_cargo() -> String {
     std::env::var("CARGO").expect("CARGO env var isn't set")
 }
 
+fn get_kindling_dir() -> String {
+    std::env::var("CARGO_WORKSPACE_DIR").expect("CARGO_WORKSPACE_DIR env var isn't set")
+        + "kindling/"
+}
+
 fn build_service(root_path: &Path, package: &Package) {
     if let Some(service) = package.metadata.get("service") {
         let name = service.get("name").unwrap().as_str().unwrap();
@@ -101,6 +107,7 @@ fn build_service(root_path: &Path, package: &Package) {
 fn build_wasm(package: &str, path: &Path, force_copy: bool) {
     let mut command = Command::new(get_cargo());
     command
+        .current_dir(get_kindling_dir())
         .stdout(Stdio::piped())
         .arg("build")
         .arg("--message-format=json-render-diagnostics")
@@ -108,7 +115,7 @@ fn build_wasm(package: &str, path: &Path, force_copy: bool) {
         .arg("--target")
         .arg("wasm32-unknown-unknown")
         .arg("--package")
-        .arg(&package);
+        .arg(package);
 
     eprintln!("executing command: {:?}", command);
 
