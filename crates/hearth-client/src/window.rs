@@ -85,14 +85,30 @@ pub struct WindowOffer {
     pub window_plugin: WindowPlugin,
 }
 
+/// A single running desktop window.
 struct Window {
+    /// Sender to outgoing window events.
     outgoing_tx: mpsc::UnboundedSender<WindowTxMessage>,
+
+    /// The inner winit window.
     window: WinitWindow,
+
+    /// The wgpu instance, adapter, and device compatible with this window.
     iad: InstanceAdapterDevice,
+
+    /// This window's wgpu surface.
     surface: Arc<wgpu::Surface>,
+
+    /// This window's wgpu surface configuration.
     config: wgpu::SurfaceConfiguration,
+
+    /// Sender of frame requests to the rend3 renderer.
     frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
+
+    /// This window's current camera in the rend3 world..
     camera: Camera,
+
+    /// A dummy handle to keep a hard-coded directional light alive in the scene.
     _directional_handle: rend3::types::ResourceHandle<rend3::types::DirectionalLight>,
 }
 
