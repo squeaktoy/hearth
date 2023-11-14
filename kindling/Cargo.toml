@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["panic-test", "init"]
+exclude = ["build"]
+
+[workspace.dependencies]
+hearth-guest = { path = "../guest/rust/hearth-guest"}
+

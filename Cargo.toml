@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "crates/*" ]
+members = [ "crates/*", "kindling/build"]
 
 [workspace.dependencies]
 bytemuck = { version = "1.13", features = ["derive"] }
@@ -19,6 +19,7 @@ hearth-rend3.path = "crates/hearth-rend3"
 hearth-terminal.path = "crates/hearth-terminal"
 hearth-types.path = "crates/hearth-types"
 hearth-wasm.path = "crates/hearth-wasm"
+kindling-build.path = "kindling/build"
 ouroboros = "0.18.0"
 parking_lot = "0.12"
 rend3-alacritty.path = "crates/rend3-alacritty"
