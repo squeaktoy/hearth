@@ -53,7 +53,7 @@ fn main() {
             continue;
         }
 
-        build_service(&root_path, &package);
+        build_service(&root_path, package);
     }
 }
 
