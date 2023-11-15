@@ -117,9 +117,8 @@ with `rustfmt` or `cargo fmt`, our continuous integration checks will fail.
 # Licensing
 
 When you add a new source file to Hearth it needs to be given the proper
-licensing info. Most crates, such as all of the crates beginning with
-`hearth-`, are licensed under the AGPL. Prefix all source files in
-AGPL-licensed crates with the following:
+licensing info. All crates in the Hearth source repository are licensed under
+the AGPL. Prefix all source files with the following:
 
 ```
 // Copyright (c) 2023 the Hearth contributors.
@@ -143,29 +142,6 @@ AGPL-licensed crates with the following:
 
 This should go before documentation for that file and there needs to be a blank
 line separating the header from the contents of the file.
-
-If the name of the crate does not begin with `hearth-` then please check the
-crate's `Cargo.toml` file under the `package.license` entry for the correct
-license to use. If that license is `AGPL-3.0-or-later`, then follow the
-instructions above for AGPL licensing. Otherwise, the license is `Apache-2.0`,
-and requires a different header for licensed source files:
-
-```
-// Copyright (c) 2023 the Hearth contributors.
-// SPDX-License-Identifier: Apache-2.0
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-```
 
 If you've added your name to [the contributors list](#contributors) then you
 now have a copyright on part of Hearth's source code. What does that mean for
