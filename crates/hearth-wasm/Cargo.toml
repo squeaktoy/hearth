@@ -16,5 +16,5 @@ tracing = { workspace = true }
 wasmtime = { workspace = true }
 
 [dev-dependencies]
-hearth-types = { workspace = true }
+hearth-schema = { workspace = true }
 tokio = { version = "1.24", features = ["macros", "rt"] }

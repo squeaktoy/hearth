@@ -24,11 +24,11 @@ use hearth_core::flue::{CapabilityHandle, Mailbox, MailboxGroup, Permissions, Ta
 use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_core::process::{Process, ProcessLogEvent, ProcessMetadata};
 use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
-use hearth_core::{async_trait, hearth_types};
+use hearth_core::{async_trait, hearth_schema};
 use hearth_core::{cargo_process_metadata, tokio, utils::*};
 use hearth_macros::impl_wasm_linker;
-use hearth_types::wasm::WasmSpawnInfo;
-use hearth_types::{LumpId, SignalKind};
+use hearth_schema::wasm::WasmSpawnInfo;
+use hearth_schema::{LumpId, SignalKind};
 use slab::Slab;
 use tracing::{debug, error};
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store, UpdateDeadline};
