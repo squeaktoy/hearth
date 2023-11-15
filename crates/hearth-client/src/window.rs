@@ -80,7 +80,7 @@ impl Window {
             format: swapchain_format,
             width: size.width,
             height: size.height,
-            present_mode: wgpu::PresentMode::Immediate,
+            present_mode: wgpu::PresentMode::Fifo,
         };
 
         surface.configure(&iad.device, &config);
