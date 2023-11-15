@@ -16,14 +16,27 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::path::PathBuf;
-
 use hearth_core::{
     async_trait, cargo_process_metadata, hearth_types::fs::*, process::ProcessMetadata, utils::*,
 };
+use std::fs::{read, read_dir};
+use std::path::{Component, PathBuf};
 
 pub struct FsPlugin {
     root: PathBuf,
+}
+
+trait ToFsError<T, E> {
+    fn to_fs_error(self, e: Error) -> Result<T, Error>;
+}
+
+impl<T, E> ToFsError<T, E> for Result<T, E> {
+    fn to_fs_error(self, err: Error) -> Result<T, Error> {
+        match self {
+            Ok(ok) => Ok(ok),
+            Err(_) => Err(err),
+        }
+    }
 }
 
 #[async_trait]
@@ -35,54 +48,12 @@ impl RequestResponseProcess for FsPlugin {
         &'a mut self,
         request: &mut RequestInfo<'a, Request>,
     ) -> ResponseInfo<'a, Response> {
-        let target = match PathBuf::try_from(&request.data.target) {
-            Ok(target) => target,
-            Err(_) => return Error::InvalidTarget.into(),
-        };
-
-        let mut path = self.root.to_path_buf();
-        for component in target.components() {
-            match component {
-                std::path::Component::Normal(normal) => path.push(normal),
-                _ => return Error::DirectoryTraversal.into(),
-            }
-        }
-
-        let success = match request.data.kind {
-            RequestKind::Get => {
-                let contents = match std::fs::read(path) {
-                    Ok(contents) => contents,
-                    Err(_) => todo!(),
-                };
-
-                let lump = request.runtime.lump_store.add_lump(contents.into()).await;
-
-                Success::Get(lump)
-            }
-            RequestKind::List => {
-                let dirs = match std::fs::read_dir(path) {
-                    Ok(dirs) => dirs,
-                    Err(_) => todo!(),
-                };
-
-                let dirs: Vec<_> = dirs
-                    .into_iter()
-                    .map(|dir| {
-                        let dir = dir.unwrap();
-
-                        FileInfo {
-                            name: dir.file_name().to_string_lossy().to_string(),
-                        }
-                    })
-                    .collect();
-
-                Success::List(dirs)
-            }
-        };
-
-        ResponseInfo {
-            data: Ok(success),
-            caps: vec![],
+        match self.handle_request(request).await {
+            Err(e) => e.into(),
+            s => ResponseInfo {
+                data: s,
+                caps: vec![],
+            },
         }
     }
 }
@@ -101,5 +72,48 @@ impl ServiceRunner for FsPlugin {
 impl FsPlugin {
     pub fn new(root: PathBuf) -> Self {
         Self { root }
+    }
+
+    async fn handle_request<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, Request>,
+    ) -> Result<Success, Error> {
+        let target = PathBuf::try_from(&request.data.target).to_fs_error(Error::InvalidTarget)?;
+
+        let mut path = self.root.to_path_buf();
+        for component in target.components() {
+            match component {
+                Component::Normal(normal) => path.push(normal),
+                _ => return Err(Error::DirectoryTraversal),
+            }
+        }
+
+        match request.data.kind {
+            RequestKind::Get => {
+                let contents = read(path).to_fs_error(Error::NotFound)?;
+
+                let lump = request.runtime.lump_store.add_lump(contents.into()).await;
+
+                Ok(Success::Get(lump))
+            }
+            RequestKind::List => {
+                // read_dir can have multiple error differnt types of errors and
+                // im not sure of a good way to handle individual each one.
+                let dirs = read_dir(path).to_fs_error(Error::DirectoryError)?;
+
+                let dirs: Vec<_> = dirs
+                    .into_iter()
+                    .map(|dir| {
+                        let dir = dir.unwrap();
+
+                        FileInfo {
+                            name: dir.file_name().to_string_lossy().to_string(),
+                        }
+                    })
+                    .collect();
+
+                Ok(Success::List(dirs))
+            }
+        }
     }
 }
