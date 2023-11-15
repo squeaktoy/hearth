@@ -35,7 +35,7 @@ fn main() {
 
     let is_clean = touch_dir(&root_path);
 
-    build_wasm("init", &root_path.join("init.wasm"), is_clean);
+    build_wasm("kindling-init", &root_path.join("init.wasm"), is_clean);
 
     for package_id in metadata.workspace_members.iter() {
         let package = &metadata[package_id];
