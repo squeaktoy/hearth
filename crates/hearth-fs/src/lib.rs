@@ -19,7 +19,7 @@
 use std::path::PathBuf;
 
 use hearth_core::{
-    async_trait, cargo_process_metadata, hearth_types::fs::*, process::ProcessMetadata, utils::*,
+    async_trait, cargo_process_metadata, hearth_schema::fs::*, process::ProcessMetadata, utils::*,
 };
 
 pub struct FsPlugin {
