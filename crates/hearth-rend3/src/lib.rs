@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use glam::{UVec2, Vec4};
-use hearth_core::runtime::{Plugin, RuntimeBuilder};
+use hearth_runtime::runtime::{Plugin, RuntimeBuilder};
 use rend3::graph::{ReadyData, RenderGraph};
 use rend3::types::{Camera, SampleCount};
 use rend3::util::output::OutputFrame;
