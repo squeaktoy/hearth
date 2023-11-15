@@ -142,15 +142,15 @@ to be aware of:
     loading, the lump store, and runtime building. Because the `hearth-core`
     API is essential to most Hearth functionality, most crates in the Hearth
     codebase depend on it.
-- **hearth-types**: a schema crate that defines the guest-to-host message
+- **hearth-schema**: a schema crate that defines the guest-to-host message
     protocols. Since the purpose of most Hearth crates is to provide some kind
-    of native resource to guest processes, most crates depend on `hearth-types`.
+    of native resource to guest processes, most crates depend on `hearth-schema`.
 - **hearth-client** and **hearth-server**: the main Hearth application binaries,
     implementing the client and server, respectively. Each depends on a variety
     of plugin crates, since they build and run the runtimes that use those
     plugins.
 - **hearth-ctl**: a command-line IPC client to perform common operations on
-    a Hearth runtime. Only depends on `hearth-types` to define the IPC protocol
+    a Hearth runtime. Only depends on `hearth-schema` to define the IPC protocol
     and `hearth-ipc` to implement OS-specific IPC transport mechanisms.
 
 Outside of these special cases, the rest of the crates in the Hearth codebase
