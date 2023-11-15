@@ -26,19 +26,6 @@ pub struct FsPlugin {
     root: PathBuf,
 }
 
-trait ToFsError<T, E> {
-    fn to_fs_error(self, e: Error) -> Result<T, Error>;
-}
-
-impl<T, E> ToFsError<T, E> for Result<T, E> {
-    fn to_fs_error(self, err: Error) -> Result<T, Error> {
-        match self {
-            Ok(ok) => Ok(ok),
-            Err(_) => Err(err),
-        }
-    }
-}
-
 #[async_trait]
 impl RequestResponseProcess for FsPlugin {
     type Request = Request;
@@ -78,7 +65,7 @@ impl FsPlugin {
         &'a mut self,
         request: &mut RequestInfo<'a, Request>,
     ) -> Result<Success, Error> {
-        let target = PathBuf::try_from(&request.data.target).to_fs_error(Error::InvalidTarget)?;
+        let target = PathBuf::try_from(&request.data.target).map_err(|_| Error::InvalidTarget)?;
 
         let mut path = self.root.to_path_buf();
         for component in target.components() {
@@ -90,7 +77,7 @@ impl FsPlugin {
 
         match request.data.kind {
             RequestKind::Get => {
-                let contents = read(path).to_fs_error(Error::NotFound)?;
+                let contents = read(path).map_err(|_| Error::NotFound)?;
 
                 let lump = request.runtime.lump_store.add_lump(contents.into()).await;
 
@@ -99,7 +86,7 @@ impl FsPlugin {
             RequestKind::List => {
                 // read_dir can have multiple error differnt types of errors and
                 // im not sure of a good way to handle individual each one.
-                let dirs = read_dir(path).to_fs_error(Error::DirectoryError)?;
+                let dirs = read_dir(path).map_err(|_| Error::DirectoryError)?;
 
                 let dirs: Vec<_> = dirs
                     .into_iter()
