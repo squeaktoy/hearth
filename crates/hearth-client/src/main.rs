@@ -24,12 +24,12 @@ use std::{
 };
 
 use clap::Parser;
-use hearth_core::{
+use hearth_network::{auth::login, connection::Connection};
+use hearth_rend3::Rend3Plugin;
+use hearth_runtime::{
     flue::OwnedCapability,
     runtime::{Plugin, Runtime, RuntimeBuilder, RuntimeConfig},
 };
-use hearth_network::{auth::login, connection::Connection};
-use hearth_rend3::Rend3Plugin;
 use tokio::{net::TcpStream, sync::oneshot};
 use tracing::{debug, error, info};
 
@@ -63,7 +63,7 @@ pub struct Args {
 
 fn main() {
     let args = Args::parse();
-    hearth_core::init_logging();
+    hearth_runtime::init_logging();
 
     // winit requires that running its event loop takes over the calling thread,
     // so we need to manually create a Tokio runtime so that we can use this
@@ -101,8 +101,8 @@ fn main() {
 async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     let config = RuntimeConfig {};
 
-    let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
-    let config_file = hearth_core::load_config(&config_path).unwrap();
+    let config_path = args.config.unwrap_or_else(hearth_runtime::get_config_path);
+    let config_file = hearth_runtime::load_config(&config_path).unwrap();
 
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_wasm::WasmPlugin::default());
@@ -121,7 +121,7 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
 
     let _runtime = builder.run(config).await;
 
-    hearth_core::wait_for_interrupt().await;
+    hearth_runtime::wait_for_interrupt().await;
     info!("Ctrl+C hit; quitting client");
 }
 
@@ -205,7 +205,7 @@ impl ClientPlugin {
 
         info!("Beginning connection");
         let (root_cap_tx, root_cap) = tokio::sync::oneshot::channel();
-        let conn = hearth_core::connection::Connection::begin(
+        let conn = hearth_runtime::connection::Connection::begin(
             runtime.post.clone(),
             conn.op_rx,
             conn.op_tx,
