@@ -23,6 +23,7 @@ use crate::LumpId;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Error {
     NotFound,
+    DirectoryError,
     DirectoryTraversal,
     InvalidTarget,
     InvalidRequest,
