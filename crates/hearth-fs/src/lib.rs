@@ -35,12 +35,9 @@ impl RequestResponseProcess for FsPlugin {
         &'a mut self,
         request: &mut RequestInfo<'a, Request>,
     ) -> ResponseInfo<'a, Response> {
-        match self.handle_request(request).await {
-            Err(e) => e.into(),
-            s => ResponseInfo {
-                data: s,
-                caps: vec![],
-            },
+        ResponseInfo {
+            data: self.handle_request(request).await,
+            caps: vec![],
         }
     }
 }
@@ -61,10 +58,7 @@ impl FsPlugin {
         Self { root }
     }
 
-    async fn handle_request<'a>(
-        &'a mut self,
-        request: &mut RequestInfo<'a, Request>,
-    ) -> Result<Success, Error> {
+    async fn handle_request<'a>(&'a mut self, request: &mut RequestInfo<'a, Request>) -> Response {
         let target = PathBuf::try_from(&request.data.target).map_err(|_| Error::InvalidTarget)?;
 
         let mut path = self.root.to_path_buf();
