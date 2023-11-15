@@ -8,9 +8,9 @@ license = "AGPL-3.0-or-later"
 alacritty_terminal = "0.16"
 bytemuck.workspace = true
 glam.workspace = true
-hearth-core.workspace = true
 hearth-rend3.workspace = true
-hearth-types.workspace = true
+hearth-runtime.workspace = true
+hearth-schema.workspace = true
 mio-extras = "2"
 owned_ttf_parser = "0.19"
 

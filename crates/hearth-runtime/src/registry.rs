@@ -23,7 +23,7 @@ use std::{
 
 use async_trait::async_trait;
 use flue::{CapabilityHandle, Mailbox, Permissions, PostOffice, Table};
-use hearth_types::registry::*;
+use hearth_schema::registry::*;
 use tracing::warn;
 
 use crate::utils::{RequestInfo, RequestResponseProcess, ResponseInfo};

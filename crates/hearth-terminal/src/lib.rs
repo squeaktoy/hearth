@@ -19,7 +19,8 @@
 use std::sync::Arc;
 
 use draw::{TerminalDrawState, TerminalPipelines};
-use hearth_core::{
+use hearth_rend3::*;
+use hearth_runtime::{
     async_trait, cargo_process_metadata,
     flue::Permissions,
     process::ProcessMetadata,
@@ -30,8 +31,7 @@ use hearth_core::{
     },
     utils::*,
 };
-use hearth_rend3::*;
-use hearth_types::terminal::*;
+use hearth_schema::terminal::*;
 use terminal::{Terminal, TerminalConfig};
 use text::{FaceAtlas, FontSet};
 

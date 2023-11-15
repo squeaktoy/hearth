@@ -18,10 +18,10 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use hearth_core::{
+use hearth_runtime::{
     async_trait, cargo_process_metadata,
     flue::{OwnedCapability, Permissions, TableSignal},
-    hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo},
+    hearth_schema::{registry::RegistryRequest, wasm::WasmSpawnInfo},
     process::{Process, ProcessMetadata},
     runtime::{Plugin, Runtime, RuntimeBuilder},
     tokio::{spawn, sync::oneshot::Sender},

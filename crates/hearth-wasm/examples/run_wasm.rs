@@ -1,15 +1,15 @@
-use hearth_core::{
+use hearth_runtime::{
     cargo_process_metadata,
     flue::{Permissions, TableSignal},
     process::ProcessMetadata,
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
-use hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo};
+use hearth_schema::{registry::RegistryRequest, wasm::WasmSpawnInfo};
 use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    hearth_core::init_logging();
+    hearth_runtime::init_logging();
 
     let wasm_path = std::env::args()
         .nth(1)
@@ -18,8 +18,8 @@ async fn main() {
 
     let config = RuntimeConfig {};
 
-    let config_path = hearth_core::get_config_path();
-    let config_file = hearth_core::load_config(&config_path).unwrap();
+    let config_path = hearth_runtime::get_config_path();
+    let config_file = hearth_runtime::load_config(&config_path).unwrap();
     let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_wasm::WasmPlugin::default());
     let runtime = builder.run(config).await;
@@ -71,7 +71,7 @@ async fn main() {
         .await
         .unwrap();
 
-    hearth_core::wait_for_interrupt().await;
+    hearth_runtime::wait_for_interrupt().await;
 
     info!("Interrupt received; exiting runtime");
 }

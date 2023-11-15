@@ -5,7 +5,7 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
-hearth-core = { workspace = true }
 hearth-init = { workspace = true }
 hearth-ipc = { workspace = true }
+hearth-runtime = { workspace = true }
 tracing = { workspace = true }

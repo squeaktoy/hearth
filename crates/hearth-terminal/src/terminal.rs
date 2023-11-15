@@ -41,7 +41,7 @@ use alacritty_terminal::{
     Term,
 };
 use glam::{vec2, IVec2, Mat4, UVec2, Vec2};
-use hearth_types::terminal::TerminalState;
+use hearth_schema::terminal::TerminalState;
 use mio_extras::channel::Sender as MioSender;
 use owned_ttf_parser::AsFaceRef;
 

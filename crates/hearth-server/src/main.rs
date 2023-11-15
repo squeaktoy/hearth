@@ -21,11 +21,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use hearth_core::connection::Connection;
-use hearth_core::flue::{OwnedCapability, PostOffice};
-use hearth_core::runtime::Runtime;
-use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
 use hearth_network::auth::ServerAuthenticator;
+use hearth_runtime::connection::Connection;
+use hearth_runtime::flue::{OwnedCapability, PostOffice};
+use hearth_runtime::runtime::Runtime;
+use hearth_runtime::runtime::{RuntimeBuilder, RuntimeConfig};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 use tracing::{debug, error, info};
@@ -57,7 +57,7 @@ pub struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    hearth_core::init_logging();
+    hearth_runtime::init_logging();
 
     let authenticator = ServerAuthenticator::from_password(args.password.as_bytes()).unwrap();
     let authenticator = Arc::new(authenticator);
@@ -65,8 +65,8 @@ async fn main() {
     debug!("Initializing runtime");
     let config = RuntimeConfig {};
 
-    let config_path = args.config.unwrap_or_else(hearth_core::get_config_path);
-    let config_file = hearth_core::load_config(&config_path).unwrap();
+    let config_path = args.config.unwrap_or_else(hearth_runtime::get_config_path);
+    let config_file = hearth_runtime::load_config(&config_path).unwrap();
 
     let (network_root_tx, network_root_rx) = oneshot::channel();
     let mut init = hearth_init::InitPlugin::new(args.init);
@@ -87,7 +87,7 @@ async fn main() {
         info!("Server running in headless mode");
     }
 
-    hearth_core::wait_for_interrupt().await;
+    hearth_runtime::wait_for_interrupt().await;
 
     info!("Interrupt received; exiting server");
 }

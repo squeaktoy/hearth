@@ -24,7 +24,7 @@ use tracing_subscriber::prelude::*;
 
 pub use anyhow;
 pub use flue;
-pub use hearth_types;
+pub use hearth_schema;
 pub use tokio;
 pub use tracing;
 
