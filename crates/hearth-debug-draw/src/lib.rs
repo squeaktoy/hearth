@@ -35,7 +35,7 @@ use hearth_rend3::{
     wgpu::*,
     Node, Rend3Plugin, Routine, RoutineInfo,
 };
-use hearth_types::debug_draw::*;
+use hearth_schema::debug_draw::*;
 use itertools::Itertools;
 
 #[repr(C)]

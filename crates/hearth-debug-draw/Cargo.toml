@@ -10,5 +10,5 @@ flume = { workspace = true }
 glam = { workspace = true }
 hearth-core.workspace = true
 hearth-rend3.workspace = true
-hearth-types.workspace = true
+hearth-schema.workspace = true
 itertools = "0.11"
