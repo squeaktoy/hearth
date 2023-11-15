@@ -80,7 +80,6 @@ impl FsPlugin {
                             NotFound => Error::NotFound,
                             PermissionDenied => Error::PermissionDenied,
                             e => Error::Other(e.to_string()),
-                            
                         });
                     }
                 };
@@ -100,7 +99,6 @@ impl FsPlugin {
                             e => Error::Other(e.to_string()),
                         });
                     }
-                    
                 };
 
                 let dirs: Vec<_> = dirs
