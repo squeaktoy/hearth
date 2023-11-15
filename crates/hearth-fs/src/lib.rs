@@ -69,19 +69,20 @@ impl FsPlugin {
             }
         }
 
+        let to_response_error = |err: std::io::Error| -> Error {
+            use std::io::ErrorKind::*;
+            match err.kind() {
+                NotFound => Error::NotFound,
+                PermissionDenied => Error::PermissionDenied,
+                e => Error::Other(e.to_string()),
+            }
+        };
+
         match request.data.kind {
             RequestKind::Get => {
-                // let contents = read(path).map_err(|_| Error::NotFound)?;
                 let contents = match read(path) {
                     Ok(contents) => contents,
-                    Err(err) => {
-                        use std::io::ErrorKind::*;
-                        return Err(match err.kind() {
-                            NotFound => Error::NotFound,
-                            PermissionDenied => Error::PermissionDenied,
-                            e => Error::Other(e.to_string()),
-                        });
-                    }
+                    Err(e) => return Err(to_response_error(e)),
                 };
 
                 let lump = request.runtime.lump_store.add_lump(contents.into()).await;
@@ -91,14 +92,7 @@ impl FsPlugin {
             RequestKind::List => {
                 let dirs = match read_dir(path) {
                     Ok(dirs) => dirs,
-                    Err(err) => {
-                        use std::io::ErrorKind::*;
-                        return Err(match err.kind() {
-                            NotFound => Error::NotFound,
-                            PermissionDenied => Error::PermissionDenied,
-                            e => Error::Other(e.to_string()),
-                        });
-                    }
+                    Err(e) => return Err(to_response_error(e)),
                 };
 
                 let dirs: Vec<_> = dirs
