@@ -16,11 +16,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::path::PathBuf;
-
 use hearth_core::{
     async_trait, cargo_process_metadata, hearth_schema::fs::*, process::ProcessMetadata, utils::*,
 };
+use std::fs::{read, read_dir};
+use std::path::{Component, PathBuf};
 
 pub struct FsPlugin {
     root: PathBuf,
@@ -35,53 +35,8 @@ impl RequestResponseProcess for FsPlugin {
         &'a mut self,
         request: &mut RequestInfo<'a, Request>,
     ) -> ResponseInfo<'a, Response> {
-        let target = match PathBuf::try_from(&request.data.target) {
-            Ok(target) => target,
-            Err(_) => return Error::InvalidTarget.into(),
-        };
-
-        let mut path = self.root.to_path_buf();
-        for component in target.components() {
-            match component {
-                std::path::Component::Normal(normal) => path.push(normal),
-                _ => return Error::DirectoryTraversal.into(),
-            }
-        }
-
-        let success = match request.data.kind {
-            RequestKind::Get => {
-                let contents = match std::fs::read(path) {
-                    Ok(contents) => contents,
-                    Err(_) => todo!(),
-                };
-
-                let lump = request.runtime.lump_store.add_lump(contents.into()).await;
-
-                Success::Get(lump)
-            }
-            RequestKind::List => {
-                let dirs = match std::fs::read_dir(path) {
-                    Ok(dirs) => dirs,
-                    Err(_) => todo!(),
-                };
-
-                let dirs: Vec<_> = dirs
-                    .into_iter()
-                    .map(|dir| {
-                        let dir = dir.unwrap();
-
-                        FileInfo {
-                            name: dir.file_name().to_string_lossy().to_string(),
-                        }
-                    })
-                    .collect();
-
-                Success::List(dirs)
-            }
-        };
-
         ResponseInfo {
-            data: Ok(success),
+            data: self.handle_request(request).await,
             caps: vec![],
         }
     }
@@ -101,5 +56,58 @@ impl ServiceRunner for FsPlugin {
 impl FsPlugin {
     pub fn new(root: PathBuf) -> Self {
         Self { root }
+    }
+
+    async fn handle_request<'a>(&'a mut self, request: &mut RequestInfo<'a, Request>) -> Response {
+        let target = PathBuf::try_from(&request.data.target).map_err(|_| Error::InvalidTarget)?;
+
+        let mut path = self.root.to_path_buf();
+        for component in target.components() {
+            match component {
+                Component::Normal(normal) => path.push(normal),
+                _ => return Err(Error::DirectoryTraversal),
+            }
+        }
+
+        let to_response_error = |err: std::io::Error| -> Error {
+            use std::io::ErrorKind::*;
+            match err.kind() {
+                NotFound => Error::NotFound,
+                PermissionDenied => Error::PermissionDenied,
+                e => Error::Other(e.to_string()),
+            }
+        };
+
+        match request.data.kind {
+            RequestKind::Get => {
+                let contents = match read(path) {
+                    Ok(contents) => contents,
+                    Err(e) => return Err(to_response_error(e)),
+                };
+
+                let lump = request.runtime.lump_store.add_lump(contents.into()).await;
+
+                Ok(Success::Get(lump))
+            }
+            RequestKind::List => {
+                let dirs = match read_dir(path) {
+                    Ok(dirs) => dirs,
+                    Err(e) => return Err(to_response_error(e)),
+                };
+
+                let dirs: Vec<_> = dirs
+                    .into_iter()
+                    .map(|dir| {
+                        let dir = dir.unwrap();
+
+                        FileInfo {
+                            name: dir.file_name().to_string_lossy().to_string(),
+                        }
+                    })
+                    .collect();
+
+                Ok(Success::List(dirs))
+            }
+        }
     }
 }
