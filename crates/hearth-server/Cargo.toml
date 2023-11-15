@@ -6,11 +6,11 @@ license = "AGPL-3.0-or-later"
 
 [dependencies]
 clap = { version = "3.2", features = ["derive"] }
-hearth-core = { workspace = true }
 hearth-daemon = { workspace = true }
 hearth-init = { workspace = true }
 hearth-fs = { workspace = true }
 hearth-network = { workspace = true }
+hearth-runtime = { workspace = true }
 hearth-schema = { workspace = true }
 hearth-wasm = { workspace = true }
 serde_json = { workspace = true }
