@@ -1,17 +1,20 @@
 // Copyright (c) 2023 the Hearth contributors.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// This file is part of Hearth.
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// Hearth is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Hearth is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 use std::{
     sync::{
@@ -37,16 +40,13 @@ use alacritty_terminal::{
     tty::Pty,
     Term,
 };
-use glam::{vec2, IVec2, Mat4, Quat, UVec2, Vec2, Vec3};
+use glam::{vec2, IVec2, Mat4, UVec2, Vec2};
+use hearth_types::terminal::TerminalState;
 use mio_extras::channel::Sender as MioSender;
 use owned_ttf_parser::AsFaceRef;
-use wgpu::{
-    self, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, Buffer, BufferAddress,
-    BufferDescriptor, BufferUsages, Device, Queue,
-};
 
 use crate::{
-    gpu::{CameraUniform, DynamicMesh, GlyphVertex, SolidVertex},
+    draw::{GlyphVertex, SolidVertex, TerminalDrawState},
     text::{FaceAtlas, FontSet, FontStyle},
 };
 
@@ -90,102 +90,6 @@ impl TerminalConfig {
                     .expect("Couldn't get system shell: `%COMSPEC%` not set. "),
                 _ => todo!("OS {} is unrecognized", std::env::consts::OS),
             },
-        }
-    }
-}
-
-/// Dynamic terminal appearance and settings configuration.
-#[derive(Clone)]
-pub struct TerminalState {
-    pub position: Vec3,
-    pub orientation: Quat,
-    pub half_size: Vec2,
-    pub opacity: f32,
-    pub colors: Colors,
-    pub padding: Vec2,
-    pub units_per_em: f32,
-}
-
-impl Default for TerminalState {
-    fn default() -> Self {
-        use alacritty_terminal::ansi::NamedColor::*;
-        let mut colors = Colors::default();
-
-        let maps = [
-            (
-                Black,
-                Rgb {
-                    r: 16,
-                    g: 16,
-                    b: 16,
-                },
-            ),
-            (Red, Rgb { r: 255, g: 0, b: 0 }),
-            (Green, Rgb { r: 0, g: 255, b: 0 }),
-            (Blue, Rgb { r: 0, g: 0, b: 255 }),
-            (
-                Yellow,
-                Rgb {
-                    r: 255,
-                    g: 255,
-                    b: 0,
-                },
-            ),
-            (
-                Magenta,
-                Rgb {
-                    r: 255,
-                    g: 0,
-                    b: 255,
-                },
-            ),
-            (
-                Cyan,
-                Rgb {
-                    r: 0,
-                    g: 255,
-                    b: 255,
-                },
-            ),
-            (
-                White,
-                Rgb {
-                    r: 255,
-                    g: 255,
-                    b: 255,
-                },
-            ),
-        ];
-
-        for map in maps.iter() {
-            colors[map.0] = Some(map.1);
-        }
-
-        let dupes = [
-            (Background, Black),
-            (Foreground, White),
-            (BrightBlack, Black),
-            (BrightRed, Red),
-            (BrightGreen, Green),
-            (BrightYellow, Yellow),
-            (BrightBlue, Blue),
-            (BrightMagenta, Magenta),
-            (BrightCyan, Cyan),
-            (BrightWhite, White),
-        ];
-
-        for (dst, src) in dupes.iter() {
-            colors[*dst] = colors[*src];
-        }
-
-        Self {
-            position: Vec3::ZERO,
-            orientation: Quat::IDENTITY,
-            half_size: Vec2::ONE,
-            opacity: 1.0,
-            colors,
-            padding: Vec2::ZERO,
-            units_per_em: 0.04,
         }
     }
 }
@@ -339,6 +243,10 @@ impl Terminal {
         term
     }
 
+    pub fn get_fonts(&self) -> FontSet<Arc<FaceAtlas>> {
+        self.fonts.as_ref().map(|font| font.atlas.to_owned())
+    }
+
     pub fn update(&self, state: TerminalState) {
         let mut inner = self.inner.lock();
 
@@ -411,68 +319,27 @@ impl Terminal {
     fn on_event(&self, event: Event) {
         match event {
             Event::ColorRequest(index, format) => {
-                let color = self.inner.lock().state.colors[index].unwrap_or(Rgb {
-                    r: 0xff,
-                    g: 0xff,
-                    b: 0xff,
-                });
+                let color = self
+                    .inner
+                    .lock()
+                    .state
+                    .colors
+                    .get(&index)
+                    .map(|color| {
+                        let (_, r, g, b) = color.to_argb();
+                        Rgb { r, g, b }
+                    })
+                    .unwrap_or(Rgb {
+                        r: 0xff,
+                        g: 0xff,
+                        b: 0xff,
+                    });
 
                 self.send_input(&format(color));
             }
             Event::PtyWrite(text) => self.send_input(&text),
             Event::Exit => self.should_quit.store(true, Ordering::Relaxed),
             _ => {}
-        }
-    }
-}
-
-/// A ready-to-render terminal state.
-pub struct TerminalDrawState {
-    pub device: Arc<Device>,
-    pub queue: Arc<Queue>,
-    pub model: Mat4,
-    pub camera_buffer: Buffer,
-    pub camera_bind_group: BindGroup,
-    pub bg_mesh: DynamicMesh<SolidVertex>,
-    pub glyph_meshes: FontSet<DynamicMesh<GlyphVertex>>,
-    pub overlay_mesh: DynamicMesh<SolidVertex>,
-}
-
-impl TerminalDrawState {
-    pub fn new(device: Arc<Device>, queue: Arc<Queue>, camera_bgl: &BindGroupLayout) -> Self {
-        let camera_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("Alacritty terminal camera buffer"),
-            size: std::mem::size_of::<CameraUniform>() as BufferAddress,
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("Alacritty terminal camera bind group"),
-            layout: camera_bgl,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-        });
-
-        Self {
-            model: Mat4::IDENTITY,
-            camera_buffer,
-            camera_bind_group,
-            bg_mesh: DynamicMesh::new(&device, Some("Alacritty background mesh".into())),
-            glyph_meshes: FontSet {
-                regular: DynamicMesh::new(&device, Some("Alacritty regular glyph mesh".into())),
-                italic: DynamicMesh::new(&device, Some("Alacritty italic glyph mesh".into())),
-                bold: DynamicMesh::new(&device, Some("Alacritty bold glyph mesh".into())),
-                bold_italic: DynamicMesh::new(
-                    &device,
-                    Some("Alacritty bold italic glyph mesh".into()),
-                ),
-            },
-            overlay_mesh: DynamicMesh::new(&device, Some("Alacritty overlay mesh".into())),
-            device,
-            queue,
         }
     }
 }
@@ -486,6 +353,7 @@ pub struct TerminalCanvas {
     overlay_indices: Vec<u32>,
     glyphs: Vec<(Vec2, FontStyle, u16, u32)>,
     state: TerminalState,
+    colors: Colors,
     grid_size: UVec2,
     cell_size: Vec2,
     font_baselines: FontSet<f32>,
@@ -499,6 +367,13 @@ impl TerminalCanvas {
         cell_size: Vec2,
         font_baselines: FontSet<f32>,
     ) -> Self {
+        let mut colors = Colors::default();
+
+        for (index, color) in state.colors.iter() {
+            let (_a, r, g, b) = color.to_argb();
+            colors[*index] = Some(Rgb { r, g, b });
+        }
+
         Self {
             fonts,
             bg_vertices: Vec::new(),
@@ -507,6 +382,7 @@ impl TerminalCanvas {
             overlay_indices: Vec::new(),
             glyphs: Vec::new(),
             state,
+            colors,
             grid_size,
             cell_size,
             font_baselines,
@@ -518,7 +394,7 @@ impl TerminalCanvas {
 
         for index in 0..COUNT {
             if let Some(color) = content.colors[index] {
-                self.state.colors[index] = Some(color);
+                self.colors[index] = Some(color);
             }
         }
 
@@ -752,14 +628,14 @@ impl TerminalCanvas {
 
     pub fn color_to_rgb(&self, color: Color) -> Rgb {
         match color {
-            Color::Named(name) => self.state.colors[name].unwrap_or(Rgb {
+            Color::Named(name) => self.colors[name].unwrap_or(Rgb {
                 r: 0xff,
                 g: 0x00,
                 b: 0xff,
             }),
             Color::Spec(rgb) => rgb,
             Color::Indexed(index) => {
-                if let Some(color) = self.state.colors[index as usize] {
+                if let Some(color) = self.colors[index as usize] {
                     color
                 } else if let Some(gray) = index.checked_sub(232) {
                     let value = gray * 10 + 8;

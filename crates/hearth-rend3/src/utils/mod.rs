@@ -1,86 +1,25 @@
 // Copyright (c) 2023 the Hearth contributors.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// This file is part of Hearth.
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// Hearth is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Hearth is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 use std::marker::PhantomData;
 
-use bytemuck::{Pod, Zeroable};
+use bytemuck::Pod;
 use wgpu::{util::DeviceExt, *};
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct CameraUniform {
-    pub mvp: glam::Mat4,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct SolidVertex {
-    pub position: glam::Vec2,
-    pub color: u32,
-}
-
-impl SolidVertex {
-    pub const LAYOUT: VertexBufferLayout<'static> = VertexBufferLayout {
-        array_stride: std::mem::size_of::<Self>() as BufferAddress,
-        step_mode: VertexStepMode::Vertex,
-        attributes: &[
-            VertexAttribute {
-                offset: 0,
-                format: VertexFormat::Float32x2,
-                shader_location: 0,
-            },
-            VertexAttribute {
-                offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
-                format: VertexFormat::Unorm8x4,
-                shader_location: 1,
-            },
-        ],
-    };
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct GlyphVertex {
-    pub position: glam::Vec2,
-    pub tex_coords: glam::Vec2,
-    pub color: u32,
-}
-
-impl GlyphVertex {
-    pub const LAYOUT: VertexBufferLayout<'static> = VertexBufferLayout {
-        array_stride: std::mem::size_of::<Self>() as BufferAddress,
-        step_mode: VertexStepMode::Vertex,
-        attributes: &[
-            VertexAttribute {
-                offset: 0,
-                format: VertexFormat::Float32x2,
-                shader_location: 0,
-            },
-            VertexAttribute {
-                offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
-                format: VertexFormat::Float32x2,
-                shader_location: 1,
-            },
-            VertexAttribute {
-                offset: std::mem::size_of::<[f32; 4]>() as BufferAddress,
-                format: VertexFormat::Unorm8x4,
-                shader_location: 2,
-            },
-        ],
-    };
-}
 
 /// A growable array of GPU memory.
 pub struct GpuVector<T> {

@@ -34,6 +34,8 @@ pub use rend3;
 pub use rend3_routine;
 pub use wgpu;
 
+pub mod utils;
+
 /// The info about a frame passed to [Routine::draw].
 pub struct RoutineInfo<'a, 'graph> {
     pub state: &'a BaseRenderGraphIntermediateState,

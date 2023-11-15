@@ -17,16 +17,21 @@ use std::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 
 use glam::Vec2;
-use rend3::types::TextureHandle;
-use rend3_alacritty::terminal::{Terminal, TerminalConfig, TerminalState};
-use rend3_alacritty::text::{FaceAtlas, FontSet};
-use rend3_alacritty::TerminalStore;
-use rend3_routine::base::BaseRenderGraphIntermediateState;
+use hearth_rend3::rend3::graph::RenderGraph;
+use hearth_rend3::rend3::util::output::OutputFrame;
+use hearth_rend3::rend3::{types::*, Renderer};
+use hearth_rend3::rend3_routine::base::{BaseRenderGraph, BaseRenderGraphIntermediateState};
+use hearth_rend3::wgpu::{self, TextureFormat};
+use hearth_terminal::draw::{TerminalDrawState, TerminalPipelines};
+use hearth_terminal::terminal::{Terminal, TerminalConfig};
+use hearth_terminal::text::{FaceAtlas, FontSet};
+use hearth_types::terminal::TerminalState;
+use hearth_types::Color;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::ControlFlow;
 
-const SAMPLE_COUNT: rend3::types::SampleCount = rend3::types::SampleCount::One;
+const SAMPLE_COUNT: SampleCount = SampleCount::One;
 
 fn load_skybox_image(data: &mut Vec<u8>, image: &[u8]) {
     let decoded = image::load_from_memory(image).unwrap().into_rgba8();
@@ -34,7 +39,8 @@ fn load_skybox_image(data: &mut Vec<u8>, image: &[u8]) {
 }
 
 pub struct DemoInner {
-    store: TerminalStore,
+    pipelines: TerminalPipelines,
+    draw_state: TerminalDrawState,
     terminal: Arc<Terminal>,
     skybox: TextureHandle,
     orbit_pitch: f32,
@@ -47,10 +53,7 @@ pub struct DemoInner {
 }
 
 impl DemoInner {
-    pub fn new(
-        renderer: &Arc<rend3::Renderer>,
-        surface_format: rend3::types::TextureFormat,
-    ) -> Self {
+    pub fn new(renderer: &Arc<Renderer>, surface_format: TextureFormat) -> Self {
         let ttf_srcs = FontSet {
             regular: include_bytes!("../../../resources/mononoki/mononoki-Regular.ttf").to_vec(),
             italic: include_bytes!("../../../resources/mononoki/mononoki-Italic.ttf").to_vec(),
@@ -65,20 +68,49 @@ impl DemoInner {
             Arc::new(face_atlas)
         });
 
+        let c = Color::from_rgb;
+
+        let colors = FromIterator::from_iter([
+            (0x0, c(0, 0, 0)),         // black
+            (0x1, c(187, 0, 0)),       // red
+            (0x2, c(0, 187, 0)),       // green
+            (0x3, c(187, 187, 0)),     // yellow
+            (0x4, c(0, 0, 187)),       // blue
+            (0x5, c(187, 0, 187)),     // magenta
+            (0x6, c(0, 187, 187)),     // cyan
+            (0x7, c(187, 187, 187)),   // white
+            (0x8, c(85, 85, 85)),      // bright black
+            (0x9, c(255, 85, 85)),     // bright red
+            (0xA, c(85, 255, 85)),     // bright green
+            (0xB, c(255, 255, 85)),    // bright yellow
+            (0xC, c(85, 85, 255)),     // bright blue
+            (0xD, c(255, 85, 255)),    // bright magenta
+            (0xE, c(85, 255, 255)),    // bright cyan
+            (0xF, c(255, 255, 255)),   // bright white
+            (0x100, c(255, 255, 255)), // foreground
+            (0x101, c(0, 0, 0)),       // background
+        ]);
+
         let state = TerminalState {
             position: glam::Vec3::ZERO,
             orientation: glam::Quat::IDENTITY,
             half_size: Vec2::new(1.2, 0.9),
             padding: Vec2::splat(0.2),
-            opacity: 0.8,
-            ..Default::default()
+            opacity: 0.95,
+            units_per_em: 0.04,
+            colors,
         };
+
+        let pipelines = TerminalPipelines::new(
+            renderer.device.clone(),
+            renderer.queue.clone(),
+            surface_format,
+        );
 
         let command = None; // autoselect shell
         let config = TerminalConfig { fonts, command };
         let terminal = Terminal::new(config.clone(), state.clone());
-        let mut store = TerminalStore::new(config, renderer, surface_format);
-        store.insert_terminal(&terminal);
+        let draw_state = TerminalDrawState::new(&pipelines, terminal.get_fonts());
 
         // load skybox
         let mut data = Vec::new();
@@ -89,18 +121,19 @@ impl DemoInner {
         load_skybox_image(&mut data, include_bytes!("skybox/front.jpg"));
         load_skybox_image(&mut data, include_bytes!("skybox/back.jpg"));
 
-        let skybox = renderer.add_texture_cube(rend3::types::Texture {
+        let skybox = renderer.add_texture_cube(Texture {
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
             size: (2048, 2048).into(),
             data,
             label: Some("skybox".into()),
-            mip_count: rend3::types::MipmapCount::ONE,
-            mip_source: rend3::types::MipmapSource::Uploaded,
+            mip_count: MipmapCount::ONE,
+            mip_source: MipmapSource::Uploaded,
         });
 
         Self {
+            pipelines,
+            draw_state,
             terminal,
-            store,
             skybox,
             orbit_pitch: 0.0,
             orbit_yaw: 0.0,
@@ -162,18 +195,18 @@ pub struct Demo {
 }
 
 impl rend3_framework::App for Demo {
-    const HANDEDNESS: rend3::types::Handedness = rend3::types::Handedness::Right;
+    const HANDEDNESS: Handedness = Handedness::Right;
 
-    fn sample_count(&self) -> rend3::types::SampleCount {
+    fn sample_count(&self) -> SampleCount {
         SAMPLE_COUNT
     }
 
     fn setup(
         &mut self,
         _window: &winit::window::Window,
-        renderer: &Arc<rend3::Renderer>,
+        renderer: &Arc<Renderer>,
         routines: &Arc<rend3_framework::DefaultRoutines>,
-        surface_format: rend3::types::TextureFormat,
+        surface_format: TextureFormat,
     ) {
         let inner = DemoInner::new(renderer, surface_format);
 
@@ -188,10 +221,10 @@ impl rend3_framework::App for Demo {
     fn handle_event(
         &mut self,
         window: &winit::window::Window,
-        renderer: &Arc<rend3::Renderer>,
+        renderer: &Arc<Renderer>,
         routines: &Arc<rend3_framework::DefaultRoutines>,
-        base_rendergraph: &rend3_routine::base::BaseRenderGraph,
-        surface: Option<&Arc<rend3::types::Surface>>,
+        base_rendergraph: &BaseRenderGraph,
+        surface: Option<&Arc<Surface>>,
         resolution: glam::UVec2,
         event: rend3_framework::Event<'_, ()>,
         control_flow: impl FnOnce(winit::event_loop::ControlFlow),
@@ -279,8 +312,8 @@ impl rend3_framework::App for Demo {
                     * glam::Quat::from_rotation_x(inner.orbit_pitch)
                     * (glam::Vec3::Z * inner.orbit_distance);
 
-                renderer.set_camera_data(rend3::types::Camera {
-                    projection: rend3::types::CameraProjection::Perspective {
+                renderer.set_camera_data(Camera {
+                    projection: CameraProjection::Perspective {
                         vfov: 60.0,
                         near: 0.1,
                     },
@@ -291,11 +324,11 @@ impl rend3_framework::App for Demo {
                     ),
                 });
 
-                let frame = rend3::util::output::OutputFrame::Surface {
+                let frame = OutputFrame::Surface {
                     surface: Arc::clone(surface.unwrap()),
                 };
 
-                let routine = inner.store.create_routine();
+                inner.terminal.update_draw_state(&mut inner.draw_state);
 
                 let pbr_routine = rend3_framework::lock(&routines.pbr);
                 let mut skybox_routine = rend3_framework::lock(&routines.skybox);
@@ -304,7 +337,7 @@ impl rend3_framework::App for Demo {
                 let (cmd_bufs, ready) = renderer.ready();
                 skybox_routine.ready(renderer);
 
-                let mut graph = rend3::graph::RenderGraph::new();
+                let mut graph = RenderGraph::new();
 
                 base_rendergraph.add_to_graph(
                     &mut graph,
@@ -324,9 +357,11 @@ impl rend3_framework::App for Demo {
                     SAMPLE_COUNT,
                 );
 
-                let depth = state.depth;
+                let draws = &[&inner.draw_state];
                 let output = graph.add_surface_texture();
-                routine.add_to_graph(&mut graph, output, depth);
+                inner
+                    .pipelines
+                    .add_to_graph(draws, &mut graph, output, state.depth);
 
                 graph.execute(renderer, frame, cmd_bufs, &ready);
             }
@@ -339,6 +374,6 @@ fn main() {
     let app = Demo::default();
     rend3_framework::start(
         app,
-        winit::window::WindowBuilder::new().with_title("rend3-alacritty demo"),
+        winit::window::WindowBuilder::new().with_title("Hearth Terminal Emulator Demo"),
     );
 }
