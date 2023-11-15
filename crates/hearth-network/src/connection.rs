@@ -17,7 +17,7 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 use flume::{unbounded, Receiver, Sender};
-use hearth_types::protocol::CapOperation;
+use hearth_schema::protocol::CapOperation;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub struct Connection {
