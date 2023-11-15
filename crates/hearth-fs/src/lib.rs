@@ -71,16 +71,37 @@ impl FsPlugin {
 
         match request.data.kind {
             RequestKind::Get => {
-                let contents = read(path).map_err(|_| Error::NotFound)?;
+                // let contents = read(path).map_err(|_| Error::NotFound)?;
+                let contents = match read(path) {
+                    Ok(contents) => contents,
+                    Err(err) => {
+                        use std::io::ErrorKind::*;
+                        return Err(match err.kind() {
+                            NotFound => Error::NotFound,
+                            PermissionDenied => Error::PermissionDenied,
+                            e => Error::Other(e.to_string()),
+                            
+                        });
+                    }
+                };
 
                 let lump = request.runtime.lump_store.add_lump(contents.into()).await;
 
                 Ok(Success::Get(lump))
             }
             RequestKind::List => {
-                // read_dir can have multiple error differnt types of errors and
-                // im not sure of a good way to handle individual each one.
-                let dirs = read_dir(path).map_err(|_| Error::DirectoryError)?;
+                let dirs = match read_dir(path) {
+                    Ok(dirs) => dirs,
+                    Err(err) => {
+                        use std::io::ErrorKind::*;
+                        return Err(match err.kind() {
+                            NotFound => Error::NotFound,
+                            PermissionDenied => Error::PermissionDenied,
+                            e => Error::Other(e.to_string()),
+                        });
+                    }
+                    
+                };
 
                 let dirs: Vec<_> = dirs
                     .into_iter()
