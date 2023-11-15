@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use hearth_core::{
+use hearth_runtime::{
     async_trait, cargo_process_metadata, hearth_schema::fs::*, process::ProcessMetadata, utils::*,
 };
 use std::fs::{read, read_dir};
