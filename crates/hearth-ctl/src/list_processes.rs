@@ -18,7 +18,7 @@
 
 use clap::Parser;
 use hearth_rpc::*;
-use hearth_types::PeerId;
+use hearth_schema::PeerId;
 
 use crate::{get_peer_list, hash_map_to_ordered_vec, CommandResult, PeerContext};
 
