@@ -17,7 +17,7 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 use hearth_core::{
-    async_trait, cargo_process_metadata, hearth_types::fs::*, process::ProcessMetadata, utils::*,
+    async_trait, cargo_process_metadata, hearth_schema::fs::*, process::ProcessMetadata, utils::*,
 };
 use std::fs::{read, read_dir};
 use std::path::{Component, PathBuf};

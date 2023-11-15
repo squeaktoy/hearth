@@ -11,7 +11,7 @@ font-mud = { path = "../font-mud" }
 glam.workspace = true
 hearth-core.workspace = true
 hearth-rend3.workspace = true
-hearth-types.workspace = true
+hearth-schema.workspace = true
 mio-extras = "2"
 owned_ttf_parser = "0.19"
 

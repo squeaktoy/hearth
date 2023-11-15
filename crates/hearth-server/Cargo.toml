@@ -11,7 +11,7 @@ hearth-daemon = { workspace = true }
 hearth-init = { workspace = true }
 hearth-fs = { workspace = true }
 hearth-network = { workspace = true }
-hearth-types = { workspace = true }
+hearth-schema = { workspace = true }
 hearth-wasm = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1.24", features = ["full"] }

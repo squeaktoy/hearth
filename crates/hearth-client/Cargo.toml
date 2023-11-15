@@ -15,7 +15,6 @@ hearth-init = { workspace = true }
 hearth-network = { workspace = true }
 hearth-rend3 = { workspace = true }
 hearth-terminal = { workspace = true }
-hearth-types = { workspace = true }
 hearth-wasm = { workspace = true }
 tokio = { version = "1.24", features = ["full"] }
 tracing = { workspace = true }

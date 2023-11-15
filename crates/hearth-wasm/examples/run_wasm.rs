@@ -4,7 +4,7 @@ use hearth_core::{
     process::ProcessMetadata,
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
-use hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo};
+use hearth_schema::{registry::RegistryRequest, wasm::WasmSpawnInfo};
 use tracing::info;
 
 #[tokio::main]

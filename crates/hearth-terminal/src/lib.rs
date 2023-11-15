@@ -31,7 +31,7 @@ use hearth_core::{
     utils::*,
 };
 use hearth_rend3::*;
-use hearth_types::terminal::*;
+use hearth_schema::terminal::*;
 use terminal::{Terminal, TerminalConfig};
 use text::{FaceAtlas, FontSet};
 

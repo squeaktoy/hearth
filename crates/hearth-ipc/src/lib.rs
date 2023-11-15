@@ -19,7 +19,7 @@
 use std::path::PathBuf;
 
 use flume::{unbounded, Receiver, Sender};
-use hearth_types::protocol::CapOperation;
+use hearth_schema::protocol::CapOperation;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::UnixStream,

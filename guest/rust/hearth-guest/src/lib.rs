@@ -24,7 +24,7 @@ use std::{borrow::Borrow, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
 
-pub use hearth_types::*;
+pub use hearth_schema::*;
 
 /// Internal helper function to turn a string into a pointer and length.
 fn abi_string(str: &str) -> (u32, u32) {

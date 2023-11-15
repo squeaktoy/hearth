@@ -27,7 +27,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use flue::{CapabilityRef, Mailbox, MailboxGroup, OwnedCapability, PostOffice, Table};
 use flume::{Receiver, Sender};
-use hearth_types::protocol::{CapOperation, LocalCapOperation, RemoteCapOperation};
+use hearth_schema::protocol::{CapOperation, LocalCapOperation, RemoteCapOperation};
 use ouroboros::self_referencing;
 use parking_lot::Mutex;
 use tokio::sync::oneshot;
@@ -104,7 +104,7 @@ impl Connection {
                 // cap needs to be exported
                 let cap = table.wrap_handle(handle).unwrap();
                 let perms = cap.get_permissions().bits();
-                let perms = hearth_types::Permissions::from_bits_retain(perms);
+                let perms = hearth_schema::Permissions::from_bits_retain(perms);
                 let op = LocalCapOperation::DeclareCap { id, perms };
                 let revoked = false;
                 let export = Export { cap, revoked };
