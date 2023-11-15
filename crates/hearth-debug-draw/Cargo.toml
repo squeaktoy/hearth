@@ -8,7 +8,7 @@ license = "AGPL-3.0-or-later"
 bytemuck = { workspace = true }
 flume = { workspace = true }
 glam = { workspace = true }
-hearth-core.workspace = true
 hearth-rend3.workspace = true
+hearth-runtime.workspace = true
 hearth-schema.workspace = true
 itertools = "0.11"

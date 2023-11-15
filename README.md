@@ -138,8 +138,8 @@ Hearth's codebase is composed of a single Rust workspace divided into many
 crates, each with a dedicated purpose. Here are a few specific, important crates
 to be aware of:
 
-- **hearth-core**: a common library that provides the APIs for plugins, asset
-    loading, the lump store, and runtime building. Because the `hearth-core`
+- **hearth-runtime**: a common library that provides the APIs for plugins, asset
+    loading, the lump store, and runtime building. Because the `hearth-runtime`
     API is essential to most Hearth functionality, most crates in the Hearth
     codebase depend on it.
 - **hearth-schema**: a schema crate that defines the guest-to-host message

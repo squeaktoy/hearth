@@ -18,15 +18,17 @@
 
 use std::sync::Arc;
 
-use hearth_core::anyhow::{anyhow, bail, Context, Result};
-use hearth_core::asset::AssetLoader;
-use hearth_core::flue::{CapabilityHandle, Mailbox, MailboxGroup, Permissions, Table, TableSignal};
-use hearth_core::lump::{bytes::Bytes, LumpStoreImpl};
-use hearth_core::process::{Process, ProcessLogEvent, ProcessMetadata};
-use hearth_core::runtime::{Plugin, Runtime, RuntimeBuilder};
-use hearth_core::{async_trait, hearth_schema};
-use hearth_core::{cargo_process_metadata, tokio, utils::*};
 use hearth_macros::impl_wasm_linker;
+use hearth_runtime::anyhow::{anyhow, bail, Context, Result};
+use hearth_runtime::asset::AssetLoader;
+use hearth_runtime::flue::{
+    CapabilityHandle, Mailbox, MailboxGroup, Permissions, Table, TableSignal,
+};
+use hearth_runtime::lump::{bytes::Bytes, LumpStoreImpl};
+use hearth_runtime::process::{Process, ProcessLogEvent, ProcessMetadata};
+use hearth_runtime::runtime::{Plugin, Runtime, RuntimeBuilder};
+use hearth_runtime::{async_trait, hearth_schema};
+use hearth_runtime::{cargo_process_metadata, tokio, utils::*};
 use hearth_schema::wasm::WasmSpawnInfo;
 use hearth_schema::{LumpId, SignalKind};
 use slab::Slab;

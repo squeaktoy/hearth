@@ -18,7 +18,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use hearth_core::{
+use hearth_runtime::{
     async_trait, cargo_process_metadata,
     flue::{OwnedCapability, Permissions, TableSignal},
     hearth_schema::{registry::RegistryRequest, wasm::WasmSpawnInfo},
