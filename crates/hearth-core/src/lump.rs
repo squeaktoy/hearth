@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 
 use bytes::{Buf, Bytes};
-use hearth_types::*;
+use hearth_schema::*;
 use tokio::sync::RwLock;
 use tracing::debug;
 

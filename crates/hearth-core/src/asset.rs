@@ -23,7 +23,7 @@ use std::sync::Arc;
 use crate::lump::LumpStoreImpl;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use hearth_types::LumpId;
+use hearth_schema::LumpId;
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error};
 

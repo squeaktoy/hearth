@@ -22,7 +22,7 @@ use std::sync::{atomic::AtomicUsize, Arc};
 
 use flue::{Mailbox, MailboxGroup, PostOffice, Table};
 use flume::Sender;
-use hearth_types::ProcessLogLevel;
+use hearth_schema::ProcessLogLevel;
 use ouroboros::self_referencing;
 use tracing::debug;
 
