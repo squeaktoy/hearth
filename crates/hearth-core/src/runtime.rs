@@ -107,6 +107,11 @@ impl RuntimeBuilder {
         }
     }
 
+    /// Gets a handle to the post office that this runtime will be using.
+    pub fn get_post(&self) -> Arc<PostOffice> {
+        self.post.clone()
+    }
+
     /// Loads a configuration value from a table in the config file.
     pub fn load_config<T: serde::de::DeserializeOwned>(&self, table: &str) -> anyhow::Result<T> {
         let value = self
