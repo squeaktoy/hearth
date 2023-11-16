@@ -73,15 +73,15 @@ to name them. Examples: `peer-api`, `nonzero-iv`, `lump-asset-loading`.
 When writing a commit message, issue title, or pull request title, we prefix
 the summary of the changes involved with the location of those changes. More
 often than not the changes are in source code, so the location is a crate, such
-as `font-mud` or `hearth-runtime`. Because so many crates begin with `hearth-`,
-we omit them in locations. When the changes are in a Markdown document in the
-repository root the location is the lowercase name of that file. If the changes
-occur in more than one location, omit the location and write only the summary,
-beginning with a capital letter.
+as `hearth-runtime`. Because all crates begin with with `hearth-`, we omit
+that prefix in both their directory and our commit messages. When the changes
+are in a Markdown document in the repository root the location is the lowercase
+name of that file. If the changes occur in more than one location, omit the
+location and write only the summary, beginning with a capital letter.
 
 Example titles:
-- commit in `hearth-runtime`: `runtime: add ProcessFactoryImpl`
-- commit in `hearth-client`: `client: draw debug draw before terminal`
+- commit in `runtime`: `runtime: add ProcessFactoryImpl`
+- commit in `client`: `client: draw debug draw before terminal`
 - change in `README.md`: `readme: break out design document into separate file`
 - issue for changes in more than one location: `License everything`
 
