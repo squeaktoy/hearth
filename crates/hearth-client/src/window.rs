@@ -19,10 +19,10 @@
 use std::sync::Arc;
 
 use glam::Mat4;
-use hearth_core::flue::CapabilityRef;
+use hearth_core::flue::{CapabilityRef, Permissions, PostOffice};
 use hearth_core::process::ProcessMetadata;
 use hearth_core::runtime::{Plugin, RuntimeBuilder};
-use hearth_core::utils::{MessageInfo, ServiceRunner, SinkProcess};
+use hearth_core::utils::{MessageInfo, PubSub, ServiceRunner, SinkProcess};
 use hearth_core::{async_trait, cargo_process_metadata};
 use hearth_rend3::rend3::types::{Camera, CameraProjection};
 use hearth_rend3::{rend3, wgpu, FrameRequest, Rend3Plugin};
@@ -31,7 +31,7 @@ use hearth_types::window::*;
 use rend3::InstanceAdapterDevice;
 use tokio::sync::{mpsc, oneshot};
 use tracing::warn;
-use winit::event::{Event, WindowEvent};
+use winit::event::{Event, WindowEvent as WinitWindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
 use winit::window::{Window as WinitWindow, WindowBuilder};
 
@@ -108,12 +108,18 @@ struct Window {
     /// This window's current camera in the rend3 world..
     camera: Camera,
 
+    /// This window's event pub-sub.
+    pubsub: Arc<PubSub<WindowEvent>>,
+
     /// A dummy handle to keep a hard-coded directional light alive in the scene.
     _directional_handle: rend3::types::ResourceHandle<rend3::types::DirectionalLight>,
 }
 
 impl Window {
-    async fn new(event_loop: &EventLoop<WindowRxMessage>) -> (Self, WindowOffer) {
+    async fn new(
+        event_loop: &EventLoop<WindowRxMessage>,
+        post: Arc<PostOffice>,
+    ) -> (Self, WindowOffer) {
         let window = WindowBuilder::new()
             .with_title("Hearth Client")
             .with_inner_size(winit::dpi::LogicalSize::new(128.0, 128.0))
@@ -140,6 +146,8 @@ impl Window {
         let renderer = rend3_plugin.renderer.to_owned();
         let frame_request_tx = rend3_plugin.frame_request_tx.clone();
 
+        let pubsub = Arc::new(PubSub::new(post));
+
         let directional_handle = renderer.add_directional_light(rend3::types::DirectionalLight {
             color: glam::Vec3::ONE,
             intensity: 10.0,
@@ -155,11 +163,13 @@ impl Window {
             config,
             camera: Camera::default(),
             frame_request_tx,
+            pubsub: pubsub.clone(),
             _directional_handle: directional_handle,
         };
 
         let window_plugin = WindowPlugin {
             incoming: event_loop.create_proxy(),
+            pubsub,
         };
 
         let offer = WindowOffer {
@@ -225,9 +235,9 @@ pub struct WindowCtx {
 }
 
 impl WindowCtx {
-    pub async fn new() -> (Self, WindowOffer) {
+    pub async fn new(post: Arc<PostOffice>) -> (Self, WindowOffer) {
         let event_loop = EventLoopBuilder::with_user_event().build();
-        let (window, offer) = Window::new(&event_loop).await;
+        let (window, offer) = Window::new(&event_loop, post).await;
         (Self { event_loop, window }, offer)
     }
 
@@ -242,13 +252,13 @@ impl WindowCtx {
 
             match event {
                 Event::WindowEvent { ref event, .. } => match event {
-                    WindowEvent::Resized(size) => {
+                    WinitWindowEvent::Resized(size) => {
                         window.on_resize(*size);
                     }
-                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                    WinitWindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                         window.on_resize(**new_inner_size);
                     }
-                    WindowEvent::CloseRequested => {
+                    WinitWindowEvent::CloseRequested => {
                         *control_flow = ControlFlow::Exit;
                         window.outgoing_tx.send(WindowTxMessage::Quit).unwrap();
                     }
@@ -287,12 +297,14 @@ impl WindowCtx {
 /// A plugin that provides native window access to guests.
 pub struct WindowPlugin {
     incoming: EventLoopProxy<WindowRxMessage>,
+    pubsub: Arc<PubSub<WindowEvent>>,
 }
 
 impl Plugin for WindowPlugin {
     fn finalize(self, builder: &mut RuntimeBuilder) {
         builder.add_plugin(WindowService {
             incoming: self.incoming,
+            pubsub: self.pubsub,
         });
     }
 }
@@ -300,6 +312,7 @@ impl Plugin for WindowPlugin {
 /// A service that implements the windowing protocol using winit.
 pub struct WindowService {
     incoming: EventLoopProxy<WindowRxMessage>,
+    pubsub: Arc<PubSub<WindowEvent>>,
 }
 
 #[async_trait]
@@ -313,7 +326,20 @@ impl SinkProcess for WindowService {
 
         use WindowCommand::*;
         match message.data {
-            Subscribe => todo!(), // pubsub subscribe goes here
+            Subscribe => {
+                let Some(sub) = message.caps.get(0) else {
+                    warn!("subscribe messsage is missing capability");
+                    return;
+                };
+
+                if !sub.get_permissions().contains(Permissions::MONITOR) {
+                    warn!("subscriber is missing monitor perm");
+                    return;
+                }
+
+                sub.monitor(message.process.borrow_parent());
+                self.pubsub.subscribe(sub.clone());
+            }
             SetTitle(title) => send(WindowRxMessage::SetTitle(title)),
             SetCursorGrab(grab) => send(WindowRxMessage::SetCursorGrab(grab)),
             SetCursorVisible(visible) => send(WindowRxMessage::SetCursorVisible(visible)),
@@ -321,8 +347,8 @@ impl SinkProcess for WindowService {
         }
     }
 
-    async fn on_down<'a>(&'a mut self, _cap: CapabilityRef<'a>) {
-        // pubsub unsubscribe goes here
+    async fn on_down<'a>(&'a mut self, cap: CapabilityRef<'a>) {
+        self.pubsub.unsubscribe(cap);
     }
 }
 
