@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use std::collections::HashMap;
+
 use hearth_guest::{terminal::*, *};
 
 /// Type alias for the native terminal factory service.
@@ -68,28 +70,6 @@ fn spawn_terminal(
     y: i32,
     palette: Palette,
 ) -> Capability {
-    // create hashmap of 8-bit colors from palette
-    let colors = FromIterator::from_iter([
-        (0x0, palette.black),   // black
-        (0x1, palette.red),     // red
-        (0x2, palette.green),   // green
-        (0x3, palette.yellow),  // yellow
-        (0x4, palette.blue),    // blue
-        (0x5, palette.magenta), // magenta
-        (0x6, palette.cyan),    // cyan
-        (0x7, palette.white),   // white
-        (0x8, palette.black),   // bright black
-        (0x9, palette.red),     // bright red
-        (0xA, palette.green),   // bright green
-        (0xB, palette.yellow),  // bright yellow
-        (0xC, palette.blue),    // bright blue
-        (0xD, palette.magenta), // bright magenta
-        (0xE, palette.cyan),    // bright cyan
-        (0xF, palette.white),   // bright white
-        (0x100, palette.fg),    // foreground
-        (0x101, palette.bg),    // background
-    ]);
-
     // spawn a terminal
     let request = FactoryRequest::CreateTerminal(TerminalState {
         // reasonable translation on a grid
@@ -104,7 +84,7 @@ fn spawn_terminal(
         // 6cm per glyph em
         units_per_em: 0.06,
         // given palette
-        colors,
+        colors: palette.to_ansi(),
     });
 
     // send the spawn request and receive the response and the new terminal
@@ -139,6 +119,30 @@ fn c(rgb: u32) -> Color {
 }
 
 impl Palette {
+    /// Convert a palette into a standard terminal color map.
+    pub fn to_ansi(&self) -> HashMap<usize, Color> {
+        FromIterator::from_iter([
+            (0x0, self.black),   // black
+            (0x1, self.red),     // red
+            (0x2, self.green),   // green
+            (0x3, self.yellow),  // yellow
+            (0x4, self.blue),    // blue
+            (0x5, self.magenta), // magenta
+            (0x6, self.cyan),    // cyan
+            (0x7, self.white),   // white
+            (0x8, self.black),   // bright black
+            (0x9, self.red),     // bright red
+            (0xA, self.green),   // bright green
+            (0xB, self.yellow),  // bright yellow
+            (0xC, self.blue),    // bright blue
+            (0xD, self.magenta), // bright magenta
+            (0xE, self.cyan),    // bright cyan
+            (0xF, self.white),   // bright white
+            (0x100, self.fg),    // foreground
+            (0x101, self.bg),    // background
+        ])
+    }
+
     pub fn rose_pine() -> Self {
         Self {
             bg: c(0x191724),
