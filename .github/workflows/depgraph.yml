@@ -31,5 +31,6 @@ jobs:
     - name: Commit depgraph
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
+          token: ${{ secrets.ADMIN_PAT }}
           commit_message: 'readme: update depgraph'
           file_pattern: 'resources/misc/depgraph.png'
