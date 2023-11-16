@@ -7,7 +7,7 @@ bytemuck = { version = "1.13", features = ["derive"] }
 flume = "0.11"
 glam = { version = "0.20", features = ["serde"] }
 hearth-cognito.path = "plugins/hearth-cognito"
-hearth-daemon.path = "plugins/hearth-daemon"
+hearth-daemon.path = "plugins/daemon"
 hearth-debug-draw.path = "plugins/hearth-debug-draw"
 hearth-init.path = "plugins/hearth-init"
 hearth-ipc.path = "core/ipc"
