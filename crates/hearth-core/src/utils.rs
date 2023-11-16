@@ -16,12 +16,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{any::type_name, fmt::Debug, sync::Arc};
+use std::{any::type_name, collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc};
 
 use async_trait::async_trait;
-use flue::{CapabilityRef, OwnedTableSignal};
+use flue::{CapabilityHandle, CapabilityRef, OwnedTableSignal, Permissions, PostOffice, Table};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 
 use crate::{
     process::{Process, ProcessMetadata},
@@ -278,5 +279,120 @@ where
         let mut meta = Self::get_process_metadata();
         meta.name = Some(name.clone());
         builder.add_service(name, meta, self);
+    }
+}
+
+/// A shared utility struct for publishing event messages to a dynamic list of
+/// subscribers.
+pub struct PubSub<T> {
+    table: Table,
+
+    /// A mutex-locked set of subscribers. Each entry is a zero-perm capability
+    /// to a subscriber for indexing by down signal caps combined with a cap
+    /// to the subscriber with the send perm for notifying it.
+    subscribers: Mutex<HashMap<usize, CapabilityHandle>>,
+
+    _phantom: PhantomData<T>,
+}
+
+impl<T: Serialize> PubSub<T> {
+    /// Create a new pub-sub structure.
+    pub fn new(post: Arc<PostOffice>) -> Self {
+        Self {
+            table: Table::new(post),
+            subscribers: Default::default(),
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Import a [CapabilityRef] from any table into this pubsub's table.
+    fn import(&self, cap: CapabilityRef) -> CapabilityRef {
+        let owned = cap.to_owned();
+        let handle = self.table.import_owned(owned).unwrap();
+        self.table.wrap_handle(handle).unwrap()
+    }
+
+    /// Adds a subscriber. Does nothing if the capability is already subscribed.
+    ///
+    /// The given capability can be from any table.
+    ///
+    /// Logs an error and doesn't subscribe if the cap doesn't have the send
+    /// perm.
+    pub fn subscribe(&self, cap: CapabilityRef) {
+        // ensure that we can store a send cap
+        if !cap.get_permissions().contains(Permissions::SEND) {
+            let name = std::any::type_name::<T>();
+            error!("cap given to {} pubsub doesn't permit send", name);
+            return;
+        }
+
+        let cap = self.import(cap);
+        let key = cap.demote(Permissions::empty()).unwrap().into_handle();
+        let val = cap.demote(Permissions::SEND).unwrap().into_handle();
+
+        // lock the subscribers list
+        let mut subs = self.subscribers.lock();
+
+        // insert subscriber into map and catch existing entries
+        if let Some(old_val) = subs.insert(key.0, val) {
+            // manually decrement reference count for a duplicated subscriber
+            self.table.dec_ref(key).unwrap();
+            self.table.dec_ref(old_val).unwrap();
+        }
+    }
+
+    /// Removes a subscriber. Does nothing if the cap is not already subscribed.
+    ///
+    /// The given capability can be from any table.
+    pub fn unsubscribe(&self, cap: CapabilityRef) {
+        let cap = self.import(cap);
+        let key = cap.demote(Permissions::empty()).unwrap().into_handle();
+
+        // lock the subscribers list
+        let mut subs = self.subscribers.lock();
+
+        // remove subscriber from map and catch the old lifetime
+        if let Some(old_val) = subs.remove(&key.0) {
+            // manually decrement reference count for removed subscriber
+            self.table.dec_ref(key).unwrap();
+            self.table.dec_ref(old_val).unwrap();
+        }
+
+        // decrement reference count for imported key
+        self.table.dec_ref(key).unwrap();
+    }
+
+    /// Broadcasts an event to all current subscribers.
+    pub async fn notify(&self, event: &T) {
+        // attempt to serialize the event or gracefully fail
+        let data = match serde_json::to_vec(event) {
+            Ok(data) => data,
+            Err(err) => {
+                let name = std::any::type_name::<T>();
+                error!("error deserializing {}: {:?}", name, err);
+                return;
+            }
+        };
+
+        // clone subscribers so that we can release the mutex during async
+        let subscribers: Vec<_> = self
+            .subscribers
+            .lock()
+            .values()
+            .map(|handle| {
+                // own handle while sending
+                self.table.inc_ref(*handle).unwrap();
+                *handle
+            })
+            .collect();
+
+        // send the event to all subscribers
+        for cap in subscribers {
+            // send event
+            self.table.send(cap, &data, &[]).await.unwrap();
+
+            // free handle
+            self.table.dec_ref(cap).unwrap();
+        }
     }
 }
