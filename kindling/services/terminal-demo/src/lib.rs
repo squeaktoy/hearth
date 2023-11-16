@@ -27,7 +27,7 @@ pub extern "C" fn run() {
     let tf = TerminalFactory::new(
         REGISTRY
             .get_service("hearth.terminal.TerminalFactory")
-            .unwrap(),
+            .expect("terminal factory service unavailable"),
     );
 
     // spawn each terminal using the terminal factory and a select palette
