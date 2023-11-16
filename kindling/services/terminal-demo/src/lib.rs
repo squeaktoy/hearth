@@ -34,7 +34,7 @@ pub extern "C" fn run() {
     spawn_terminal(&tf, 0, 0, Palette::rose_pine());
     spawn_terminal(&tf, 0, 1, Palette::gruvbox_material());
     spawn_terminal(&tf, 1, 0, Palette::solarized_dark());
-    spawn_terminal(&tf, 1, 1, Palette::catppuccin());
+    spawn_terminal(&tf, 1, 1, Palette::pretty_in_pink());
 }
 
 fn spawn_terminal(tf: &TerminalFactory, x: i32, y: i32, palette: Palette) {
@@ -148,17 +148,17 @@ impl Palette {
         }
     }
 
-    pub fn catppuccin() -> Self {
+    pub fn pretty_in_pink() -> Self {
         Self {
-            bg: c(0x191724),
-            fg: c(0xe0def4),
-            black: c(0x26233a),
-            red: c(0xeb6f92),
-            green: c(0x31748f),
-            yellow: c(0xf6c177),
-            blue: c(0x9ccfd8),
-            magenta: c(0xc4a7e7),
-            cyan: c(0xebbcba),
+            bg: c(0x1e1a1d),
+            fg: c(0xffccec),
+            black: c(0x1e1e1e),
+            red: c(0xf6084c),
+            green: c(0x67ff6d),
+            yellow: c(0xffc44e),
+            blue: c(0x2593be),
+            magenta: c(0xd68bff),
+            cyan: c(0x00fafa),
             white: c(0xe0def4),
         }
     }
