@@ -64,11 +64,10 @@ fn spawn_terminal(tf: &TerminalFactory, x: i32, y: i32, palette: Palette) {
     let request = FactoryRequest::CreateTerminal(TerminalState {
         // reasonable translation on a grid
         position: (x as f32 * 2.8 - 1.4, y as f32 * 2.8 - 1.4, 0.0).into(),
-        // face the default direction
+        // face the default direction: towards the positive Z axis
         orientation: Default::default(),
         // size the terminals with margins
         half_size: (1.25, 1.25).into(),
-        // opaque background
         opacity: 1.0,
         // no padding
         padding: Default::default(),
@@ -78,23 +77,27 @@ fn spawn_terminal(tf: &TerminalFactory, x: i32, y: i32, palette: Palette) {
         colors,
     });
 
-    // send the spawn request
+    // send the spawn request and receive the response and the new terminal
     let (msg, mut caps) = tf.request(request, &[]);
 
-    // assert that it worked
+    // assert that the request succeeded
     msg.unwrap();
 
-    // hacky way to wait for the shell to start up so that pipes actually starts
+    // get a handle to the terminal returned by the spawn response
+    let term = caps.remove(0);
+
+    // hacky way to wait for the terminal's shell to start up so that the pipes
+    // command is actually processed by it once entered
+    //
+    // Hearth guests do not have an API for sleeping for fixed periods of time,
+    // so we do an expensive operation over and over to sleep
     for _ in 0..10_000 {
         let _ = REGISTRY
             .get_service("hearth.terminal.TerminalFactory")
             .unwrap();
     }
 
-    // get a handle to the terminal returned by the spawn response
-    let term = caps.remove(0);
-
-    // enter the pipes command
+    // enter and execute the pipes command
     term.send_json(&TerminalUpdate::Input("pipes\n".into()), &[]);
 }
 
