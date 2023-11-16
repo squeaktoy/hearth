@@ -24,20 +24,50 @@ pub type TerminalFactory = RequestResponse<FactoryRequest, FactoryResponse>;
 #[no_mangle]
 pub extern "C" fn run() {
     // retrieve the native terminal factory service and wrap it in TerminalFactory
-    let tf = TerminalFactory::new(
+    let terminal_factory = TerminalFactory::new(
         REGISTRY
             .get_service("hearth.terminal.TerminalFactory")
             .expect("terminal factory service unavailable"),
     );
 
+    // create a list of each terminal to spawn
+    let terminal_configs = [
+        (0, 0, Palette::rose_pine()),
+        (0, 1, Palette::gruvbox_material()),
+        (1, 0, Palette::solarized_dark()),
+        (1, 1, Palette::pretty_in_pink()),
+    ];
+
     // spawn each terminal using the terminal factory and a select palette
-    spawn_terminal(&tf, 0, 0, Palette::rose_pine());
-    spawn_terminal(&tf, 0, 1, Palette::gruvbox_material());
-    spawn_terminal(&tf, 1, 0, Palette::solarized_dark());
-    spawn_terminal(&tf, 1, 1, Palette::pretty_in_pink());
+    let terms = terminal_configs
+        .into_iter()
+        .map(|(x, y, palette)| spawn_terminal(&terminal_factory, x, y, palette));
+
+    // hacky way to wait for each terminal's shell to start up so that the
+    // pipes command is actually processed by it once entered
+    //
+    // Hearth guests do not have an API for sleeping for fixed periods of time,
+    // so we do an expensive operation over and over to sleep
+    for _ in 0..10_000 {
+        let _ = REGISTRY
+            .get_service("hearth.terminal.TerminalFactory")
+            .unwrap();
+    }
+
+    // enter and execute the pipes command in each terminal
+    for term in terms {
+        term.send_json(&TerminalUpdate::Input("pipes\n".into()), &[]);
+    }
 }
 
-fn spawn_terminal(tf: &TerminalFactory, x: i32, y: i32, palette: Palette) {
+/// Helper function to spawn a terminal at a position on a grid with a given
+/// palette. Returns a capability to the new terminal instance.
+fn spawn_terminal(
+    terminal_factory: &TerminalFactory,
+    x: i32,
+    y: i32,
+    palette: Palette,
+) -> Capability {
     // create hashmap of 8-bit colors from palette
     let colors = FromIterator::from_iter([
         (0x0, palette.black),   // black
@@ -78,27 +108,15 @@ fn spawn_terminal(tf: &TerminalFactory, x: i32, y: i32, palette: Palette) {
     });
 
     // send the spawn request and receive the response and the new terminal
-    let (msg, mut caps) = tf.request(request, &[]);
+    let (msg, caps) = terminal_factory.request(request, &[]);
 
     // assert that the request succeeded
     msg.unwrap();
 
     // get a handle to the terminal returned by the spawn response
-    let term = caps.remove(0);
-
-    // hacky way to wait for the terminal's shell to start up so that the pipes
-    // command is actually processed by it once entered
-    //
-    // Hearth guests do not have an API for sleeping for fixed periods of time,
-    // so we do an expensive operation over and over to sleep
-    for _ in 0..10_000 {
-        let _ = REGISTRY
-            .get_service("hearth.terminal.TerminalFactory")
-            .unwrap();
-    }
-
-    // enter and execute the pipes command
-    term.send_json(&TerminalUpdate::Input("pipes\n".into()), &[]);
+    caps.get(0)
+        .expect("terminal factory did not respond with terminal capability")
+        .to_owned()
 }
 
 /// Helper struct for containing and identifying terminal colors.
