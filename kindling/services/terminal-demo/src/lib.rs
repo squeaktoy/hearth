@@ -91,7 +91,7 @@ fn spawn_terminal(
     let (msg, caps) = terminal_factory.request(request, &[]);
 
     // assert that the request succeeded
-    msg.unwrap();
+    let _ = msg.unwrap();
 
     // get a handle to the terminal returned by the spawn response
     caps.get(0)
