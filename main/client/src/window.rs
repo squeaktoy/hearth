@@ -19,15 +19,15 @@
 use std::sync::Arc;
 
 use glam::Mat4;
-use hearth_core::flue::{CapabilityRef, Permissions, PostOffice};
-use hearth_core::process::ProcessMetadata;
-use hearth_core::runtime::{Plugin, RuntimeBuilder};
-use hearth_core::utils::{MessageInfo, PubSub, ServiceRunner, SinkProcess};
-use hearth_core::{async_trait, cargo_process_metadata};
 use hearth_rend3::rend3::types::{Camera, CameraProjection};
 use hearth_rend3::{rend3, wgpu, FrameRequest, Rend3Plugin};
-use hearth_types::window::winit::window::CursorGrabMode;
-use hearth_types::window::*;
+use hearth_runtime::flue::{CapabilityRef, Permissions, PostOffice};
+use hearth_runtime::process::ProcessMetadata;
+use hearth_runtime::runtime::{Plugin, RuntimeBuilder};
+use hearth_runtime::utils::{MessageInfo, PubSub, ServiceRunner, SinkProcess};
+use hearth_runtime::{async_trait, cargo_process_metadata, hearth_schema};
+use hearth_schema::window::winit::window::CursorGrabMode;
+use hearth_schema::window::*;
 use rend3::InstanceAdapterDevice;
 use tokio::sync::{mpsc, oneshot};
 use tracing::warn;
