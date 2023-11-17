@@ -26,7 +26,6 @@ use hearth_runtime::process::ProcessMetadata;
 use hearth_runtime::runtime::{Plugin, RuntimeBuilder};
 use hearth_runtime::utils::{MessageInfo, PubSub, ServiceRunner, SinkProcess};
 use hearth_runtime::{async_trait, cargo_process_metadata, hearth_schema};
-use hearth_schema::window::winit::window::CursorGrabMode;
 use hearth_schema::window::*;
 use rend3::InstanceAdapterDevice;
 use tokio::sync::{mpsc, oneshot};
@@ -273,6 +272,15 @@ impl WindowCtx {
                 Event::UserEvent(event) => match event {
                     WindowRxMessage::SetTitle(title) => window.window.set_title(&title),
                     WindowRxMessage::SetCursorGrab(mode) => {
+                        // convert from guest type to native type
+                        use winit::window::CursorGrabMode as Winit;
+                        use CursorGrabMode::*;
+                        let mode = match mode {
+                            None => Winit::None,
+                            Confined => Winit::Confined,
+                            Locked => Winit::Locked,
+                        };
+
                         if let Err(err) = window.window.set_cursor_grab(mode) {
                             warn!("set cursor grab error: {err:?}");
                         }
@@ -337,7 +345,7 @@ impl SinkProcess for WindowService {
                     return;
                 }
 
-                sub.monitor(message.process.borrow_parent());
+                sub.monitor(message.process.borrow_parent()).unwrap();
                 self.pubsub.subscribe(sub.clone());
             }
             SetTitle(title) => send(WindowRxMessage::SetTitle(title)),
