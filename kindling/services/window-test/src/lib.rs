@@ -29,6 +29,10 @@ pub extern "C" fn run() {
     loop {
         let (msg, _) = events.recv_json::<WindowEvent>();
 
+        if let WindowEvent::Redraw { .. } = msg {
+            continue;
+        }
+
         log(
             ProcessLogLevel::Info,
             "window-test",
