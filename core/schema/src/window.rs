@@ -52,7 +52,6 @@ pub enum WindowEvent {
 
     /// The window has resized. The new size is in physical display units.
     Resized(UVec2),
-    CloseRequested,
     ReceivedCharacter(char),
     Focused(bool),
     KeyboardInput {
