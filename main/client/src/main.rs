@@ -84,7 +84,7 @@ fn main() {
         .build()
         .unwrap();
 
-    let (window, mut window_offer) = runtime.block_on(WindowCtx::new(builder.get_post()));
+    let (window, mut window_offer) = runtime.block_on(WindowCtx::new());
     let mut join_main = runtime.spawn(async_main(
         builder,
         args,
