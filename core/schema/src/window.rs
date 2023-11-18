@@ -85,7 +85,13 @@ pub enum WindowEvent {
 pub enum WindowCommand {
     /// Subscribes to all [WindowEvents][WindowEvent] on this window using the
     /// first attached capability.
+    ///
+    /// If the capability has the monitor permission, it will be automatically
+    /// unsubscribed when down.
     Subscribe, // and hit that bell
+
+    /// Unbsubscribes from window events using the first attached capability.
+    Unsubscribe,
 
     /// Sets the title of the window.
     SetTitle(String),
