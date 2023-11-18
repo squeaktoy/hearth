@@ -430,13 +430,19 @@ impl SinkProcess for WindowService {
                     return;
                 };
 
-                if !sub.get_permissions().contains(Permissions::MONITOR) {
-                    warn!("subscriber is missing monitor perm");
-                    return;
+                if sub.get_permissions().contains(Permissions::MONITOR) {
+                    sub.monitor(message.process.borrow_parent()).unwrap();
                 }
 
-                sub.monitor(message.process.borrow_parent()).unwrap();
                 self.pubsub.subscribe(sub.clone());
+            }
+            Unsubscribe => {
+                let Some(sub) = message.caps.get(0) else {
+                    warn!("unsubscribe messsage is missing capability");
+                    return;
+                };
+
+                self.pubsub.unsubscribe(sub.clone());
             }
             SetTitle(title) => send(WindowRxMessage::SetTitle(title)),
             SetCursorGrab(grab) => send(WindowRxMessage::SetCursorGrab(grab)),
@@ -446,8 +452,7 @@ impl SinkProcess for WindowService {
     }
 
     async fn on_down<'a>(&'a mut self, cap: CapabilityRef<'a>) {
-        warn!("on_down()");
-        // self.pubsub.unsubscribe(cap);
+        self.pubsub.unsubscribe(cap);
     }
 }
 
