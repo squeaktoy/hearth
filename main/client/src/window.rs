@@ -19,20 +19,29 @@
 use std::{sync::Arc, time::Instant};
 
 use glam::{dvec2, uvec2, Mat4};
-use hearth_rend3::rend3::types::{Camera, CameraProjection};
-use hearth_rend3::{rend3, wgpu, FrameRequest, Rend3Plugin};
-use hearth_runtime::flue::{CapabilityRef, Permissions};
-use hearth_runtime::process::ProcessMetadata;
-use hearth_runtime::runtime::{Plugin, RuntimeBuilder};
-use hearth_runtime::utils::{MessageInfo, PubSub, ServiceRunner, SinkProcess};
-use hearth_runtime::{async_trait, cargo_process_metadata, hearth_schema};
-use hearth_schema::window::*;
+use hearth_rend3::{
+    rend3::{
+        self,
+        types::{Camera, CameraProjection},
+    },
+    wgpu, FrameRequest, Rend3Plugin,
+};
+use hearth_runtime::{
+    async_trait, cargo_process_metadata,
+    flue::{CapabilityRef, Permissions},
+    hearth_schema::window::*,
+    process::ProcessMetadata,
+    runtime::{Plugin, RuntimeBuilder},
+    utils::{MessageInfo, PubSub, ServiceRunner, SinkProcess},
+};
 use rend3::InstanceAdapterDevice;
 use tokio::sync::{mpsc, oneshot};
 use tracing::warn;
-use winit::event::{Event, WindowEvent as WinitWindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
-use winit::window::{Window as WinitWindow, WindowBuilder};
+use winit::{
+    event::{Event, WindowEvent as WinitWindowEvent},
+    event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
+    window::{Window as WinitWindow, WindowBuilder},
+};
 
 /// A message sent from the rest of the program to a window.
 #[derive(Clone, Debug)]
