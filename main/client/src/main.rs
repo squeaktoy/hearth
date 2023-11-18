@@ -66,16 +66,6 @@ fn main() {
     let args = Args::parse();
     hearth_runtime::init_logging();
 
-    let config_path = args
-        .config
-        .clone()
-        .unwrap_or_else(hearth_runtime::get_config_path);
-
-    let config_file = hearth_runtime::load_config(&config_path).unwrap();
-
-    // create builder early so that we can pass its post to WindowCtx
-    let builder = RuntimeBuilder::new(config_file);
-
     // winit requires that running its event loop takes over the calling thread,
     // so we need to manually create a Tokio runtime so that we can use this
     // main thread for the event loop.
@@ -86,7 +76,6 @@ fn main() {
 
     let (window, mut window_offer) = runtime.block_on(WindowCtx::new());
     let mut join_main = runtime.spawn(async_main(
-        builder,
         args,
         window_offer.rend3_plugin,
         window_offer.window_plugin,
@@ -114,12 +103,12 @@ fn main() {
     window.run();
 }
 
-async fn async_main(
-    mut builder: RuntimeBuilder,
-    args: Args,
-    rend3_plugin: Rend3Plugin,
-    window_plugin: WindowPlugin,
-) {
+async fn async_main(args: Args, rend3_plugin: Rend3Plugin, window_plugin: WindowPlugin) {
+    let config_path = args.config.unwrap_or_else(hearth_runtime::get_config_path);
+
+    let config_file = hearth_runtime::load_config(&config_path).unwrap();
+
+    let mut builder = RuntimeBuilder::new(config_file);
     builder.add_plugin(hearth_wasm::WasmPlugin::default());
     builder.add_plugin(hearth_init::InitPlugin::new(args.init));
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
