@@ -22,7 +22,7 @@ use hearth_guest::{window::*, *};
 pub extern "C" fn run() {
     let window = REGISTRY.get_service(SERVICE_NAME).unwrap();
     let events = Mailbox::new();
-    let events_cap = events.make_capability(Permissions::SEND | Permissions::MONITOR);
+    let events_cap = events.make_capability(Permissions::SEND);
 
     window.send_json(&WindowCommand::Subscribe, &[&events_cap]);
 
