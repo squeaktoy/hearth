@@ -206,22 +206,8 @@ impl Window {
         self.notify_event(WindowEvent::Redraw { dt });
         self.last_redraw = now;
 
-        let frame = match self.surface.get_current_texture() {
-            Ok(frame) => frame,
-            Err(wgpu::SurfaceError::Outdated) => {
-                let size = self.window.inner_size();
-                self.on_resize(size);
-                return;
-            }
-            Err(err) => {
-                tracing::error!("Surface error: {:?}", err);
-                return;
-            }
-        };
-
-        let output_frame = rend3::util::output::OutputFrame::SurfaceAcquired {
-            view: frame.texture.create_view(&Default::default()),
-            surface_tex: frame,
+        let output_frame = rend3::util::output::OutputFrame::Surface {
+            surface: self.surface.to_owned(),
         };
 
         let resolution = glam::UVec2::new(self.config.width, self.config.height);
