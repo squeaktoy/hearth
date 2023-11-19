@@ -38,7 +38,7 @@ use rend3::InstanceAdapterDevice;
 use tokio::sync::{mpsc, oneshot};
 use tracing::warn;
 use winit::{
-    event::{Event, WindowEvent as WinitWindowEvent},
+    event::{DeviceEvent, Event, WindowEvent as WinitWindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
     window::{Window as WinitWindow, WindowBuilder},
 };
@@ -356,6 +356,12 @@ impl WindowCtx {
                 }
                 Event::RedrawRequested(_) => {
                     window.on_draw();
+                }
+                Event::DeviceEvent {
+                    event: DeviceEvent::MouseMotion { delta },
+                    ..
+                } => {
+                    window.notify_event(WindowEvent::MouseMotion(delta.into()));
                 }
                 Event::UserEvent(event) => match event {
                     WindowRxMessage::SetTitle(title) => window.window.set_title(&title),
