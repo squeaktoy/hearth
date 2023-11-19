@@ -79,6 +79,9 @@ pub enum WindowEvent {
         /// The new inner size of the window in physical display units.
         new_inner_size: UVec2,
     },
+
+    /// Raw, unfiltered physical motion from a mouse device in unspecified units.
+    MouseMotion(DVec2),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
