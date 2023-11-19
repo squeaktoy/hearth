@@ -23,4 +23,4 @@ tracing = { workspace = true }
 [dependencies.winit]
 version = "0.27"
 default-features = false
-features = ["x11", "wayland-dlopen"]
+features = ["x11", "wayland", "wayland-dlopen"]
