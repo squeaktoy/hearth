@@ -476,6 +476,65 @@ mod abi {
     }
 }
 
+#[macro_export]
+macro_rules! export_metadata {
+    () => {
+        #[no_mangle]
+        extern "C" fn _hearth_metadata() {
+            #[link(wasm_import_module = "hearth::metadata")]
+            extern "C" {
+                fn set_name(ptr: u32, len: u32);
+                fn set_description(ptr: u32, len: u32);
+                fn add_author(ptr: u32, len: u32);
+                fn set_repository(ptr: u32, len: u32);
+                fn set_homepage(ptr: u32, len: u32);
+                fn set_license(ptr: u32, len: u32);
+            }
+
+            let some_or_empty = |str: &str| {
+                if str.is_empty() {
+                    None
+                } else {
+                    let bytes = str.as_bytes();
+                    let ptr = bytes.as_ptr() as u32;
+                    let len = bytes.len() as u32;
+                    Some((ptr, len))
+                }
+            };
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_NAME")) {
+                unsafe { set_name(ptr, len) };
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_DESCRIPTION")) {
+                unsafe { set_description(ptr, len) };
+            }
+
+            let authors = env!("CARGO_PKG_AUTHORS");
+            if !authors.is_empty() {
+                for author in authors.split(':') {
+                    let bytes = author.as_bytes();
+                    let ptr = bytes.as_ptr() as u32;
+                    let len = bytes.len() as u32;
+                    unsafe { add_author(ptr, len) };
+                }
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_REPOSITORY")) {
+                unsafe { set_repository(ptr, len) };
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_HOMEPAGE")) {
+                unsafe { set_homepage(ptr, len) };
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_LICENSE")) {
+                unsafe { set_license(ptr, len) };
+            }
+        }
+    };
+}
+
 #[no_mangle]
 extern "C" fn _hearth_init() {
     // set panic handler that prints error to log
