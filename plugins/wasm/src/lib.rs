@@ -22,7 +22,7 @@ use hearth_macros::impl_wasm_linker;
 use hearth_runtime::anyhow::{anyhow, bail, Context, Result};
 use hearth_runtime::asset::AssetLoader;
 use hearth_runtime::flue::{
-    CapabilityHandle, Mailbox, MailboxGroup, Permissions, Table, TableSignal,
+    CapabilityHandle, CapabilityRef, Mailbox, MailboxGroup, Permissions, Table, TableSignal,
 };
 use hearth_runtime::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_runtime::process::{Process, ProcessLogEvent, ProcessMetadata};
@@ -32,8 +32,8 @@ use hearth_runtime::{cargo_process_metadata, tokio, utils::*};
 use hearth_schema::wasm::WasmSpawnInfo;
 use hearth_schema::{LumpId, SignalKind};
 use slab::Slab;
-use tracing::{debug, error};
-use wasmtime::{Caller, Config, Engine, Linker, Module, Store, UpdateDeadline};
+use tracing::error;
+use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store, UpdateDeadline};
 
 /// An interface to attempt to acquire a Wasm ABI by type.
 pub trait GetAbi<T>
@@ -664,19 +664,80 @@ impl MailboxAbi {
     }
 }
 
+/// Implements the `hearth::metadata` ABI module.
+#[derive(Default)]
+pub struct MetadataAbi {
+    meta: ProcessMetadata,
+}
+
+#[impl_wasm_linker(module = "hearth::metadata")]
+impl MetadataAbi {
+    fn set_name(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.name = Some(str.to_string());
+        Ok(())
+    }
+
+    fn set_description(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.description = Some(str.to_string());
+        Ok(())
+    }
+
+    fn add_author(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+
+        self.meta
+            .authors
+            .get_or_insert(Default::default())
+            .push(str.to_string());
+
+        Ok(())
+    }
+
+    fn set_repository(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.repository = Some(str.to_string());
+        Ok(())
+    }
+
+    fn set_homepage(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.homepage = Some(str.to_string());
+        Ok(())
+    }
+
+    fn set_license(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.license = Some(str.to_string());
+        Ok(())
+    }
+}
+
 /// Encapsulates an instance of each guest ABI data structure.
-pub struct ProcessData {
-    pub log: LogAbi,
-    pub lump: LumpAbi,
-    pub table: TableAbi,
-    pub mailbox: MailboxAbi,
+pub enum ProcessData {
+    Metadata {
+        metadata: MetadataAbi,
+    },
+    Running {
+        log: LogAbi,
+        lump: LumpAbi,
+        table: TableAbi,
+        mailbox: MailboxAbi,
+    },
 }
 
 impl ProcessData {
-    pub fn new(runtime: &Runtime, process: Process, this_lump: LumpId) -> Self {
+    pub fn new_metadata() -> Self {
+        Self::Metadata {
+            metadata: Default::default(),
+        }
+    }
+
+    pub fn new_running(runtime: &Runtime, process: Process, this_lump: LumpId) -> Self {
         let process = Arc::new(process);
 
-        Self {
+        Self::Running {
             log: LogAbi {
                 process: process.clone(),
             },
@@ -692,20 +753,32 @@ impl ProcessData {
     }
 }
 
-macro_rules! impl_get_abi {
+impl GetAbi<MetadataAbi> for ProcessData {
+    fn get_abi(&mut self) -> Result<&mut MetadataAbi> {
+        match self {
+            Self::Running { .. } => bail!("process is running"),
+            Self::Metadata { metadata } => Ok(metadata),
+        }
+    }
+}
+
+macro_rules! impl_running_get_abi {
     ($ty: ident, $sub_ty: ident, $sub_field: ident) => {
         impl GetAbi<$sub_ty> for $ty {
             fn get_abi(&mut self) -> Result<&mut $sub_ty> {
-                Ok(&mut self.$sub_field)
+                match self {
+                    Self::Metadata { .. } => bail!("process is not running"),
+                    Self::Running { $sub_field, .. } => Ok($sub_field),
+                }
             }
         }
     };
 }
 
-impl_get_abi!(ProcessData, LogAbi, log);
-impl_get_abi!(ProcessData, LumpAbi, lump);
-impl_get_abi!(ProcessData, TableAbi, table);
-impl_get_abi!(ProcessData, MailboxAbi, mailbox);
+impl_running_get_abi!(ProcessData, LogAbi, log);
+impl_running_get_abi!(ProcessData, LumpAbi, lump);
+impl_running_get_abi!(ProcessData, TableAbi, table);
+impl_running_get_abi!(ProcessData, MailboxAbi, mailbox);
 
 impl ProcessData {
     /// Adds all module ABIs to the given linker.
@@ -714,24 +787,83 @@ impl ProcessData {
         LumpAbi::add_to_linker(linker);
         TableAbi::add_to_linker(linker);
         MailboxAbi::add_to_linker(linker);
+        MetadataAbi::add_to_linker(linker);
     }
 }
 
 struct WasmProcess {
-    engine: Arc<Engine>,
-    linker: Arc<Linker<ProcessData>>,
-    module: Arc<Module>,
+    store: Store<ProcessData>,
+    instance: Instance,
     this_lump: LumpId,
-    entrypoint: Option<u32>,
 }
 
 impl WasmProcess {
+    pub async fn new(
+        engine: &Engine,
+        linker: &Linker<ProcessData>,
+        module: &Module,
+        this_lump: LumpId,
+    ) -> Result<Self> {
+        let data = ProcessData::new_metadata();
+        let mut store = Store::new(engine, data);
+
+        let instance = linker
+            .instantiate_async(&mut store, &module)
+            .await
+            .context("instantiating Wasm instance")?;
+
+        Ok(Self {
+            store,
+            instance,
+            this_lump,
+        })
+    }
+
+    /// Executes the process's `_hearth_metadata` function and returns the
+    /// result.
+    pub async fn get_metadata(&mut self) -> Result<ProcessMetadata> {
+        // while retrieving the process metadata, preemptively timeslice
+        self.store.epoch_deadline_async_yield_and_update(1);
+
+        if let Ok(cb) = self
+            .instance
+            .get_typed_func(&mut self.store, "_hearth_metadata")
+        {
+            cb.call_async(&mut self.store, ())
+                .await
+                .context("calling Wasm metadata function")?;
+        }
+
+        let ProcessData::Metadata { metadata } = self.store.data() else {
+            bail!("process metadata unavailable");
+        };
+
+        Ok(metadata.meta.to_owned())
+    }
+
     /// Executes a Wasm process.
-    async fn run(mut self, runtime: Arc<Runtime>, ctx: Process) {
+    async fn run(mut self, runtime: Arc<Runtime>, ctx: Process, entrypoint: Option<u32>) {
+        // grab the PID for logging
         let pid = ctx.borrow_info().pid;
 
+        // switch the process ABIs to running
+        *self.store.data_mut() = ProcessData::new_running(runtime.as_ref(), ctx, self.this_lump);
+
+        // while executing the main function, preemptively timeslice until killed
+        self.store.epoch_deadline_callback(move |store| {
+            let ProcessData::Running { table, .. } = store.data() else {
+                bail!("process is not running");
+            };
+
+            if table.process.borrow_group().poll_dead() {
+                bail!("process killed");
+            }
+
+            Ok(UpdateDeadline::Yield(1))
+        });
+
         match self
-            .run_inner(runtime, ctx)
+            .run_inner(entrypoint)
             .await
             .with_context(|| format!("PID {}", pid))
         {
@@ -743,42 +875,31 @@ impl WasmProcess {
     }
 
     /// Performs the actual process execution using easy error handling.
-    async fn run_inner(&mut self, runtime: Arc<Runtime>, ctx: Process) -> Result<()> {
-        // TODO log using the process log instead of tracing?
-        let data = ProcessData::new(runtime.as_ref(), ctx, self.this_lump);
-        let mut store = Store::new(&self.engine, data);
-
-        store.epoch_deadline_callback(move |store| {
-            if store.data().table.process.borrow_group().poll_dead() {
-                bail!("process killed");
-            }
-
-            Ok(UpdateDeadline::Yield(1))
-        });
-
-        let instance = self
-            .linker
-            .instantiate_async(&mut store, &self.module)
-            .await
-            .context("instantiating Wasm instance")?;
-
-        let init = instance.get_typed_func::<(), ()>(&mut store, "_hearth_init");
-        if let Ok(init) = init {
-            init.call_async(&mut store, ())
+    async fn run_inner(&mut self, entrypoint: Option<u32>) -> Result<()> {
+        if let Ok(init) = self
+            .instance
+            .get_typed_func(&mut self.store, "_hearth_init")
+        {
+            init.call_async(&mut self.store, ())
                 .await
                 .context("calling Wasm init function")?;
         }
 
-        if let Some(entrypoint) = self.entrypoint {
-            let cb = instance
-                .get_typed_func::<u32, ()>(&mut store, "_hearth_spawn_by_index")
+        if let Some(entrypoint) = entrypoint {
+            let cb = self
+                .instance
+                .get_typed_func::<u32, ()>(&mut self.store, "_hearth_spawn_by_index")
                 .context("lookup _hearth_spawn_by_index")?;
-            cb.call_async(&mut store, entrypoint)
+
+            cb.call_async(&mut self.store, entrypoint)
                 .await
                 .context("calling Wasm entrypoint")?;
         } else {
-            let cb = instance.get_typed_func::<(), ()>(&mut store, "run")?;
-            cb.call_async(&mut store, ())
+            let cb = self
+                .instance
+                .get_typed_func::<(), ()>(&mut self.store, "run")?;
+
+            cb.call_async(&mut self.store, ())
                 .await
                 .context("calling Wasm run()")?;
         }
@@ -801,23 +922,52 @@ impl RequestResponseProcess for WasmProcessSpawner {
         &'a mut self,
         request: &mut RequestInfo<'a, WasmSpawnInfo>,
     ) -> ResponseInfo<'a, Self::Response> {
+        ResponseInfo {
+            data: (),
+            caps: match self.spawn(request).await {
+                Ok(child) => vec![child],
+                Err(err) => {
+                    error!("Wasm spawning error: {:?}", err);
+                    vec![]
+                }
+            },
+        }
+    }
+}
+
+impl ServiceRunner for WasmProcessSpawner {
+    const NAME: &'static str = "hearth.wasm.WasmProcessSpawner";
+
+    fn get_process_metadata() -> ProcessMetadata {
+        let mut meta = cargo_process_metadata!();
+        meta.description =
+            Some("The native WebAssembly process spawner. Accepts WasmSpawnInfo.".to_string());
+
+        meta
+    }
+}
+
+impl WasmProcessSpawner {
+    pub async fn spawn<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, WasmSpawnInfo>,
+    ) -> Result<CapabilityRef<'a>> {
         let module = request
             .runtime
             .asset_store
             .load_asset::<WasmModuleLoader>(&request.data.lump)
             .await
-            .context("loading Wasm module");
+            .context("loading Wasm module")?;
 
-        let module = match module {
-            Ok(module) => module,
-            Err(err) => {
-                error!("failed to load Wasm module: {:?}", err);
-                return ().into();
-            }
-        };
+        let mut process = WasmProcess::new(&self.engine, &self.linker, &module, request.data.lump)
+            .await
+            .context("initializing process")?;
 
-        debug!("Spawning module {}", request.data.lump);
-        let meta = ProcessMetadata::default();
+        let meta = process
+            .get_metadata()
+            .await
+            .context("retrieving process metadata")?;
+
         let child = request.runtime.process_factory.spawn(meta);
 
         let child_cap = child
@@ -834,33 +984,10 @@ impl RequestResponseProcess for WasmProcessSpawner {
         // flush initial capabilities
         child.borrow_parent().recv(|_| ()).await.unwrap();
 
-        let process = WasmProcess {
-            engine: self.engine.clone(),
-            linker: self.linker.clone(),
-            module,
-            entrypoint: request.data.entrypoint,
-            this_lump: request.data.lump,
-        };
-
         let runtime = request.runtime.clone();
-        tokio::spawn(process.run(runtime, child));
+        tokio::spawn(process.run(runtime, child, request.data.entrypoint));
 
-        ResponseInfo {
-            data: (),
-            caps: vec![child_cap],
-        }
-    }
-}
-
-impl ServiceRunner for WasmProcessSpawner {
-    const NAME: &'static str = "hearth.wasm.WasmProcessSpawner";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-        meta.description =
-            Some("The native WebAssembly process spawner. Accepts WasmSpawnInfo.".to_string());
-
-        meta
+        Ok(child_cap)
     }
 }
 
