@@ -35,11 +35,20 @@ use slab::Slab;
 use tracing::{debug, error};
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store, UpdateDeadline};
 
+/// An interface to attempt to acquire a Wasm ABI by type.
+pub trait GetAbi<T>
+where
+    T: Sized,
+{
+    /// Attempt to get a mutable reference to an ABI in this process data.
+    fn get_abi(&mut self) -> Result<&mut T>;
+}
+
 /// An interface for Wasm ABIs: host-side data exposed to WebAssembly through a
 /// set of linked host functions.
 ///
 /// Implemented by the [impl_wasm_linker] proc macro.
-pub trait WasmLinker<T: AsMut<Self>> {
+pub trait WasmLinker<T: GetAbi<Self>>: Sized {
     /// Add this ABI's functions to the given Linker.
     fn add_to_linker(linker: &mut Linker<T>);
 }
@@ -683,20 +692,20 @@ impl ProcessData {
     }
 }
 
-macro_rules! impl_asmut {
+macro_rules! impl_get_abi {
     ($ty: ident, $sub_ty: ident, $sub_field: ident) => {
-        impl ::std::convert::AsMut<$sub_ty> for $ty {
-            fn as_mut(&mut self) -> &mut $sub_ty {
-                &mut self.$sub_field
+        impl GetAbi<$sub_ty> for $ty {
+            fn get_abi(&mut self) -> Result<&mut $sub_ty> {
+                Ok(&mut self.$sub_field)
             }
         }
     };
 }
 
-impl_asmut!(ProcessData, LogAbi, log);
-impl_asmut!(ProcessData, LumpAbi, lump);
-impl_asmut!(ProcessData, TableAbi, table);
-impl_asmut!(ProcessData, MailboxAbi, mailbox);
+impl_get_abi!(ProcessData, LogAbi, log);
+impl_get_abi!(ProcessData, LumpAbi, lump);
+impl_get_abi!(ProcessData, TableAbi, table);
+impl_get_abi!(ProcessData, MailboxAbi, mailbox);
 
 impl ProcessData {
     /// Adds all module ABIs to the given linker.
