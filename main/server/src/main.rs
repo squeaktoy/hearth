@@ -73,6 +73,7 @@ async fn main() {
     init.add_hook("hearth.init.Server".into(), network_root_tx);
 
     let mut builder = RuntimeBuilder::new(config_file);
+    builder.add_plugin(hearth_time::TimePlugin::default());
     builder.add_plugin(hearth_wasm::WasmPlugin::default());
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(init);

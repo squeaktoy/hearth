@@ -12,6 +12,7 @@ hearth-fs = { workspace = true }
 hearth-network = { workspace = true }
 hearth-runtime = { workspace = true }
 hearth-schema = { workspace = true }
+hearth-time = { workspace = true }
 hearth-wasm = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1.24", features = ["full"] }
