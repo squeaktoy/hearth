@@ -7,6 +7,8 @@
 Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
 
+![Discord](https://img.shields.io/discord/1065779071008649327?label=Discord)
+
 [Philosophy](#philosophy) •
 [Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
