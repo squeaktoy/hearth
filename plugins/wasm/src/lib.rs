@@ -825,15 +825,18 @@ impl WasmProcess {
         // while retrieving the process metadata, preemptively timeslice
         self.store.epoch_deadline_async_yield_and_update(1);
 
+        // attempt to locate the `_hearth_metadata` export
         if let Ok(cb) = self
             .instance
             .get_typed_func(&mut self.store, "_hearth_metadata")
         {
+            // attempt to call it
             cb.call_async(&mut self.store, ())
                 .await
                 .context("calling Wasm metadata function")?;
         }
 
+        // retrieve the written metadata from the store's process data
         let ProcessData::Metadata { metadata } = self.store.data() else {
             bail!("process metadata unavailable");
         };
@@ -862,6 +865,7 @@ impl WasmProcess {
             Ok(UpdateDeadline::Yield(1))
         });
 
+        // call inner execution behavior and handle its errors
         match self
             .run_inner(entrypoint)
             .await
@@ -876,6 +880,7 @@ impl WasmProcess {
 
     /// Performs the actual process execution using easy error handling.
     async fn run_inner(&mut self, entrypoint: Option<u32>) -> Result<()> {
+        // run the `_hearth_init` export, if available
         if let Ok(init) = self
             .instance
             .get_typed_func(&mut self.store, "_hearth_init")
@@ -885,26 +890,35 @@ impl WasmProcess {
                 .context("calling Wasm init function")?;
         }
 
-        if let Some(entrypoint) = entrypoint {
-            let cb = self
-                .instance
-                .get_typed_func::<u32, ()>(&mut self.store, "_hearth_spawn_by_index")
-                .context("lookup _hearth_spawn_by_index")?;
+        // switch on which entrypoint function to call
+        match entrypoint {
+            // no entrypoint index given
+            None => {
+                // retrieve the `run` export
+                let cb = self
+                    .instance
+                    .get_typed_func(&mut self.store, "run")
+                    .context("lookup run")?;
 
-            cb.call_async(&mut self.store, entrypoint)
-                .await
-                .context("calling Wasm entrypoint")?;
-        } else {
-            let cb = self
-                .instance
-                .get_typed_func::<(), ()>(&mut self.store, "run")?;
+                // execute it
+                cb.call_async(&mut self.store, ())
+                    .await
+                    .context("calling Wasm run()")
+            }
+            // execute a specific entrypoint by index
+            Some(entrypoint) => {
+                // retrieve the `_hearth_spawn_by_index` export
+                let cb = self
+                    .instance
+                    .get_typed_func(&mut self.store, "_hearth_spawn_by_index")
+                    .context("lookup _hearth_spawn_by_index")?;
 
-            cb.call_async(&mut self.store, ())
-                .await
-                .context("calling Wasm run()")?;
+                // call it with the specified entrypoint index
+                cb.call_async(&mut self.store, entrypoint)
+                    .await
+                    .context("calling Wasm entrypoint")
+            }
         }
-
-        Ok(())
     }
 }
 
@@ -925,7 +939,9 @@ impl RequestResponseProcess for WasmProcessSpawner {
         ResponseInfo {
             data: (),
             caps: match self.spawn(request).await {
+                // spawned successfully; return cap
                 Ok(child) => vec![child],
+                // error occurred. log and no cap
                 Err(err) => {
                     error!("Wasm spawning error: {:?}", err);
                     vec![]
@@ -952,6 +968,7 @@ impl WasmProcessSpawner {
         &'a mut self,
         request: &mut RequestInfo<'a, WasmSpawnInfo>,
     ) -> Result<CapabilityRef<'a>> {
+        // load the WebAssembly module from the asset store
         let module = request
             .runtime
             .asset_store
@@ -959,34 +976,40 @@ impl WasmProcessSpawner {
             .await
             .context("loading Wasm module")?;
 
+        // instantiate a new WasmProcess
         let mut process = WasmProcess::new(&self.engine, &self.linker, &module, request.data.lump)
             .await
             .context("initializing process")?;
 
+        // retrieve the process's metadata
         let meta = process
             .get_metadata()
             .await
             .context("retrieving process metadata")?;
 
+        // spawn a new local process
         let child = request.runtime.process_factory.spawn(meta);
 
+        // import a capability to its parent mailbox
         let child_cap = child
             .borrow_parent()
             .export_to(Permissions::all(), request.process.borrow_table())
             .unwrap();
 
-        // send initial capabilities
+        // send the child the initial capabilities from the request
         child_cap
             .send(&[], request.cap_args.iter().collect::<Vec<_>>().as_slice())
             .await
             .unwrap();
 
-        // flush initial capabilities
+        // flush the child's mailbox to import the initial capabilities
         child.borrow_parent().recv(|_| ()).await.unwrap();
 
+        // run the process
         let runtime = request.runtime.clone();
         tokio::spawn(process.run(runtime, child, request.data.entrypoint));
 
+        // return the child's cap
         Ok(child_cap)
     }
 }
