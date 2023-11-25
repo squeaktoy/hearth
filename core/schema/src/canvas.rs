@@ -89,6 +89,16 @@ pub enum CanvasUpdate {
     Blit(Blit),
 }
 
+/// Configures the method of texture sampling to use for a canvas.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+pub enum CanvasSamplingMode {
+    /// Uses bilinear texture sampling.
+    Linear,
+
+    /// Uses anti-aliased nearest-neighbor texture sampling.
+    Nearest,
+}
+
 /// A request to the canvas factory.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum FactoryRequest {
@@ -102,6 +112,9 @@ pub enum FactoryRequest {
 
         /// The initial contents of the canvas's pixel buffer.
         pixels: Pixels,
+
+        /// The sampling method to use.
+        sampling: CanvasSamplingMode,
     },
 }
 
