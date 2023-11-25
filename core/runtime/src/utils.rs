@@ -316,7 +316,7 @@ impl<T: Serialize> PubSub<T> {
         // ensure that we can store a send cap
         if !cap.get_permissions().contains(Permissions::SEND) {
             let name = std::any::type_name::<T>();
-            error!("cap given to {} pubsub doesn't permit send", name);
+            error!("Capability given to {} pubsub doesn't permit send", name);
             return;
         }
 
@@ -363,7 +363,7 @@ impl<T: Serialize> PubSub<T> {
             Ok(data) => data,
             Err(err) => {
                 let name = std::any::type_name::<T>();
-                error!("error deserializing {}: {:?}", name, err);
+                error!("failed to deserialize {}: {:?}", name, err);
                 return;
             }
         };
