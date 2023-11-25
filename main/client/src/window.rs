@@ -22,7 +22,7 @@ use glam::{dvec2, uvec2, Mat4};
 use hearth_rend3::{
     rend3::{
         self,
-        types::{Camera, CameraProjection},
+        types::{Camera, CameraProjection, DirectionalLight, ResourceHandle},
     },
     wgpu, FrameRequest, Rend3Plugin,
 };
@@ -123,7 +123,7 @@ struct Window {
     last_redraw: Instant,
 
     /// A dummy handle to keep a hard-coded directional light alive in the scene.
-    _directional_handle: rend3::types::ResourceHandle<rend3::types::DirectionalLight>,
+    _directional_handle: ResourceHandle<DirectionalLight>,
 }
 
 impl Window {
@@ -156,7 +156,7 @@ impl Window {
 
         let (events_tx, events_rx) = mpsc::unbounded_channel();
 
-        let directional_handle = renderer.add_directional_light(rend3::types::DirectionalLight {
+        let directional_handle = renderer.add_directional_light(DirectionalLight {
             color: glam::Vec3::ONE,
             intensity: 10.0,
             direction: glam::Vec3::new(-1.0, -4.0, 2.0),
