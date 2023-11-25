@@ -287,11 +287,12 @@ where
 pub struct PubSub<T> {
     table: Table,
 
-    /// A mutex-locked set of subscribers. Each entry is a zero-perm capability
-    /// to a subscriber for indexing by down signal caps combined with a cap
-    /// to the subscriber with the send perm for notifying it.
+    /// A mutex-locked set of subscribers. Each entry maps a zero permission
+    /// capability as the index to a send-only capability for notifying.
     subscribers: Mutex<HashMap<CapabilityHandle, CapabilityHandle>>,
 
+    /// We don't actually carry `T` in this struct, so we need to use it in a
+    /// `PhantomData` so that the Rust compiler won't yell at us.
     _phantom: PhantomData<T>,
 }
 
@@ -304,6 +305,7 @@ impl<T: Serialize> PubSub<T> {
             _phantom: PhantomData,
         }
     }
+
     /// Adds a subscriber. Does nothing if the capability is already subscribed.
     ///
     /// The given capability can be from any table.
