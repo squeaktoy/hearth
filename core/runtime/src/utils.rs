@@ -304,14 +304,6 @@ impl<T: Serialize> PubSub<T> {
             _phantom: PhantomData,
         }
     }
-
-    /// Import a [CapabilityRef] from any table into this pubsub's table.
-    fn import(&self, cap: CapabilityRef) -> CapabilityRef {
-        let owned = cap.to_owned();
-        let handle = self.table.import_owned(owned).unwrap();
-        self.table.wrap_handle(handle).unwrap()
-    }
-
     /// Adds a subscriber. Does nothing if the capability is already subscribed.
     ///
     /// The given capability can be from any table.
@@ -326,7 +318,7 @@ impl<T: Serialize> PubSub<T> {
             return;
         }
 
-        let cap = self.import(cap);
+        let cap = self.table.import_ref(cap).unwrap();
         let key = cap.demote(Permissions::empty()).unwrap().into_handle();
         let val = cap.demote(Permissions::SEND).unwrap().into_handle();
 
@@ -345,7 +337,7 @@ impl<T: Serialize> PubSub<T> {
     ///
     /// The given capability can be from any table.
     pub fn unsubscribe(&self, cap: CapabilityRef) {
-        let cap = self.import(cap);
+        let cap = self.table.import_ref(cap).unwrap();
         let key = cap.demote(Permissions::empty()).unwrap().into_handle();
 
         // lock the subscribers list
