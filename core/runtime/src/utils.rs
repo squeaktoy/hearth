@@ -290,7 +290,7 @@ pub struct PubSub<T> {
     /// A mutex-locked set of subscribers. Each entry is a zero-perm capability
     /// to a subscriber for indexing by down signal caps combined with a cap
     /// to the subscriber with the send perm for notifying it.
-    subscribers: Mutex<HashMap<usize, CapabilityHandle>>,
+    subscribers: Mutex<HashMap<CapabilityHandle, CapabilityHandle>>,
 
     _phantom: PhantomData<T>,
 }
@@ -326,7 +326,7 @@ impl<T: Serialize> PubSub<T> {
         let mut subs = self.subscribers.lock();
 
         // insert subscriber into map and catch existing entries
-        if let Some(old_val) = subs.insert(key.0, val) {
+        if let Some(old_val) = subs.insert(key, val) {
             // manually decrement reference count for a duplicated subscriber
             self.table.dec_ref(key).unwrap();
             self.table.dec_ref(old_val).unwrap();
@@ -344,7 +344,7 @@ impl<T: Serialize> PubSub<T> {
         let mut subs = self.subscribers.lock();
 
         // remove subscriber from map and catch the old lifetime
-        if let Some(old_val) = subs.remove(&key.0) {
+        if let Some(old_val) = subs.remove(&key) {
             // manually decrement reference count for removed subscriber
             self.table.dec_ref(key).unwrap();
             self.table.dec_ref(old_val).unwrap();
