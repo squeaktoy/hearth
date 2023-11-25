@@ -57,7 +57,7 @@ impl SinkProcess for SleepService {
 
     async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, Self::Message>) {
         let Some(reply) = message.caps.first() else {
-            debug!("sleep request has reply address");
+            debug!("Sleep request has no reply address");
             return;
         };
 
