@@ -21,6 +21,9 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
+/// Canvas protocol.
+pub mod canvas;
+
 /// Debug draw protocol
 pub mod debug_draw;
 
