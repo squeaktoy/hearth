@@ -18,8 +18,10 @@
 
 use glam::{Quat, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
+use serde_with::{base64::Base64, serde_as};
 
 /// A rectangular buffer of pixel data.
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Pixels {
     /// The width of the buffer, in pixels.
@@ -33,6 +35,7 @@ pub struct Pixels {
     /// `width * height * 4` should match the length of `data`. Missing pixel
     /// data will be initialized with `0xff` for all components. Excess data
     /// is ignored.
+    #[serde_as(as = "Base64")]
     pub data: Vec<u8>,
 }
 
