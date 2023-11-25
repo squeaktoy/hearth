@@ -23,7 +23,7 @@ use flume::{Receiver, Sender};
 use hearth_rend3::{
     rend3::{
         graph::{DepthHandle, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets},
-        types::glam::{vec2, Mat4},
+        types::glam::{vec2, Mat4, Vec4},
     },
     wgpu::{util::DeviceExt, *},
     Node, Rend3Plugin, Routine, RoutineInfo,
@@ -41,7 +41,11 @@ use hearth_runtime::{
 /// A specific kind of operation on a canvas.
 pub enum CanvasOperationKind {
     /// Create a new canvas with this ID.
-    Create { position: Position, pixels: Pixels },
+    Create {
+        position: Position,
+        pixels: Pixels,
+        sampling: CanvasSamplingMode,
+    },
 
     /// Destroy this canvas.
     Destroy,
@@ -60,12 +64,14 @@ pub type CanvasOperation = (usize, CanvasOperationKind);
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct CanvasUniform {
     pub mvp: Mat4,
+    pub texture_size: Vec4,
 }
 
 /// A canvas's GPU state.
 pub struct CanvasDraw {
     position: Position,
     ubo: Buffer,
+    sampling_mode: CanvasSamplingMode,
     width: u32,
     height: u32,
     texture: Texture,
@@ -78,6 +84,7 @@ impl CanvasDraw {
         queue: &Queue,
         bgl: &BindGroupLayout,
         sampler: &Sampler,
+        sampling_mode: CanvasSamplingMode,
         position: Position,
         pixels: Pixels,
     ) -> Self {
@@ -96,9 +103,10 @@ impl CanvasDraw {
         Self {
             position,
             ubo,
-            texture,
             width,
             height,
+            texture,
+            sampling_mode,
             bind_group,
         }
     }
@@ -139,7 +147,16 @@ impl CanvasDraw {
         let translation = Mat4::from_translation(self.position.origin);
         let mvp = vp * translation * rotation * scale;
 
-        let ubo = CanvasUniform { mvp };
+        // set texture size depending on whether to enable nearest-neighbor
+        let texture_size = if self.sampling_mode == CanvasSamplingMode::Linear {
+            // tell shader not to use anti-aliased nearest-neighbor sampling
+            -Vec4::ONE
+        } else {
+            // pass the texture size and add padding
+            Vec4::new(self.width as f32, self.height as f32, 0.0, 0.0)
+        };
+
+        let ubo = CanvasUniform { mvp, texture_size };
 
         queue.write_buffer(&self.ubo, 0, bytemuck::bytes_of(&ubo));
     }
@@ -334,9 +351,9 @@ impl CanvasRoutine {
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
             address_mode_w: AddressMode::ClampToEdge,
-            mag_filter: FilterMode::Nearest,
-            min_filter: FilterMode::Nearest,
-            mipmap_filter: FilterMode::Nearest,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
+            mipmap_filter: FilterMode::Linear,
             ..Default::default()
         });
 
@@ -357,7 +374,11 @@ impl Routine for CanvasRoutine {
         for (id, operation) in self.ops_rx.drain() {
             let update = match operation {
                 CanvasOperationKind::Update(update) => update,
-                CanvasOperationKind::Create { position, pixels } => {
+                CanvasOperationKind::Create {
+                    position,
+                    pixels,
+                    sampling,
+                } => {
                     self.draws.insert(
                         id,
                         CanvasDraw::new(
@@ -365,6 +386,7 @@ impl Routine for CanvasRoutine {
                             &self.queue,
                             &self.bgl,
                             &self.sampler,
+                            sampling,
                             position,
                             pixels,
                         ),
@@ -487,7 +509,11 @@ impl RequestResponseProcess for CanvasFactory {
         request: &mut RequestInfo<'a, Self::Request>,
     ) -> ResponseInfo<'a, Self::Response> {
         match &request.data {
-            FactoryRequest::CreateCanvas { position, pixels } => {
+            FactoryRequest::CreateCanvas {
+                position,
+                pixels,
+                sampling,
+            } => {
                 // allocate a new ID
                 let id = self.next_id;
                 self.next_id += 1;
@@ -498,6 +524,7 @@ impl RequestResponseProcess for CanvasFactory {
                     CanvasOperationKind::Create {
                         position: position.to_owned(),
                         pixels: pixels.to_owned(),
+                        sampling: sampling.to_owned(),
                     },
                 ));
 
