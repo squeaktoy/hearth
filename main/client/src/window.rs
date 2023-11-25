@@ -427,7 +427,7 @@ impl SinkProcess for WindowService {
         match message.data {
             Subscribe => {
                 let Some(sub) = message.caps.get(0) else {
-                    warn!("subscribe messsage is missing capability");
+                    warn!("Subscribe messsage is missing capability");
                     return;
                 };
 
@@ -439,7 +439,7 @@ impl SinkProcess for WindowService {
             }
             Unsubscribe => {
                 let Some(sub) = message.caps.get(0) else {
-                    warn!("unsubscribe messsage is missing capability");
+                    warn!("Unsubscribe messsage is missing capability");
                     return;
                 };
 
