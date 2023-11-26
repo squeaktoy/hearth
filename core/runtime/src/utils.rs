@@ -363,7 +363,7 @@ impl<T: Serialize> PubSub<T> {
             Ok(data) => data,
             Err(err) => {
                 let name = std::any::type_name::<T>();
-                error!("failed to deserialize {}: {:?}", name, err);
+                error!("failed to serialize {}: {:?}", name, err);
                 return;
             }
         };
