@@ -167,8 +167,8 @@ impl CanvasDraw {
         let ah = self.height.saturating_sub(blit.y);
 
         // consumed width and height
-        let width = blit.pixels.width.max(aw);
-        let height = blit.pixels.height.max(ah);
+        let width = blit.pixels.width.min(aw);
+        let height = blit.pixels.height.min(ah);
 
         // abort if the copy has no area
         if width == 0 || height == 0 {
