@@ -372,8 +372,20 @@ impl CanvasRoutine {
 impl Routine for CanvasRoutine {
     fn build_node(&mut self) -> Box<dyn Node + '_> {
         for (id, operation) in self.ops_rx.drain() {
-            let update = match operation {
-                CanvasOperationKind::Update(update) => update,
+            match operation {
+                CanvasOperationKind::Update(update) => {
+                    let Some(draw) = self.draws.get_mut(&id) else {
+                        continue;
+                    };
+
+                    match update {
+                        CanvasUpdate::Relocate(position) => draw.set_position(position),
+                        CanvasUpdate::Blit(blit) => draw.blit(&self.queue, blit),
+                        CanvasUpdate::Resize(pixels) => {
+                            draw.resize(&self.device, &self.queue, pixels, &self.bgl, &self.sampler)
+                        }
+                    }
+                }
                 CanvasOperationKind::Create {
                     position,
                     pixels,
@@ -391,24 +403,9 @@ impl Routine for CanvasRoutine {
                             pixels,
                         ),
                     );
-
-                    continue;
                 }
                 CanvasOperationKind::Destroy => {
                     self.draws.remove(&id);
-                    continue;
-                }
-            };
-
-            let Some(draw) = self.draws.get_mut(&id) else {
-                continue;
-            };
-
-            match update {
-                CanvasUpdate::Relocate(position) => draw.set_position(position),
-                CanvasUpdate::Blit(blit) => draw.blit(&self.queue, blit),
-                CanvasUpdate::Resize(pixels) => {
-                    draw.resize(&self.device, &self.queue, pixels, &self.bgl, &self.sampler)
                 }
             }
         }
