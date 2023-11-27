@@ -52,15 +52,15 @@ impl JsonAssetLoader for MeshLoader {
         data: Self::Data,
     ) -> anyhow::Result<Self::Asset> {
         let mesh = Mesh {
-            vertex_positions: data.positions,
-            vertex_normals: data.normals,
-            vertex_tangents: data.tangents,
-            vertex_uv0: data.uv0,
-            vertex_uv1: data.uv1,
-            vertex_colors: data.colors,
-            vertex_joint_indices: data.joint_indices,
-            vertex_joint_weights: data.joint_weights,
-            indices: data.indices,
+            vertex_positions: data.positions.0,
+            vertex_normals: data.normals.0,
+            vertex_tangents: data.tangents.0,
+            vertex_uv0: data.uv0.0,
+            vertex_uv1: data.uv1.0,
+            vertex_colors: data.colors.0,
+            vertex_joint_indices: data.joint_indices.0,
+            vertex_joint_weights: data.joint_weights.0,
+            indices: data.indices.0,
         };
 
         let handle = self.0.add_mesh(mesh);
