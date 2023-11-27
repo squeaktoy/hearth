@@ -20,7 +20,7 @@ use glam::{Mat4, UVec2, Vec2, Vec3, Vec4};
 use serde::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
 
-use crate::LumpId;
+use crate::{ByteVec, LumpId};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum RendererRequest {
@@ -120,17 +120,35 @@ pub struct MaterialData {
 /// A mesh lump's data format.
 ///
 /// All vertex attributes must be the same length.
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MeshData {
-    pub positions: Vec<Vec3>,
-    pub normals: Vec<Vec3>,
-    pub tangents: Vec<Vec3>,
-    pub uv0: Vec<Vec2>,
-    pub uv1: Vec<Vec2>,
-    pub colors: Vec<[u8; 4]>,
-    pub joint_indices: Vec<[u16; 4]>,
-    pub joint_weights: Vec<Vec4>,
-    pub indices: Vec<u32>,
+    #[serde_as(as = "Base64")]
+    pub positions: ByteVec<Vec3>,
+
+    #[serde_as(as = "Base64")]
+    pub normals: ByteVec<Vec3>,
+
+    #[serde_as(as = "Base64")]
+    pub tangents: ByteVec<Vec3>,
+
+    #[serde_as(as = "Base64")]
+    pub uv0: ByteVec<Vec2>,
+
+    #[serde_as(as = "Base64")]
+    pub uv1: ByteVec<Vec2>,
+
+    #[serde_as(as = "Base64")]
+    pub colors: ByteVec<[u8; 4]>,
+
+    #[serde_as(as = "Base64")]
+    pub joint_indices: ByteVec<[u16; 4]>,
+
+    #[serde_as(as = "Base64")]
+    pub joint_weights: ByteVec<Vec4>,
+
+    #[serde_as(as = "Base64")]
+    pub indices: ByteVec<u32>,
 }
 
 /// A texture lump's data format.
