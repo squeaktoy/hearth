@@ -18,6 +18,7 @@
 
 use glam::{Mat4, UVec2, Vec2, Vec3, Vec4};
 use serde::{Deserialize, Serialize};
+use serde_with::{base64::Base64, serde_as};
 
 use crate::LumpId;
 
@@ -133,6 +134,7 @@ pub struct MeshData {
 }
 
 /// A texture lump's data format.
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TextureData {
     /// An optional label for this texture.
@@ -143,5 +145,6 @@ pub struct TextureData {
 
     /// The data of this texture. Currently only supports RGBA sRGB. Must be
     /// a size equivalent to `size.x * size.y * 4`.
+    #[serde_as(as = "Base64")]
     pub data: Vec<u8>,
 }
