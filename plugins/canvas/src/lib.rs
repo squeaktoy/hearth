@@ -114,6 +114,13 @@ impl CanvasDraw {
         }
     }
 
+    /// Resizes the canvas pixel buffer and recreates GPU objects.
+    ///
+    /// Does not reallocate any GPU objects if the size of the new pixel buffer
+    /// is identical to the old one, and performs a blit operation instead.
+    ///
+    /// The effects of this function are immediately applied to the next draw
+    /// call.
     pub fn resize(
         &mut self,
         device: &Device,
@@ -144,8 +151,12 @@ impl CanvasDraw {
 
     /// Updates this draw's uniform buffer on the GPU.
     pub fn update_ubo(&self, queue: &Queue, vp: Mat4) {
+        // invert Y because 3D world coordinates are Y-up, while canvases are Y-down.
         let half_size = vec2(self.position.half_size.x, -self.position.half_size.y);
+
+        // from_scale() requires a Vec3 so we set 1.0 as the Z component
         let scale = Mat4::from_scale(half_size.extend(1.0));
+
         let rotation = Mat4::from_quat(self.position.orientation);
         let translation = Mat4::from_translation(self.position.origin);
         let mvp = vp * translation * rotation * scale;
@@ -164,6 +175,8 @@ impl CanvasDraw {
         queue.write_buffer(&self.ubo, 0, bytemuck::bytes_of(&ubo));
     }
 
+    /// Implements the [Blit] operation: copies a pixel buffer to a target
+    /// destination region of this canvas.
     pub fn blit(&self, queue: &Queue, mut blit: Blit) {
         // available width and height
         let aw = self.width.saturating_sub(blit.x);
@@ -208,6 +221,7 @@ impl CanvasDraw {
         );
     }
 
+    /// Helper function to recreate the canvas's texture object with the given pixels.
     fn create_texture(device: &Device, queue: &Queue, mut pixels: Pixels) -> Texture {
         // correct the pixel data length
         pixels
@@ -233,6 +247,8 @@ impl CanvasDraw {
         )
     }
 
+    /// Helper function to recreate a canvas's bind group with the given
+    /// resources.
     fn create_bind_group(
         device: &Device,
         bgl: &BindGroupLayout,
