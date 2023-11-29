@@ -17,6 +17,7 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 use hearth_guest::*;
+use kindling_host::{registry::REGISTRY, wasm::spawn_mod};
 
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {
@@ -44,13 +45,7 @@ pub extern "C" fn run() {
     for file in list_files(&fs, search_dir) {
         info!("file: {}", file.name);
         let lump = get_file(&fs, &format!("init/{}/service.wasm", file.name));
-        WASM_SPAWNER.request(
-            wasm::WasmSpawnInfo {
-                lump,
-                entrypoint: None,
-            },
-            &[REGISTRY.as_ref()],
-        );
+        spawn_mod(lump, None).unwrap();
     }
 }
 
