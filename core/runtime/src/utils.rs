@@ -282,8 +282,8 @@ where
     }
 }
 
-/// A shared utility struct for publishing event messages to a dynamic list of
-/// subscribers.
+/// A shared utility struct for publishing event messages of type `T` to a
+/// dynamic list of subscribers.
 pub struct PubSub<T> {
     table: Table,
 
