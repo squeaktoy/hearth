@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - run: rustup toolchain add wasm32-unknown-unknown
+    - run: rustup target add wasm32-unknown-unknown
     - uses: Swatinem/rust-cache@v2.2.0
       with:
         workspaces: "kindling -> kindling/target"
