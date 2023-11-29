@@ -54,10 +54,13 @@ pub enum CanvasOperationKind {
     Update(CanvasUpdate),
 }
 
+/// An identifier for a specific canvas within a [CanvasRoutine].
+pub type CanvasId = usize;
+
 /// A message sent from a canvas instance to the canvas routine.
 ///
 /// Contains an identifier for the canvas and an operation kind on it.
-pub type CanvasOperation = (usize, CanvasOperationKind);
+pub type CanvasOperation = (CanvasId, CanvasOperationKind);
 
 /// GPU-side canvas rendering uniform data.
 #[repr(C)]
@@ -268,7 +271,7 @@ pub struct CanvasRoutine {
     bgl: BindGroupLayout,
     pipeline: RenderPipeline,
     sampler: Sampler,
-    draws: HashMap<usize, CanvasDraw>,
+    draws: HashMap<CanvasId, CanvasDraw>,
 }
 
 impl CanvasRoutine {
@@ -464,7 +467,7 @@ impl<'a> Node<'a> for CanvasNode<'a> {
 /// A canvas process. Processes [CanvasUpdate].
 pub struct CanvasInstance {
     /// This canvas's ID.
-    id: usize,
+    id: CanvasId,
 
     /// A sender to the canvas routine.
     ops_tx: Sender<CanvasOperation>,
@@ -490,7 +493,7 @@ impl SinkProcess for CanvasInstance {
 /// Spawns [CanvasInstance] and processes [FactoryRequest].
 pub struct CanvasFactory {
     /// The ID of the next canvas that will be spawned.
-    next_id: usize,
+    next_id: CanvasId,
 
     /// A sender to the canvas routine.
     ops_tx: Sender<CanvasOperation>,
