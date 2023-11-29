@@ -45,4 +45,5 @@ jobs:
     - uses: LoliGothick/rustfmt-check@master
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        flags: --all --manifest-path kindling/Cargo.toml
+        working-directory: "kindling"
+        flags: --all
