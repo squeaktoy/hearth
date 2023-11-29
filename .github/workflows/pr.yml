@@ -51,7 +51,7 @@ jobs:
     - uses: LoliGothick/rustfmt-check@master
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        name: hearth_rustfmt
+        name: hearth-rustfmt-check
         flags: --all
   kindling-build:
     runs-on: ubuntu-latest
@@ -91,6 +91,6 @@ jobs:
     - uses: LoliGothick/rustfmt-check@master
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        name: kindling_rustfmt
+        name: kindling-rustfmt-check
         working-directory: "kindling"
         flags: --all
