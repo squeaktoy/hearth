@@ -29,7 +29,7 @@ jobs:
     - uses: Swatinem/rust-cache@v2.2.0
       with:
         workspaces: "kindling -> kindling/target"
-    - uses: auguwu/clippy-action@v1
+    - uses: auguwu/clippy-action@v1.3.0
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         name: kindling_clippy
