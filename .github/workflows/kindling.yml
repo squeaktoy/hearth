@@ -46,5 +46,6 @@ jobs:
     - uses: LoliGothick/rustfmt-check@master
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        name: kindling_rustfmt
         working-directory: "kindling"
         flags: --all
