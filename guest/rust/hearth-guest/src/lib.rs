@@ -151,6 +151,11 @@ impl Drop for Capability {
 }
 
 impl Capability {
+    /// Allow capabilities to be initialized from outside of this crate.
+    pub const unsafe fn new_raw(handle: u32) -> Self {
+        Capability(handle)
+    }
+
     /// Spawns a child process for the given function.
     pub fn spawn(cb: fn(), registry: Option<Capability>) -> Self {
         // directly transmute a Rust function pointer to a Wasm function index
