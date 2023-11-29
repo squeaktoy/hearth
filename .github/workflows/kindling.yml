@@ -29,11 +29,12 @@ jobs:
     - uses: Swatinem/rust-cache@v2.2.0
       with:
         workspaces: "kindling -> kindling/target"
-    - uses: auguwu/clippy-action@1.3.0
+    - uses: clechasseur/rs-clippy-check@v3
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        name: kindling_clippy
-        args: --all-targets --manifest-path kindling/Cargo.toml --target wasm32-unknown-unknown
+        # token: ${{ secrets.GITHUB_TOKEN }}
+        # name: kindling_clippy
+        working-directory: "kindling"
+        args: --all-targets --target wasm32-unknown-unknown
   rustfmt:
     runs-on: ubuntu-latest
     steps:
