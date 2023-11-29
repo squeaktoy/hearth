@@ -3,16 +3,8 @@ name: Pull Request Checks
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - "**/Cargo.toml"
-      - "**.rs"
-      - ".github/**"
   pull_request:
     branches: [ "main" ]
-    paths:
-      - "**/Cargo.toml"
-      - "**.rs"
-      - ".github/**"
 
 jobs:
   build:
