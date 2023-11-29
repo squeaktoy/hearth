@@ -31,8 +31,6 @@ jobs:
         workspaces: "kindling -> kindling/target"
     - uses: clechasseur/rs-clippy-check@v3
       with:
-        # token: ${{ secrets.GITHUB_TOKEN }}
-        # name: kindling_clippy
         working-directory: "kindling"
         args: --all-targets --target wasm32-unknown-unknown
   rustfmt:
