@@ -1,4 +1,4 @@
-name: Kindling Checks
+name: Pull Request Checks
 
 on:
   push:
@@ -7,7 +7,53 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  hearth-build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2.2.0
+    - name: Build
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --all-targets
+  hearth-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2.2.0
+    - name: Test
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --all-targets
+  hearth-clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: Swatinem/rust-cache@v2.2.0
+    - run: rustup component add clippy
+    - uses: clechasseur/rs-clippy-check@v3
+      with:
+        args: --all-targets
+  hearth-rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        components: rustfmt
+        override: true
+    - uses: LoliGothick/rustfmt-check@master
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        name: hearth_rustfmt
+        flags: --all
+  kindling-build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -20,7 +66,7 @@ jobs:
       with:
         command: build
         args: --all-targets --manifest-path kindling/Cargo.toml --target wasm32-unknown-unknown
-  clippy_check:
+  kindling-clippy:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
@@ -33,7 +79,7 @@ jobs:
       with:
         working-directory: "kindling"
         args: --all-targets --target wasm32-unknown-unknown
-  rustfmt:
+  kindling-rustfmt:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
