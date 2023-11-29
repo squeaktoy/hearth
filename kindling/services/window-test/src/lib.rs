@@ -17,6 +17,7 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 use hearth_guest::{window::*, *};
+use kindling_host::registry::REGISTRY;
 
 #[no_mangle]
 pub extern "C" fn run() {
