@@ -39,6 +39,7 @@ jobs:
     - uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        name: hearth_clippy
         args: --all-targets
   rustfmt:
     runs-on: ubuntu-latest

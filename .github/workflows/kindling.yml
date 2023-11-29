@@ -32,6 +32,7 @@ jobs:
     - uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        name: kindling_clippy
         args: --all-targets --manifest-path kindling/Cargo.toml --target wasm32-unknown-unknown
   rustfmt:
     runs-on: ubuntu-latest
