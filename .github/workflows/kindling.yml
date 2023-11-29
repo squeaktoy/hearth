@@ -25,10 +25,10 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - run: rustup target add wasm32-unknown-unknown
+    - run: rustup component add clippy
     - uses: Swatinem/rust-cache@v2.2.0
       with:
         workspaces: "kindling -> kindling/target"
-    - run: rustup target add clippy
     - uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
