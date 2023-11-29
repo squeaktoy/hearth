@@ -125,9 +125,11 @@ impl ServiceRunner for TimerFactory {
 /// Receives a floating-point number as a request, waits that number in seconds,
 /// then sends back an empty message as response.
 ///
-/// The improvement of a timer over [SleepService] is that timers eliminate
-/// potential round-trip time between requests and responses accumulating over
-/// multiple sleep requests.
+/// A timer's wait begins at the end of its last wait as opposed to when it
+/// recievives a request. This is an improvement over [SleepService] as timers
+/// function entirely on their internal clock and thus eliminate potential
+/// round-trip time between requests and responses accumulating over multiple
+/// sleep requests.
 pub struct Timer {
     last_request: Instant,
 }
