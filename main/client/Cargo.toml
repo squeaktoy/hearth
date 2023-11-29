@@ -20,7 +20,8 @@ hearth-wasm = { workspace = true }
 tokio = { version = "1.24", features = ["full"] }
 tracing = { workspace = true }
 
+# enable wayland and X to compile on Linux but explicitly disable some unnecessary features
 [dependencies.winit]
 version = "0.27"
 default-features = false
-features = ["x11", "wayland-dlopen"]
+features = ["x11", "wayland", "wayland-dlopen"]
