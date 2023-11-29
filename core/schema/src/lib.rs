@@ -24,6 +24,9 @@ use std::{
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
+/// Canvas protocol.
+pub mod canvas;
+
 /// Debug draw protocol
 pub mod debug_draw;
 
@@ -47,6 +50,9 @@ pub mod terminal;
 
 /// WebAssembly process protocols and utilities.
 pub mod wasm;
+
+/// Windowing protocol.
+pub mod window;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct ProcessId(pub u32);
