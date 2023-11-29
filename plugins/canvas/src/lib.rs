@@ -537,7 +537,7 @@ impl RequestResponseProcess for CanvasFactory {
                 // initialize the instance's metadata
                 let mut meta = cargo_process_metadata!();
                 meta.name = Some("CanvasInstance".to_string());
-                meta.description = Some("An instance of a canvas".to_string());
+                meta.description = Some("An instance of a canvas.".to_string());
 
                 // spawn the instance child process
                 let child = request.runtime.process_factory.spawn(meta);
@@ -574,7 +574,7 @@ impl ServiceRunner for CanvasFactory {
         let mut meta = cargo_process_metadata!();
 
         meta.description =
-            Some("The native canvas factory service. Accepts FactoryRequest".to_string());
+            Some("The native canvas factory service. Accepts FactoryRequest.".to_string());
 
         meta
     }
