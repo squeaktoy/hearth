@@ -64,6 +64,40 @@ macro_rules! cargo_process_metadata {
 // export the macro so we can use it in other modules in this crate
 pub(crate) use cargo_process_metadata;
 
+/// An interface trait for data passed as context to process runners.
+pub trait RunnerContext<'a> {
+    /// Retrieves the inner process that this process runner has access to.
+    fn get_process(&self) -> &'a Process;
+
+    /// Retrieves the runtime that this process runner is a component of.
+    fn get_runtime(&self) -> &'a Arc<Runtime>;
+
+    /// Spawns a child process, executes it using the given process runner,
+    /// and returns a capability to its parent mailbox within this runners'
+    /// table.
+    fn spawn(
+        &self,
+        meta: ProcessMetadata,
+        runner: impl ProcessRunner + 'static,
+    ) -> CapabilityRef<'a> {
+        let label = meta.name.clone().unwrap_or("<no name>".to_string());
+        let runtime = self.get_runtime().to_owned();
+        let child = runtime.process_factory.spawn(meta);
+        let perms = Permissions::all();
+
+        let child_cap = child
+            .borrow_parent()
+            .export_to(perms, self.get_process().borrow_table())
+            .unwrap();
+
+        tokio::spawn(async move {
+            runner.run(label, runtime, &child).await;
+        });
+
+        child_cap
+    }
+}
+
 /// Context for an incoming message in [SinkProcess].
 pub struct MessageInfo<'a, T> {
     /// This process's label.
@@ -80,6 +114,16 @@ pub struct MessageInfo<'a, T> {
 
     /// The capabilities from this message.
     pub caps: &'a [CapabilityRef<'a>],
+}
+
+impl<'a, T> RunnerContext<'a> for MessageInfo<'a, T> {
+    fn get_process(&self) -> &'a Process {
+        self.process
+    }
+
+    fn get_runtime(&self) -> &'a Arc<Runtime> {
+        self.runtime
+    }
 }
 
 /// Context for an incoming message in [RequestResponseProcess].
@@ -101,6 +145,16 @@ pub struct RequestInfo<'a, T> {
 
     /// The deserialized data of the message's contents.
     pub data: T,
+}
+
+impl<'a, T> RunnerContext<'a> for RequestInfo<'a, T> {
+    fn get_process(&self) -> &'a Process {
+        self.process
+    }
+
+    fn get_runtime(&self) -> &'a Arc<Runtime> {
+        self.runtime
+    }
 }
 
 pub struct ResponseInfo<'a, T>

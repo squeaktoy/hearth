@@ -22,13 +22,9 @@ use draw::{TerminalDrawState, TerminalPipelines};
 use hearth_rend3::*;
 use hearth_runtime::{
     async_trait, cargo_process_metadata,
-    flue::Permissions,
     process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
-    tokio::{
-        self,
-        sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    },
+    tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     utils::*,
 };
 use hearth_schema::terminal::*;
@@ -171,29 +167,18 @@ impl RequestResponseProcess for TerminalFactory {
         let terminal = Terminal::new(config, state.clone());
         let _ = self.new_terminals_tx.send(terminal.clone());
 
-        let sink = TerminalSink { inner: terminal };
-
         // create metadata for the child TerminalSink since it's a sink, not a
         // service, and it doesn't have get_process_metadata()
         let mut meta = cargo_process_metadata!();
         meta.name = Some("TerminalSink".to_string());
         meta.description = Some("An instance of a terminal. Accepts TerminalUpdate.".to_string());
 
-        let child = request.runtime.process_factory.spawn(meta);
-        let perms = Permissions::SEND | Permissions::KILL;
-        let child_cap = child
-            .borrow_parent()
-            .export_to(perms, request.process.borrow_table())
-            .unwrap();
-
-        let runtime = request.runtime.clone();
-        tokio::spawn(async move {
-            sink.run("TerminalSink".to_string(), runtime, &child).await;
-        });
+        let sink = TerminalSink { inner: terminal };
+        let child = request.spawn(meta, sink);
 
         ResponseInfo {
             data: Ok(FactorySuccess::Terminal),
-            caps: vec![child_cap],
+            caps: vec![child],
         }
     }
 }
