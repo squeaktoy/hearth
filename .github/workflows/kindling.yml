@@ -1,0 +1,46 @@
+name: Kindling Checks
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2.2.0
+      with:
+        workspaces: "kindling -> kindling/target"
+    - name: Build
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --all-targets --manifest-path kindling/Cargo.toml --target wasm32-unknown-unknown
+  clippy_check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: Swatinem/rust-cache@v2.2.0
+      with:
+        workspaces: "kindling -> kindling/target"
+    - run: rustup component add clippy
+    - uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-targets --manifest-path kindling/Cargo.toml --target wasm32-unknown-unknown
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        components: rustfmt
+        override: true
+    - uses: LoliGothick/rustfmt-check@master
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        flags: --all --manifest-path kindling/Cargo.toml
