@@ -17,6 +17,9 @@ Hearth is a shared, always-on execution environment for constructing
   <a href="https://www.gnu.org/licenses/why-affero-gpl.html">
     <img alt="AGPL License" src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366">
   </a>
+  <a href="https://coven.witchcraft.zone/@hearth">
+    <img alt="Fediverse" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcoven.witchcraft.zone%2Fusers%2F9lylyyd6kcmppzkm%2Ffollowers&query=totalItems&suffix=%20followers&label=Fediverse">
+  </a>
 </p>
 
 [Philosophy](#philosophy) •
