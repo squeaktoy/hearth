@@ -50,9 +50,7 @@ pub mod runtime;
 pub mod utils;
 
 /// Helper function to set up console logging with reasonable defaults.
-pub fn init_logging()
-
-{
+pub fn init_logging() {
     let filter = tracing_subscriber::filter::Targets::new()
         .with_target("wgpu", Level::INFO)
         .with_target("wgpu_core", Level::WARN)
