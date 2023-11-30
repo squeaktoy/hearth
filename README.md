@@ -14,6 +14,9 @@ Hearth is a shared, always-on execution environment for constructing
   <a href="https://matrix.to/#/#hearth:leyline.witchcraft.zone">
     <img src="https://img.shields.io/matrix/hearth:leyline.witchcraft.zone.svg?server_fqdn=matrix.leyline.witchcraft.zone&label=Matrix">
   </a>
+  <a href="https://www.gnu.org/licenses/why-affero-gpl.html">
+    <img src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366">
+  </a>
 </p>
 
 [Philosophy](#philosophy) •
