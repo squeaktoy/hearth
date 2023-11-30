@@ -35,9 +35,7 @@ macro_rules! info {
 }
 
 #[no_mangle]
-pub extern "C" fn run()
-
-{
+pub extern "C" fn run() {
     hearth_guest::log(hearth_guest::ProcessLogLevel::Info, "init", "Hello world!");
     let fs = REGISTRY
         .get_service("hearth.fs.Filesystem")
