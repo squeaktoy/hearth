@@ -12,7 +12,7 @@ Hearth is a shared, always-on execution environment for constructing
     <img src="https://img.shields.io/discord/1065779071008649327?label=Discord">
   </a>
   <a href="https://matrix.to/#/#hearth:leyline.witchcraft.zone">
-    <img src="https://img.shields.io/matrix/hearth:leyline.witchcraft.zone.svg?server_fqdn=matrix.leyline.witchcraft.zone">
+    <img src="https://img.shields.io/matrix/hearth:leyline.witchcraft.zone.svg?server_fqdn=matrix.leyline.witchcraft.zone&label=Matrix">
   </a>
 </p>
 
