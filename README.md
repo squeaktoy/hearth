@@ -9,13 +9,13 @@ Hearth is a shared, always-on execution environment for constructing
 
 <p align="center">
   <a href="https://discord.gg/gzzJ3pWCft">
-    <img src="https://img.shields.io/discord/1065779071008649327?label=Discord">
+    <img alt="Discord" src="https://img.shields.io/discord/1065779071008649327?label=Discord">
   </a>
   <a href="https://matrix.to/#/#hearth:leyline.witchcraft.zone">
-    <img src="https://img.shields.io/matrix/hearth:leyline.witchcraft.zone.svg?server_fqdn=matrix.leyline.witchcraft.zone&label=Matrix">
+    <img alt="Matrix" src="https://img.shields.io/matrix/hearth:leyline.witchcraft.zone.svg?server_fqdn=matrix.leyline.witchcraft.zone&label=Matrix">
   </a>
   <a href="https://www.gnu.org/licenses/why-affero-gpl.html">
-    <img src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366">
+    <img alt="AGPL License" src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366">
   </a>
 </p>
 
