@@ -720,10 +720,20 @@ impl MetadataAbi {
 }
 
 /// Encapsulates an instance of each guest ABI data structure.
+///
+/// Each variant is only accessible during a specific phase of a process's
+/// execution. If a process attempts to access an ABI that isn't available in
+/// its phase, the [GetAbi] implementation for that ABI will throw an error.
 pub enum ProcessData {
-    Metadata {
-        metadata: MetadataAbi,
-    },
+    /// The **metadata phase** of process execution.
+    ///
+    /// Before the process is spawned into the runtime, it may export
+    /// user-facing metadata through [MetadataAbi].
+    Metadata { metadata: MetadataAbi },
+
+    /// The **running phase** of process execution.
+    ///
+    /// Provides full access to a process's ABIs post-spawn.
     Running {
         log: LogAbi,
         lump: LumpAbi,
