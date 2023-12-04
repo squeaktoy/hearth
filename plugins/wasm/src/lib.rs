@@ -665,6 +665,11 @@ impl MailboxAbi {
 }
 
 /// Implements the `hearth::metadata` ABI module.
+///
+/// This ABI is only available during the metadata stage of process execution.
+/// Its role is to write each field of [ProcessMetadata] before the process is
+/// actually spawned with access to the full runtime. Each method modifies a
+/// given field of [ProcessMetadata].
 #[derive(Default)]
 pub struct MetadataAbi {
     meta: ProcessMetadata,
