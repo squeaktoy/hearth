@@ -27,14 +27,13 @@ use hearth_runtime::{
     anyhow::{self, bail},
     asset::{AssetStore, JsonAssetLoader},
     async_trait, cargo_process_metadata,
-    flue::Permissions,
     hearth_schema::renderer::*,
     process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
-    tokio::{self, sync::mpsc::UnboundedSender},
+    tokio::sync::mpsc::UnboundedSender,
     tracing::{error, warn},
     utils::{
-        MessageInfo, ProcessRunner, RequestInfo, RequestResponseProcess, ResponseInfo,
+        MessageInfo, RequestInfo, RequestResponseProcess, ResponseInfo, RunnerContext,
         ServiceRunner, SinkProcess,
     },
 };
@@ -262,23 +261,11 @@ impl RequestResponseProcess for RendererService {
                         .to_string(),
                 );
 
-                let child = request.runtime.process_factory.spawn(meta);
-
-                let perms = Permissions::all();
-                let child_cap = child
-                    .borrow_parent()
-                    .export_to(perms, request.process.borrow_table())
-                    .unwrap();
-
-                let label = "DirectionalLightInstance".to_string();
-                let runtime = request.runtime.clone();
-                tokio::spawn(async move {
-                    instance.run(label, runtime, &child).await;
-                });
+                let child = request.spawn(meta, instance);
 
                 return ResponseInfo {
                     data: Ok(RendererSuccess::Ok),
-                    caps: vec![child_cap],
+                    caps: vec![child],
                 };
             }
             AddObject {
@@ -345,23 +332,11 @@ impl RequestResponseProcess for RendererService {
                 meta.description =
                     Some("An instance of a renderer object. Accepts ObjectUpdate.".to_string());
 
-                let child = request.runtime.process_factory.spawn(meta);
-
-                let perms = Permissions::all();
-                let child_cap = child
-                    .borrow_parent()
-                    .export_to(perms, request.process.borrow_table())
-                    .unwrap();
-
-                let label = "ObjectInstance".to_string();
-                let runtime = request.runtime.clone();
-                tokio::spawn(async move {
-                    instance.run(label, runtime, &child).await;
-                });
+                let child = request.spawn(meta, instance);
 
                 return ResponseInfo {
                     data: Ok(RendererSuccess::Ok),
-                    caps: vec![child_cap],
+                    caps: vec![child],
                 };
             }
             SetSkybox { texture } => {
