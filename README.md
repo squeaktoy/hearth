@@ -9,18 +9,18 @@ Hearth is a shared, always-on execution environment for constructing
 
 <p align="center">
   <a href="https://discord.gg/gzzJ3pWCft">
-    <img alt="Discord" src="https://img.shields.io/discord/1065779071008649327?label=Discord">
+    <img alt="Discord" src="https://img.shields.io/discord/1065779071008649327?logo=discord&logoColor=white&label=Discord">
   </a>
   <a href="https://matrix.to/#/#hearth:leyline.witchcraft.zone">
-    <img alt="Matrix" src="https://img.shields.io/matrix/hearth:leyline.witchcraft.zone.svg?server_fqdn=matrix.leyline.witchcraft.zone&label=Matrix">
+    <img alt="Matrix" src="https://img.shields.io/matrix/hearth%3Aleyline.witchcraft.zone?server_fqdn=matrix.leyline.witchcraft.zone&logo=matrix&logoColor=white&label=Matrix">
   </a>
   <a href="https://www.gnu.org/licenses/why-affero-gpl.html">
-    <img alt="AGPL License" src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366">
+    <img alt="AGPL License" src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366?logo=gnu&logoColor=white">
   </a>
   <a href="https://coven.witchcraft.zone/@hearth">
-    <img alt="Fediverse" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcoven.witchcraft.zone%2Fusers%2F9lylyyd6kcmppzkm%2Ffollowers&query=totalItems&suffix=%20followers&label=Fediverse">
+    <img alt="Fediverse" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcoven.witchcraft.zone%2Fusers%2F9lylyyd6kcmppzkm%2Ffollowers&query=totalItems&suffix=%20followers&label=Fediverse&logo=mastodon&logoColor=white">
   </a>
-  <img alt="Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hearth-rs/hearth/pr.yml"/>
+  <img alt="Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hearth-rs/hearth/pr.yml?logo=github&logoColor=white"/>
 </p>
 
 [Philosophy](#philosophy) •
