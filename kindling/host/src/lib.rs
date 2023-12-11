@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 pub use hearth_guest::{Capability, Mailbox, Permissions};
 
+pub mod fs;
 pub mod registry;
 pub mod wasm;
 
