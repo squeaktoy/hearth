@@ -77,7 +77,6 @@ impl Capability {
         Capability(handle)
     }
 
-    /// Spawns a child process for the given function.
     /// Sends a message to this capability.
     pub fn send(&self, data: &[u8], caps: &[&Capability]) {
         let caps: Vec<u32> = caps.iter().map(|cap| (*cap).borrow().0).collect();
