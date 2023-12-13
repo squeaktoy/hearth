@@ -22,29 +22,35 @@ use hearth_guest::canvas::*;
 
 lazy_static::lazy_static! {
     /// A lazily-initialized handle to the canvas factory service.
-    pub static ref CANVAS_FACTORY: RequestResponse<FactoryRequest, FactoryResponse> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.canvas.CanvasFactory").unwrap())    };
-}
-
-impl CANVAS_FACTORY {
-    /// Spawns a new canvas.
-    pub fn spawn_canvas(&self, request: FactoryRequest) -> CanvasWrapper {
-        let resp = self.request(request, &[]);
-        let success = resp.0.unwrap();
-        match success {
-            FactorySuccess::Canvas => CanvasWrapper {
-                cap: resp.1.get(0).unwrap().clone(),
-            },
-        }
-    }
+    static ref CANVAS_FACTORY: RequestResponse<FactoryRequest, FactoryResponse> = {
+        RequestResponse::new(registry::REGISTRY.get_service("hearth.canvas.CanvasFactory").unwrap())
+    };
 }
 
 /// A wrapper around the canvas Capability.
-pub struct CanvasWrapper {
+pub struct Canvas {
     cap: Capability,
 }
 
-impl CanvasWrapper {
+impl Canvas {
+    /// Creates a new Canvas.
+    ///
+    /// Panics if the factory responds with an error.
+    pub fn new(position: Position, pixels: Pixels, sampling: CanvasSamplingMode) -> Self {
+        let resp = CANVAS_FACTORY.request(
+            FactoryRequest::CreateCanvas {
+                position,
+                pixels,
+                sampling,
+            },
+            &[],
+        );
+        let _ = resp.0.unwrap();
+        Canvas {
+            cap: resp.1.get(0).unwrap().clone(),
+        }
+    }
+
     /// Update this canvas with a new buffer of pixels to draw.
     pub fn update(&self, buffer: Pixels) {
         self.cap.send_json(&CanvasUpdate::Resize(buffer), &[]);
