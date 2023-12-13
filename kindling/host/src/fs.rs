@@ -24,7 +24,7 @@ use hearth_guest::{fs::*, Lump, LumpId};
 lazy_static::lazy_static! {
     /// A lazily-initialized handle to the Filesystem service.
     static ref FILESYSTEM: RequestResponse<Request, Response> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.wasm.WasmProcessSpawner").unwrap())
+        RequestResponse::new(registry::REGISTRY.get_service("hearth.fs.Filesystem").unwrap())
     };
 }
 
