@@ -23,47 +23,45 @@ use hearth_guest::{fs::*, Lump, LumpId};
 
 lazy_static::lazy_static! {
     /// A lazily-initialized handle to the Filesystem service.
-    pub static ref FILESYSTEM: RequestResponse<Request, Response> = {
+    static ref FILESYSTEM: RequestResponse<Request, Response> = {
         RequestResponse::new(registry::REGISTRY.get_service("hearth.wasm.WasmProcessSpawner").unwrap())
     };
 }
 
-impl FILESYSTEM {
-    pub fn get_file(&self, path: &str) -> Result<LumpId, Error> {
-        let success = self
-            .request(
-                Request {
-                    target: path.to_string(),
-                    kind: RequestKind::Get,
-                },
-                &[],
-            )
-            .0?;
-        match success {
-            Success::Get(lump) => Ok(lump),
-            _ => panic!("expected Success::Get, got {:?}", success),
-        }
+pub fn get_file(path: &str) -> Result<LumpId, Error> {
+    let success = FILESYSTEM
+        .request(
+            Request {
+                target: path.to_string(),
+                kind: RequestKind::Get,
+            },
+            &[],
+        )
+        .0?;
+    match success {
+        Success::Get(lump) => Ok(lump),
+        _ => panic!("expected Success::Get, got {:?}", success),
     }
+}
 
-    pub fn read_file(&self, path: &str) -> Result<Vec<u8>, Error> {
-        let lump = self.get_file(path)?;
-        let lump = Lump::load_by_id(&lump);
-        Ok(lump.get_data())
-    }
+pub fn read_file(path: &str) -> Result<Vec<u8>, Error> {
+    let lump = get_file(path)?;
+    let lump = Lump::load_by_id(&lump);
+    Ok(lump.get_data())
+}
 
-    pub fn list_files(&self, path: &str) -> Result<Vec<FileInfo>, Error> {
-        let success = self
-            .request(
-                Request {
-                    target: path.to_string(),
-                    kind: RequestKind::List,
-                },
-                &[],
-            )
-            .0?;
-        match success {
-            Success::List(files) => Ok(files),
-            _ => panic!("expected Success::List, got {:?}", success),
-        }
+pub fn list_files(path: &str) -> Result<Vec<FileInfo>, Error> {
+    let success = FILESYSTEM
+        .request(
+            Request {
+                target: path.to_string(),
+                kind: RequestKind::List,
+            },
+            &[],
+        )
+        .0?;
+    match success {
+        Success::List(files) => Ok(files),
+        _ => panic!("expected Success::List, got {:?}", success),
     }
 }
