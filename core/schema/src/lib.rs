@@ -21,14 +21,14 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
+/// Canvas protocol.
+pub mod canvas;
+
 /// Debug draw protocol
 pub mod debug_draw;
 
 /// Filesystem native service protocol.
 pub mod fs;
-
-/// Paneling-related protocols and utilities.
-pub mod panels;
 
 /// Network/IPC protocol definitions.
 pub mod protocol;
@@ -41,6 +41,9 @@ pub mod terminal;
 
 /// WebAssembly process protocols and utilities.
 pub mod wasm;
+
+/// Windowing protocol.
+pub mod window;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct ProcessId(pub u32);
@@ -136,18 +139,6 @@ impl From<SignalKind> for u32 {
             Down => 1,
         }
     }
-}
-
-#[macro_export]
-macro_rules! impl_serialize_json_display {
-    ($ty: ident) => {
-        impl ::std::fmt::Display for $ty {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                let string = ::serde_json::to_string(self).map_err(|_| ::std::fmt::Error)?;
-                f.write_str(&string)
-            }
-        }
-    };
 }
 
 /// An ARGB color value with 8 bits per channel.

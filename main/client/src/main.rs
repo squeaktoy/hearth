@@ -32,6 +32,7 @@ use hearth_runtime::{
 };
 use tokio::{net::TcpStream, sync::oneshot};
 use tracing::{debug, error, info};
+use window::WindowPlugin;
 
 use crate::window::WindowCtx;
 
@@ -74,7 +75,11 @@ fn main() {
         .unwrap();
 
     let (window, mut window_offer) = runtime.block_on(WindowCtx::new());
-    let mut join_main = runtime.spawn(async_main(args, window_offer.rend3_plugin));
+    let mut join_main = runtime.spawn(async_main(
+        args,
+        window_offer.rend3_plugin,
+        window_offer.window_plugin,
+    ));
 
     runtime.spawn(async move {
         loop {
@@ -98,18 +103,20 @@ fn main() {
     window.run();
 }
 
-async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
-    let config = RuntimeConfig {};
-
+async fn async_main(args: Args, rend3_plugin: Rend3Plugin, window_plugin: WindowPlugin) {
     let config_path = args.config.unwrap_or_else(hearth_runtime::get_config_path);
+
     let config_file = hearth_runtime::load_config(&config_path).unwrap();
 
     let mut builder = RuntimeBuilder::new(config_file);
+    builder.add_plugin(hearth_time::TimePlugin);
     builder.add_plugin(hearth_wasm::WasmPlugin::default());
     builder.add_plugin(hearth_init::InitPlugin::new(args.init));
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(rend3_plugin);
+    builder.add_plugin(window_plugin);
     builder.add_plugin(hearth_debug_draw::DebugDrawPlugin::default());
+    builder.add_plugin(hearth_canvas::CanvasPlugin);
     builder.add_plugin(hearth_terminal::TerminalPlugin::default());
     builder.add_plugin(hearth_daemon::DaemonPlugin::default());
 
@@ -118,6 +125,8 @@ async fn async_main(args: Args, rend3_plugin: Rend3Plugin) {
     } else {
         info!("Running in serverless mode");
     }
+
+    let config = RuntimeConfig {};
 
     let _runtime = builder.run(config).await;
 

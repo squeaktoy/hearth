@@ -16,30 +16,27 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use serde::{Deserialize, Serialize};
+use hearth_guest::{window::*, *};
 
-/// A user input event.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum InputEvent {
-    /// The panel received a Unicode character.
-    ReceivedCharacter(char),
-}
+#[no_mangle]
+pub extern "C" fn run() {
+    let window = REGISTRY.get_service(SERVICE_NAME).unwrap();
+    let events = Mailbox::new();
+    let events_cap = events.make_capability(Permissions::SEND);
 
-/// An event sent to a panel.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum PanelEvent {
-    /// The panel has gained focus (`true`) or lost focus (`false`).
-    Focus(bool),
+    window.send_json(&WindowCommand::Subscribe, &[&events_cap]);
 
-    /// The panel received an [InputEvent].
-    Input(InputEvent),
-}
+    loop {
+        let (msg, _) = events.recv_json::<WindowEvent>();
 
-crate::impl_serialize_json_display!(PanelEvent);
+        if let WindowEvent::Redraw { .. } = msg {
+            continue;
+        }
 
-/// A message sent to the panel control service to control the panel store.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum PanelCommand {
-    /// Focuses a panel.
-    Focus(u32),
+        log(
+            ProcessLogLevel::Info,
+            "window-test",
+            &format!("window event: {:?}", msg),
+        );
+    }
 }

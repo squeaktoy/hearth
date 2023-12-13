@@ -46,7 +46,7 @@ use crate::utils::ProcessRunner;
 /// method takes ownership of the plugin and finishes adding onto the
 /// [RuntimeBuilder] using the complete configuration for that plugin.
 #[async_trait]
-pub trait Plugin: Sized + Send + Sync + 'static {
+pub trait Plugin: Sized + Send + 'static {
     /// Builds a runtime using this plugin.
     fn build(&mut self, _builder: &mut RuntimeBuilder) {}
 
@@ -105,6 +105,11 @@ impl RuntimeBuilder {
             service_start_tx,
             service_start_rx,
         }
+    }
+
+    /// Gets a handle to the post office that this runtime will be using.
+    pub fn get_post(&self) -> Arc<PostOffice> {
+        self.post.clone()
     }
 
     /// Loads a configuration value from a table in the config file.

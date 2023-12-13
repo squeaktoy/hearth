@@ -29,10 +29,8 @@ use hearth_rend3::{
 };
 use hearth_runtime::{
     async_trait, cargo_process_metadata,
-    flue::Permissions,
     process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
-    tokio,
     utils::*,
 };
 use hearth_schema::debug_draw::*;
@@ -364,23 +362,11 @@ impl RequestResponseProcess for DebugDrawFactory {
         meta.name = Some("DebugDrawInstance".into());
         meta.description = Some("An instance of Debug Draw.".into());
 
-        let perms = Permissions::SEND | Permissions::KILL;
-        let child = request.runtime.process_factory.spawn(meta);
-        let child_cap = child
-            .borrow_parent()
-            .export_to(perms, request.process.borrow_table())
-            .unwrap();
-
-        let runtime = request.runtime.clone();
-        tokio::spawn(async move {
-            instance
-                .run("DebugDrawInstance".to_string(), runtime, &child)
-                .await;
-        });
+        let child = request.spawn(meta, instance);
 
         ResponseInfo {
             data: (),
-            caps: vec![child_cap],
+            caps: vec![child],
         }
     }
 }
