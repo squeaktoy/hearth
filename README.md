@@ -28,8 +28,6 @@ Hearth is a shared, always-on execution environment for constructing
 [Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
 [Contributing](/CONTRIBUTORS.md) •
-[Discord "server"](https://discord.gg/gzzJ3pWCft) •
-[Matrix room](https://matrix.to/#/#hearth:leyline.witchcraft.zone)
 
 <a href="https://www.gnu.org/licenses/agpl-3.0.html">
   <img src="./resources/misc/agplv3-with-text-162x68.png"/>
