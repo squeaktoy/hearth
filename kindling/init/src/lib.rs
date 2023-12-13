@@ -16,7 +16,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use kindling_host::{fs::FILESYSTEM, wasm::spawn_mod};
+use kindling_host::{
+    fs::{get_file, list_files},
+    wasm::spawn_mod,
+};
 
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {
@@ -38,11 +41,9 @@ macro_rules! info {
 pub extern "C" fn run() {
     hearth_guest::log(hearth_guest::ProcessLogLevel::Info, "init", "Hello world!");
     let search_dir = "init";
-    for file in FILESYSTEM.list_files(search_dir).unwrap() {
+    for file in list_files(search_dir).unwrap() {
         info!("file: {}", file.name);
-        let lump = FILESYSTEM
-            .get_file(&format!("init/{}/service.wasm", file.name))
-            .unwrap();
+        let lump = get_file(&format!("init/{}/service.wasm", file.name)).unwrap();
         spawn_mod(lump, None).unwrap();
     }
 }
