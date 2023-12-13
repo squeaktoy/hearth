@@ -45,6 +45,12 @@ pub fn sleep(duration: f32) {
 
 pub struct Timer(RequestResponse<f32, ()>);
 
+impl Default for Timer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Timer {
     /// Creates a new Timer.
     pub fn new() -> Self {
@@ -59,6 +65,12 @@ impl Timer {
 }
 
 pub struct Stopwatch(RequestResponse<(), f32>);
+
+impl Default for Stopwatch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Stopwatch {
     /// Creates a new Stopwatch.
