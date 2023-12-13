@@ -821,7 +821,7 @@ impl WasmProcess {
         let mut store = Store::new(engine, data);
 
         let instance = linker
-            .instantiate_async(&mut store, &module)
+            .instantiate_async(&mut store, module)
             .await
             .context("instantiating Wasm instance")?;
 
