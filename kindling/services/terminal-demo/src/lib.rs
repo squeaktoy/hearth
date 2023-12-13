@@ -20,6 +20,8 @@ use std::collections::HashMap;
 
 use hearth_guest::{terminal::*, *};
 
+export_metadata!();
+
 /// Type alias for the native terminal factory service.
 pub type TerminalFactory = RequestResponse<FactoryRequest, FactoryResponse>;
 
