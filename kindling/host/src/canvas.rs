@@ -21,7 +21,7 @@ use super::*;
 use hearth_guest::canvas::*;
 
 lazy_static::lazy_static! {
-    /// A lazily-initialized handle to the WebAssembly spawner service.
+    /// A lazily-initialized handle to the canvas factory service.
     pub static ref CANVAS_FACTORY: RequestResponse<FactoryRequest, FactoryResponse> = {
         RequestResponse::new(registry::REGISTRY.get_service("hearth.canvas.CanvasFactory").unwrap())    };
 }
