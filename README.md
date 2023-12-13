@@ -33,10 +33,6 @@ Hearth is a shared, always-on execution environment for constructing
   <img src="./resources/misc/agplv3-with-text-162x68.png"/>
 </a>
 
-Hearth's logo was created (c) 2023 by [Sasha Koshka](https://holanet.xyz) and
-is licensed under a
-[Creative Commons BY-SA 4.0 license](https://creativecommons.org/licenses/by-sa/4.0).
-
 </div>
 
 # Screenshots
