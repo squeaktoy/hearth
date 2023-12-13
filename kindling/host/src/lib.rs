@@ -26,6 +26,7 @@ pub mod canvas;
 pub mod fs;
 pub mod registry;
 pub mod terminal;
+pub mod time;
 pub mod wasm;
 
 /// A helper struct for request-response capabilities.
