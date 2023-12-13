@@ -44,6 +44,6 @@ pub extern "C" fn run() {
     for file in list_files(search_dir).unwrap() {
         info!("file: {}", file.name);
         let lump = get_file(&format!("init/{}/service.wasm", file.name)).unwrap();
-        spawn_mod(lump, None).unwrap();
+        spawn_mod(lump, None);
     }
 }
