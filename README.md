@@ -14,11 +14,11 @@ Hearth is a shared, always-on execution environment for constructing
   <a href="https://matrix.to/#/#hearth:leyline.witchcraft.zone">
     <img alt="Matrix" src="https://img.shields.io/matrix/hearth%3Aleyline.witchcraft.zone?server_fqdn=matrix.leyline.witchcraft.zone&logo=matrix&logoColor=white&label=Matrix&color=silver">
   </a>
-  <a href="https://www.gnu.org/licenses/why-affero-gpl.html">
-    <img alt="AGPL License" src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366?logo=gnu&logoColor=white">
-  </a>
   <a href="https://coven.witchcraft.zone/@hearth">
     <img alt="Fediverse" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcoven.witchcraft.zone%2Fusers%2F9lylyyd6kcmppzkm%2Ffollowers&query=totalItems&suffix=%20followers&label=Fediverse&logo=mastodon&logoColor=white">
+  </a>
+  <a href="https://www.gnu.org/licenses/why-affero-gpl.html">
+    <img alt="AGPL License" src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366?logo=gnu&logoColor=white">
   </a>
   <img alt="Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hearth-rs/hearth/pr.yml?logo=github&logoColor=white"/>
 </p>
