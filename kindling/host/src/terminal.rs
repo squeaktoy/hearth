@@ -41,13 +41,13 @@ impl Drop for Terminal {
 
 impl Terminal {
     /// Creates a new terminal with the given TerminalState.
+    ///
+    /// Panics if the factory responds with an error.
     pub fn new(state: TerminalState) -> Self {
         let resp = TERMINAL_FACTORY.request(FactoryRequest::CreateTerminal(state), &[]);
-        let success = resp.0.unwrap();
-        match success {
-            FactorySuccess::Terminal => Terminal {
-                cap: resp.1.get(0).unwrap().clone(),
-            },
+        let _ = resp.0.unwrap();
+        Terminal {
+            cap: resp.1.get(0).unwrap().clone(),
         }
     }
 
