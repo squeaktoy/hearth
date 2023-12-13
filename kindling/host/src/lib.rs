@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 pub use hearth_guest::{Capability, Mailbox, Permissions};
 
 pub mod canvas;
+pub mod debug_draw;
 pub mod fs;
 pub mod registry;
 pub mod terminal;
