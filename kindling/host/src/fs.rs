@@ -16,43 +16,29 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use super::*;
 use core::panic;
 
-use hearth_guest::{fs::*, log, Capability, Lump, LumpId, Mailbox, Permissions};
+use hearth_guest::{fs::*, Lump, LumpId};
 
-use crate::registry::REGISTRY;
-
-pub struct Filesystem {
-    cap: Capability,
+lazy_static::lazy_static! {
+    /// A lazily-initialized handle to the Filesystem service.
+    pub static ref FILESYSTEM: RequestResponse<Request, Response> = {
+        RequestResponse::new(registry::REGISTRY.get_service("hearth.wasm.WasmProcessSpawner").unwrap())
+    };
 }
 
-impl Filesystem {
-    pub fn new() -> Self {
-        Filesystem {
-            cap: REGISTRY
-                .get_service("hearth.fs.Filesystem")
-                .expect("Filesystem service not found"),
-        }
-    }
-
-    fn request(&self, request: Request) -> Response {
-        log(
-            hearth_guest::ProcessLogLevel::Debug,
-            core::module_path!(),
-            &format!("making fs request {:?}", request),
-        );
-        let reply = Mailbox::new();
-        let reply_cap = reply.make_capability(Permissions::SEND);
-        self.cap.send_json(&request, &[&reply_cap]);
-        // return only the response
-        reply.recv_json::<Response>().0
-    }
-
+impl FILESYSTEM {
     pub fn get_file(&self, path: &str) -> Result<LumpId, Error> {
-        let success = self.request(Request {
-            target: path.to_string(),
-            kind: RequestKind::Get,
-        })?;
+        let success = self
+            .request(
+                Request {
+                    target: path.to_string(),
+                    kind: RequestKind::Get,
+                },
+                &[],
+            )
+            .0?;
         match success {
             Success::Get(lump) => Ok(lump),
             _ => panic!("expected Success::Get, got {:?}", success),
@@ -66,10 +52,15 @@ impl Filesystem {
     }
 
     pub fn list_files(&self, path: &str) -> Result<Vec<FileInfo>, Error> {
-        let success = self.request(Request {
-            target: path.to_string(),
-            kind: RequestKind::List,
-        })?;
+        let success = self
+            .request(
+                Request {
+                    target: path.to_string(),
+                    kind: RequestKind::List,
+                },
+                &[],
+            )
+            .0?;
         match success {
             Success::List(files) => Ok(files),
             _ => panic!("expected Success::List, got {:?}", success),
