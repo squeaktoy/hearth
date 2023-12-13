@@ -476,9 +476,11 @@ mod abi {
     }
 }
 
-/// Exports this guest's process metadata using its Cargo package configuration.
+/// Exports this WebAssembly module's process metadata using the calling Cargo
+/// package's configuration.
 ///
-/// Use this macro exactly once in the top level of a guest module's Rust crate.
+/// Use this macro exactly once in the top level of a guest Wasm module's Rust
+/// crate.
 ///
 /// Uses the following package settings as fields of the process metadata:
 /// - `name`: the name of the package.
