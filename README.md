@@ -27,7 +27,7 @@ Hearth is a shared, always-on execution environment for constructing
 [Philosophy](#philosophy) •
 [Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
-[Contributing](/CONTRIBUTORS.md) •
+[Contributing](/CONTRIBUTORS.md)
 
 <a href="https://www.gnu.org/licenses/agpl-3.0.html">
   <img src="./resources/misc/agplv3-with-text-162x68.png"/>
