@@ -742,32 +742,6 @@ pub enum ProcessData {
     },
 }
 
-impl ProcessData {
-    pub fn new_metadata() -> Self {
-        Self::Metadata {
-            metadata: Default::default(),
-        }
-    }
-
-    pub fn new_running(runtime: &Runtime, process: Process, this_lump: LumpId) -> Self {
-        let process = Arc::new(process);
-
-        Self::Running {
-            log: LogAbi {
-                process: process.clone(),
-            },
-            lump: LumpAbi::new(runtime, this_lump),
-            table: TableAbi {
-                process: process.clone(),
-            },
-            mailbox: MailboxAbi::new(process, Slab::new(), |process| MailboxArena {
-                group: process.borrow_group(),
-                mbs: Slab::new(),
-            }),
-        }
-    }
-}
-
 impl GetAbi<MetadataAbi> for ProcessData {
     fn get_abi(&mut self) -> Result<&mut MetadataAbi> {
         match self {
@@ -796,6 +770,30 @@ impl_running_get_abi!(ProcessData, TableAbi, table);
 impl_running_get_abi!(ProcessData, MailboxAbi, mailbox);
 
 impl ProcessData {
+    pub fn new_metadata() -> Self {
+        Self::Metadata {
+            metadata: Default::default(),
+        }
+    }
+
+    pub fn new_running(runtime: &Runtime, process: Process, this_lump: LumpId) -> Self {
+        let process = Arc::new(process);
+
+        Self::Running {
+            log: LogAbi {
+                process: process.clone(),
+            },
+            lump: LumpAbi::new(runtime, this_lump),
+            table: TableAbi {
+                process: process.clone(),
+            },
+            mailbox: MailboxAbi::new(process, Slab::new(), |process| MailboxArena {
+                group: process.borrow_group(),
+                mbs: Slab::new(),
+            }),
+        }
+    }
+
     /// Adds all module ABIs to the given linker.
     pub fn add_to_linker(linker: &mut Linker<Self>) {
         LogAbi::add_to_linker(linker);
