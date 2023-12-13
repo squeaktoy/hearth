@@ -2,6 +2,8 @@
 
 <img src="./resources/logo/hearth.svg" width="300"/>
 
+# Hearth
+
 <p align="center">
   <a href="https://discord.gg/gzzJ3pWCft">
     <img alt="Discord" src="https://img.shields.io/discord/1065779071008649327?logo=discord&logoColor=white&label=Discord&color=blue">
@@ -17,8 +19,6 @@
   </a>
   <img alt="Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hearth-rs/hearth/pr.yml?logo=github&logoColor=white"/>
 </p>
-
-# Hearth
 
 Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
