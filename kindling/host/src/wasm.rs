@@ -28,7 +28,7 @@ lazy_static::lazy_static! {
 }
 
 /// Spawns a child process for the given function.
-pub fn spawn_fn(cb: fn(), registry: Option<Capability>) -> Result<Capability, ()> {
+pub fn spawn_fn(cb: fn(), registry: Option<Capability>) -> Capability {
     // directly transmute a Rust function pointer to a Wasm function index
     let entrypoint = unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32;
 
@@ -40,10 +40,10 @@ pub fn spawn_fn(cb: fn(), registry: Option<Capability>) -> Result<Capability, ()
         &[registry.as_ref().unwrap_or(registry::REGISTRY.as_ref())],
     );
 
-    caps.get(0).cloned().ok_or(())
+    caps.get(0).cloned().unwrap()
 }
 
-pub fn spawn_mod(lump: LumpId, registry: Option<Capability>) -> Result<Capability, ()> {
+pub fn spawn_mod(lump: LumpId, registry: Option<Capability>) -> Capability {
     let ((), caps) = WASM_SPAWNER.request(
         wasm::WasmSpawnInfo {
             lump,
@@ -51,5 +51,5 @@ pub fn spawn_mod(lump: LumpId, registry: Option<Capability>) -> Result<Capabilit
         },
         &[registry.as_ref().unwrap_or(registry::REGISTRY.as_ref())],
     );
-    caps.get(0).cloned().ok_or(())
+    caps.get(0).cloned().unwrap()
 }
