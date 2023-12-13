@@ -32,7 +32,7 @@ use hearth_runtime::{cargo_process_metadata, tokio, utils::*};
 use hearth_schema::wasm::WasmSpawnInfo;
 use hearth_schema::{LumpId, SignalKind};
 use slab::Slab;
-use tracing::error;
+use tracing::{error, warn};
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store, UpdateDeadline};
 
 /// An interface to attempt to acquire a Wasm ABI by type.
@@ -806,6 +806,7 @@ impl ProcessData {
 
 struct WasmProcess {
     store: Store<ProcessData>,
+    exports_metadata: bool,
     instance: Instance,
     this_lump: LumpId,
 }
@@ -827,6 +828,7 @@ impl WasmProcess {
 
         Ok(Self {
             store,
+            exports_metadata: false,
             instance,
             this_lump,
         })
@@ -847,6 +849,9 @@ impl WasmProcess {
             cb.call_async(&mut self.store, ())
                 .await
                 .context("calling Wasm metadata function")?;
+
+            // signal that the metadata was exported
+            self.exports_metadata = true;
         }
 
         // retrieve the written metadata from the store's process data
@@ -861,6 +866,14 @@ impl WasmProcess {
     async fn run(mut self, runtime: Arc<Runtime>, ctx: Process, entrypoint: Option<u32>) {
         // grab the PID for logging
         let pid = ctx.borrow_info().pid;
+
+        // log a warning if this process did not export its metadata
+        if !self.exports_metadata {
+            warn!(
+                "Wasm guest with PID {} did not export its process metadata",
+                pid
+            );
+        }
 
         // switch the process ABIs to running
         *self.store.data_mut() = ProcessData::new_running(runtime.as_ref(), ctx, self.this_lump);
