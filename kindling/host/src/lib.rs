@@ -25,6 +25,7 @@ pub use hearth_guest::{Capability, Mailbox, Permissions};
 pub mod canvas;
 pub mod fs;
 pub mod registry;
+pub mod terminal;
 pub mod wasm;
 
 /// A helper struct for request-response capabilities.
