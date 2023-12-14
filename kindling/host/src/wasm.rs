@@ -21,7 +21,6 @@ use super::*;
 use hearth_guest::{wasm::*, LumpId};
 
 lazy_static::lazy_static! {
-    /// A lazily-initialized handle to the WebAssembly spawner service.
     static ref WASM_SPAWNER: RequestResponse<wasm::WasmSpawnInfo, ()> = {
         RequestResponse::new(registry::REGISTRY.get_service("hearth.wasm.WasmProcessSpawner").unwrap())
     };
