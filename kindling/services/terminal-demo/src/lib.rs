@@ -21,6 +21,8 @@ use std::collections::HashMap;
 use hearth_guest::{terminal::*, *};
 use kindling_host::{registry::REGISTRY, *};
 
+export_metadata!();
+
 /// Type alias for the native terminal factory service.
 pub type TerminalFactory = RequestResponse<FactoryRequest, FactoryResponse>;
 

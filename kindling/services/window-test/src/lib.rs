@@ -19,6 +19,8 @@
 use hearth_guest::{window::*, *};
 use kindling_host::registry::REGISTRY;
 
+export_metadata!();
+
 #[no_mangle]
 pub extern "C" fn run() {
     let window = REGISTRY.get_service(SERVICE_NAME).unwrap();
