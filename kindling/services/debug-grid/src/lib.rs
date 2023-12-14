@@ -23,9 +23,9 @@ use hearth_guest::{debug_draw::*, *};
 pub extern "C" fn run() {
     let dd_factory = REGISTRY.get_service("hearth.DebugDrawFactory").unwrap();
 
-    let size = 100;
+    let size = 15;
     let color = Color::from_rgb(0x6a, 0xf5, 0xfc);
-    let grid_to_pos = |x: i32, y: i32| vec3(x as f32, -8.0, y as f32);
+    let grid_to_pos = |x: i32, y: i32| vec3(x as f32 * 5.0, -8.0, y as f32 * 5.0);
 
     let mut vertices = Vec::new();
 
