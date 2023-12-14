@@ -30,6 +30,7 @@ pub mod registry;
 pub mod terminal;
 pub mod time;
 pub mod wasm;
+pub mod window;
 
 /// A helper struct for request-response capabilities.
 pub struct RequestResponse<Request, Response> {
