@@ -16,7 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use hearth_guest::{renderer::*, *};
+use hearth_guest::{renderer::*, Lump};
+use kindling_host::prelude::{RequestResponse, REGISTRY};
 
 type Renderer = RequestResponse<RendererRequest, RendererResponse>;
 
