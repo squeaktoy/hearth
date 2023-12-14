@@ -28,6 +28,10 @@ lazy_static::lazy_static! {
 }
 
 /// Spawns a child process for the given function.
+///
+/// Takes an optional capability to a registry. If provided, the service will
+/// be added to the given registry, otherwise it will be added to the default
+/// registry.
 pub fn spawn_fn(cb: fn(), registry: Option<Capability>) -> Capability {
     // directly transmute a Rust function pointer to a Wasm function index
     let entrypoint = cb as usize as u32;
@@ -43,6 +47,11 @@ pub fn spawn_fn(cb: fn(), registry: Option<Capability>) -> Capability {
     caps.get(0).cloned().unwrap()
 }
 
+/// Spawn an entire Wasm module from a given lump.
+///
+/// Takes an optional capability to a registry. If provided, the service will
+/// be added to the given registry, otherwise it will be added to the default
+/// registry.
 pub fn spawn_mod(lump: LumpId, registry: Option<Capability>) -> Capability {
     let ((), caps) = WASM_SPAWNER.request(
         wasm::WasmSpawnInfo {
