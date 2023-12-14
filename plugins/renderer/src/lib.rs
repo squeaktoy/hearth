@@ -62,6 +62,8 @@ impl JsonAssetLoader for MeshLoader {
             indices: data.indices.0,
         };
 
+        let _ = mesh.validate()?;
+
         let handle = self.0.add_mesh(mesh);
 
         Ok(handle)
