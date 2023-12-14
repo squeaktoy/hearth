@@ -22,7 +22,7 @@ use hearth_guest::terminal::*;
 
 lazy_static::lazy_static! {
     static ref TERMINAL_FACTORY: RequestResponse<FactoryRequest, FactoryResponse> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.canvas.TerminalFactory").unwrap())
+        RequestResponse::new(registry::REGISTRY.get_service("hearth.terminal.TerminalFactory").unwrap())
     };
 }
 
