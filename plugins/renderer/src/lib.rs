@@ -218,7 +218,7 @@ impl SinkProcess for ObjectInstance {
                 };
 
                 self.renderer
-                    .set_skeleton_joint_transforms(skeleton, &joint_global, &inverse_bind);
+                    .set_skeleton_joint_transforms(skeleton, joint_global, inverse_bind);
             }
         }
     }
