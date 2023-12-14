@@ -18,10 +18,10 @@
 
 use std::marker::PhantomData;
 
+use hearth_guest::{Capability, Mailbox, Permissions};
 use serde::{Deserialize, Serialize};
 
 pub use glam;
-pub use hearth_guest::{Capability, Mailbox, Permissions};
 
 pub mod canvas;
 pub mod debug_draw;
@@ -31,6 +31,27 @@ pub mod terminal;
 pub mod time;
 pub mod wasm;
 pub mod window;
+
+/// A convenience module to import all of the most important host-side structures.
+///
+/// Use with:
+///
+/// ```rs
+/// use kindling_host::prelude::*;
+/// ```
+pub mod prelude {
+    pub use crate::{
+        canvas::Canvas,
+        debug_draw::DebugDraw,
+        glam,
+        registry::REGISTRY,
+        terminal::Terminal,
+        time::{sleep, Stopwatch, Timer},
+        wasm::{spawn_fn, spawn_mod},
+        window::MAIN_WINDOW,
+        RequestResponse,
+    };
+}
 
 /// A helper struct for request-response capabilities.
 pub struct RequestResponse<Request, Response> {
