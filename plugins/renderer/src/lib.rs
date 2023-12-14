@@ -25,9 +25,9 @@ use hearth_rend3::{
 };
 use hearth_runtime::{
     anyhow::{self, bail},
-    asset::{AssetStore, JsonAssetLoader},
+    asset::{AssetLoader, AssetStore, JsonAssetLoader},
     async_trait, cargo_process_metadata,
-    hearth_schema::renderer::*,
+    hearth_schema::{renderer::*, LumpId},
     process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     tokio::sync::mpsc::UnboundedSender,
@@ -276,33 +276,16 @@ impl RequestResponseProcess for RendererService {
                 material,
                 transform,
             } => {
-                let mesh = request
-                    .runtime
-                    .asset_store
-                    .load_asset::<MeshLoader>(mesh)
-                    .await;
-
-                let mesh = match mesh {
+                let mesh = match Self::try_load_asset::<MeshLoader>(&request, mesh).await {
                     Ok(mesh) => mesh,
-                    Err(err) => {
-                        error!("failed to load mesh: {err:?}");
-                        return RendererError::LumpError.into();
-                    }
+                    Err(err) => return err.into(),
                 };
 
-                let material = request
-                    .runtime
-                    .asset_store
-                    .load_asset::<MaterialLoader>(material)
-                    .await;
-
-                let material = match material {
-                    Ok(material) => material,
-                    Err(err) => {
-                        error!("failed to load material: {err:?}");
-                        return RendererError::LumpError.into();
-                    }
-                };
+                let material =
+                    match Self::try_load_asset::<MaterialLoader>(&request, material).await {
+                        Ok(material) => material,
+                        Err(err) => return err.into(),
+                    };
 
                 let (mesh_kind, skeleton) = if let Some(skeleton) = skeleton.as_ref() {
                     let skeleton = self.renderer.add_skeleton(Skeleton {
@@ -342,23 +325,15 @@ impl RequestResponseProcess for RendererService {
                 };
             }
             SetSkybox { texture } => {
-                let handle = request
-                    .runtime
-                    .asset_store
-                    .load_asset::<CubeTextureLoader>(texture)
-                    .await;
-
-                let handle = match handle {
-                    Ok(handle) => handle,
-                    Err(err) => {
-                        error!("failed to load skybox texture: {err:?}");
-                        return RendererError::LumpError.into();
-                    }
-                };
+                let texture =
+                    match Self::try_load_asset::<CubeTextureLoader>(&request, texture).await {
+                        Ok(texture) => texture,
+                        Err(err) => return err.into(),
+                    };
 
                 let _ = self
                     .command_tx
-                    .send(Rend3Command::SetSkybox(handle.as_ref().clone()));
+                    .send(Rend3Command::SetSkybox(texture.as_ref().clone()));
             }
             SetAmbientLighting { ambient } => {
                 let _ = self.command_tx.send(Rend3Command::SetAmbient(*ambient));
@@ -390,6 +365,27 @@ impl RendererService {
             renderer,
             command_tx,
         }
+    }
+
+    /// Helper function to attempt to load an asset but log a warning and return
+    /// a `RendererError::LumpError` if unsuccessful.
+    async fn try_load_asset<T: AssetLoader>(
+        request: &RequestInfo<'_, RendererRequest>,
+        lump: &LumpId,
+    ) -> Result<Arc<T::Asset>, RendererError> {
+        request
+            .runtime
+            .asset_store
+            .load_asset::<T>(lump)
+            .await
+            .map_err(|err| {
+                error!(
+                    "failed to load {}: {err:?}",
+                    std::any::type_name::<T::Asset>(),
+                );
+
+                RendererError::LumpError
+            })
     }
 }
 
