@@ -26,7 +26,6 @@ pub use glam;
 pub mod canvas;
 pub mod debug_draw;
 pub mod fs;
-pub mod macros;
 pub mod registry;
 pub mod terminal;
 pub mod time;
@@ -46,13 +45,12 @@ pub mod prelude {
         debug_draw::DebugDraw,
         fs::{get_file, list_files, read_file},
         glam,
-        macros::{debug, error, info, log, trace, warning},
         registry::REGISTRY,
         terminal::Terminal,
         time::{sleep, Stopwatch, Timer},
         wasm::{spawn_fn, spawn_mod},
         window::MAIN_WINDOW,
-        RequestResponse,
+        RequestResponse, {debug, error, info, log, trace, warning},
     };
 }
 
@@ -99,4 +97,50 @@ where
 
         reply.recv_json()
     }
+}
+
+#[macro_export]
+macro_rules! log {
+    ($level:expr, $($arg:tt)*) => {
+        ::hearth_guest::log(
+            $level,
+            ::core::module_path!(),
+            &format!($($arg)*),
+        )
+    }
+}
+
+#[macro_export]
+macro_rules! trace {
+    ($($arg:tt)*) => {
+        log!(::hearth_guest::ProcessLogLevel::Trace, $($arg)*);
+    };
+}
+
+#[macro_export]
+macro_rules! debug {
+    ($($arg:tt)*) => {
+        log!(::hearth_guest::ProcessLogLevel::Debug, $($arg)*);
+    };
+}
+
+#[macro_export]
+macro_rules! info {
+    ($($arg:tt)*) => {
+        log!(::hearth_guest::ProcessLogLevel::Info, $($arg)*);
+    };
+}
+
+#[macro_export]
+macro_rules! warning {
+    ($($arg:tt)*) => {
+        log!(::hearth_guest::ProcessLogLevel::Warning, $($arg)*);
+    };
+}
+
+#[macro_export]
+macro_rules! error {
+    ($($arg:tt)*) => {
+        log!(::hearth_guest::ProcessLogLevel::Error, $($arg)*);
+    };
 }
