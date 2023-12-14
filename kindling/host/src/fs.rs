@@ -22,12 +22,12 @@ use core::panic;
 use hearth_guest::{fs::*, Lump, LumpId};
 
 lazy_static::lazy_static! {
-    /// A lazily-initialized handle to the Filesystem service.
     static ref FILESYSTEM: RequestResponse<Request, Response> = {
         RequestResponse::new(registry::REGISTRY.get_service("hearth.fs.Filesystem").unwrap())
     };
 }
 
+/// Get a LumpId of a file from a path.
 pub fn get_file(path: &str) -> Result<LumpId, Error> {
     let success = FILESYSTEM
         .request(
@@ -44,12 +44,14 @@ pub fn get_file(path: &str) -> Result<LumpId, Error> {
     }
 }
 
+/// Read the bytes of a file into a `Vec<u8>`.
 pub fn read_file(path: &str) -> Result<Vec<u8>, Error> {
     let lump = get_file(path)?;
     let lump = Lump::load_by_id(&lump);
     Ok(lump.get_data())
 }
 
+/// List all files and directories inside of a path.
 pub fn list_files(path: &str) -> Result<Vec<FileInfo>, Error> {
     let success = FILESYSTEM
         .request(
