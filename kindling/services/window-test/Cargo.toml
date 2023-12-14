@@ -1,11 +1,11 @@
 [package]
-name = "kindling-terminal-demo"
+name = "kindling-window-test"
 version = "0.1.0"
 edition = "2021"
-description = "A demonstration of Hearth's terminal emulator."
+description = "A test of Hearth's window input."
 
 [package.metadata.service]
-name = "rs.hearth.kindling.TerminalDemo"
+name = "rs.hearth.kindling.WindowTest"
 targets = []
 
 [lib]
