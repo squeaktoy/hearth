@@ -20,6 +20,7 @@ use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 
+pub use glam;
 pub use hearth_guest::{Capability, Mailbox, Permissions};
 
 pub mod canvas;
