@@ -13,6 +13,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 hearth-guest.workspace = true
-image = "0.24"
+image = { version = "0.24", default-features = false, features = ["png"] }
 kindling-host.workspace = true
 serde_json = "1"
