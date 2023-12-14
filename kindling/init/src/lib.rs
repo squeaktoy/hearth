@@ -21,6 +21,8 @@ use kindling_host::{
     wasm::spawn_mod,
 };
 
+export_metadata!();
+
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {
         ::hearth_guest::log(
