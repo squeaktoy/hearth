@@ -18,6 +18,8 @@
 
 use hearth_guest::*;
 
+export_metadata!();
+
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {
         ::hearth_guest::log(

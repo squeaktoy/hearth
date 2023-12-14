@@ -476,6 +476,83 @@ mod abi {
     }
 }
 
+/// Exports this WebAssembly module's process metadata using the calling Cargo
+/// package's configuration.
+///
+/// Use this macro exactly once in the top level of a guest Wasm module's Rust
+/// crate.
+///
+/// Uses the following package settings as fields of the process metadata:
+/// - `name`: the name of the package.
+/// - `description`: a short description of the package's usage.
+/// - `authors`: a list of authors that have contributed to the package.
+/// - `repository`: a link to the home source repository of the package.
+/// - `homepage`: a link to the package's homepage.
+/// - `license`: an SPDX license identifier for the package's source code.
+///
+/// See [Cargo's documentation](https://doc.rust-lang.org/cargo/reference/manifest.html#the-package-section) for more info.
+#[macro_export]
+macro_rules! export_metadata {
+    () => {
+        #[no_mangle]
+        extern "C" fn _hearth_metadata() {
+            // define the ABI functions in the function since we only use them here
+            #[link(wasm_import_module = "hearth::metadata")]
+            extern "C" {
+                fn set_name(ptr: u32, len: u32);
+                fn set_description(ptr: u32, len: u32);
+                fn add_author(ptr: u32, len: u32);
+                fn set_repository(ptr: u32, len: u32);
+                fn set_homepage(ptr: u32, len: u32);
+                fn set_license(ptr: u32, len: u32);
+            }
+
+            // helper function to return Some(str) when str is not empty and None if empty
+            let some_or_empty = |str: &str| {
+                if str.is_empty() {
+                    None
+                } else {
+                    let bytes = str.as_bytes();
+                    let ptr = bytes.as_ptr() as u32;
+                    let len = bytes.len() as u32;
+                    Some((ptr, len))
+                }
+            };
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_NAME")) {
+                unsafe { set_name(ptr, len) };
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_DESCRIPTION")) {
+                unsafe { set_description(ptr, len) };
+            }
+
+            let authors = env!("CARGO_PKG_AUTHORS");
+            if !authors.is_empty() {
+                // authors are split by ':' characters in the environment variable
+                for author in authors.split(':') {
+                    let bytes = author.as_bytes();
+                    let ptr = bytes.as_ptr() as u32;
+                    let len = bytes.len() as u32;
+                    unsafe { add_author(ptr, len) };
+                }
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_REPOSITORY")) {
+                unsafe { set_repository(ptr, len) };
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_HOMEPAGE")) {
+                unsafe { set_homepage(ptr, len) };
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_LICENSE")) {
+                unsafe { set_license(ptr, len) };
+            }
+        }
+    };
+}
+
 #[no_mangle]
 extern "C" fn _hearth_init() {
     // set panic handler that prints error to log
