@@ -21,7 +21,6 @@ use super::*;
 use hearth_guest::terminal::*;
 
 lazy_static::lazy_static! {
-    /// A lazily-initialized handle to the terminal factory service.
     static ref TERMINAL_FACTORY: RequestResponse<FactoryRequest, FactoryResponse> = {
         RequestResponse::new(registry::REGISTRY.get_service("hearth.canvas.TerminalFactory").unwrap())
     };
@@ -32,7 +31,6 @@ pub struct Terminal {
     cap: Capability,
 }
 
-// This may change, depends on https://github.com/hearth-rs/hearth/issues/189
 impl Drop for Terminal {
     fn drop(&mut self) {
         self.cap.send_json(&TerminalUpdate::Quit, &[]);
