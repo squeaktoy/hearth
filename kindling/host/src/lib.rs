@@ -26,6 +26,7 @@ pub use glam;
 pub mod canvas;
 pub mod debug_draw;
 pub mod fs;
+pub mod macros;
 pub mod registry;
 pub mod terminal;
 pub mod time;
@@ -45,6 +46,7 @@ pub mod prelude {
         debug_draw::DebugDraw,
         fs::{get_file, list_files, read_file},
         glam,
+        macros::{debug, error, info, log, trace, warning},
         registry::REGISTRY,
         terminal::Terminal,
         time::{sleep, Stopwatch, Timer},

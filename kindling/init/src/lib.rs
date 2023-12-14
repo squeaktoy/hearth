@@ -16,32 +16,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use kindling_host::{
-    fs::{get_file, list_files},
-    wasm::spawn_mod,
-};
+use kindling_host::prelude::*;
 
 hearth_guest::export_metadata!();
 
-macro_rules! log {
-    ($level:expr, $($arg:tt)*) => {
-        ::hearth_guest::log(
-            $level,
-            ::core::module_path!(),
-            &format!($($arg)*),
-        )
-    }
-}
-
-macro_rules! info {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Info, $($arg)*);
-    };
-}
-
 #[no_mangle]
 pub extern "C" fn run() {
-    hearth_guest::log(hearth_guest::ProcessLogLevel::Info, "init", "Hello world!");
+    info!("Hello world!");
     let search_dir = "init";
     for file in list_files(search_dir).unwrap() {
         info!("file: {}", file.name);
