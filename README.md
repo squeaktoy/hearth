@@ -23,7 +23,6 @@
 Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
 
-
 [Philosophy](#philosophy) •
 [Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
