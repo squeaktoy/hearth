@@ -43,6 +43,7 @@ pub mod prelude {
     pub use crate::{
         canvas::Canvas,
         debug_draw::DebugDraw,
+        fs::{get_file, list_files, read_file},
         glam,
         registry::REGISTRY,
         terminal::Terminal,
