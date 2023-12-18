@@ -26,7 +26,10 @@ pub extern "C" fn run() {
     let search_dir = "init";
     for file in list_files(search_dir).unwrap() {
         info!("file: {}", file.name);
-        let lump = get_file(&format!("init/{}/service.wasm", file.name)).unwrap();
+        let Ok(lump) = get_file(&format!("init/{}/service.wasm", file.name)) else {
+            error!("Failed to find file: {}", file.name);
+            continue;
+        };
         spawn_mod(lump, None);
     }
 }
