@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["init", "services/*", "host"]
+members = ["init", "services/*", "host", "utils"]
 exclude = ["build"]
 
 [workspace.dependencies]
