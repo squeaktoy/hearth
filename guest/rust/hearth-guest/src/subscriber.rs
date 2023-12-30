@@ -72,11 +72,6 @@ impl Subscriber for ProcessSubscriber {
     fn exit(&self, _span: &span::Id) {}
 }
 
-pub struct Field {
-    name: &'static str,
-    value: String,
-}
-
 pub struct FmtEvent<'a> {
     pub message: &'a mut String,
     pub needs_comma: bool,
@@ -90,8 +85,6 @@ impl<'a> Visit for FmtEvent<'a> {
                 write!(self.message, "{comma}{value:?}").unwrap();
                 self.needs_comma = true;
             }
-            // Skip fields that are actually log metadata that have already been handled
-            // name if name.starts_with("log.") => {}
             name => {
                 write!(self.message, "{comma}{name}={value:?}").unwrap();
             }
