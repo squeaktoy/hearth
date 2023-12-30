@@ -32,6 +32,6 @@ pub extern "C" fn run() {
             continue;
         }
 
-        info!("window event: {:?}", msg);
+        info!(?msg, "window event");
     }
 }
