@@ -41,30 +41,30 @@ impl Window {
     pub fn subscribe(&self) -> Mailbox {
         let mailbox = Mailbox::new();
         let reply_cap = mailbox.make_capability(Permissions::SEND | Permissions::MONITOR);
-        self.cap.send_json(&WindowCommand::Subscribe, &[&reply_cap]);
+        self.cap.send(&WindowCommand::Subscribe, &[&reply_cap]);
         mailbox
     }
 
     /// Sets the title of this window.
     pub fn set_title(&self, title: String) {
-        self.cap.send_json(&WindowCommand::SetTitle(title), &[]);
+        self.cap.send(&WindowCommand::SetTitle(title), &[]);
     }
 
     /// Set the cursor's grab mode.
     pub fn cursor_grab_mode(&self, mode: CursorGrabMode) {
-        self.cap.send_json(&WindowCommand::SetCursorGrab(mode), &[]);
+        self.cap.send(&WindowCommand::SetCursorGrab(mode), &[]);
     }
 
     /// Shows the window's cursor.
     pub fn show_cursor(&self) {
         self.cap
-            .send_json(&WindowCommand::SetCursorVisible(true), &[]);
+            .send(&WindowCommand::SetCursorVisible(true), &[]);
     }
 
     /// Hide the window's cursor.
     pub fn hide_cursor(&self) {
         self.cap
-            .send_json(&WindowCommand::SetCursorVisible(false), &[]);
+            .send(&WindowCommand::SetCursorVisible(false), &[]);
     }
 
     /// Update the window's rending camera
@@ -74,6 +74,6 @@ impl Window {
     /// `view` - The camera's view matrix.
     pub fn set_camera(&self, vfov: f32, near: f32, view: Mat4) {
         self.cap
-            .send_json(&WindowCommand::SetCamera { vfov, near, view }, &[]);
+            .send(&WindowCommand::SetCamera { vfov, near, view }, &[]);
     }
 }

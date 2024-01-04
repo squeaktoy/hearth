@@ -77,8 +77,15 @@ impl Capability {
         Capability(handle)
     }
 
-    /// Sends a message to this capability.
-    pub fn send(&self, data: &[u8], caps: &[&Capability]) {
+    /// Sends a type, serialized as JSON, to this capability.
+    pub fn send(&self, data: &impl Serialize, caps: &[&Capability]) {
+        let json_msg = serde_json::to_string(data).unwrap();
+        let bytes_msg = json_msg.into_bytes();
+        self.send_raw(&bytes_msg, &caps);
+    }
+
+    /// Sends a raw message to this capability.
+    pub fn send_raw(&self, data: &[u8], caps: &[&Capability]) {
         let caps: Vec<u32> = caps.iter().map(|cap| (*cap).borrow().0).collect();
         unsafe {
             abi::table::send(
@@ -89,12 +96,6 @@ impl Capability {
                 caps.len() as u32,
             );
         }
-    }
-
-    /// Sends a type, serialized as JSON, to this capability.
-    pub fn send_json(&self, data: &impl Serialize, caps: &[&Capability]) {
-        let msg = serde_json::to_string(data).unwrap();
-        self.send(&msg.into_bytes(), caps);
     }
 
     /// Kills this capability.
@@ -191,7 +192,7 @@ impl Mailbox {
     }
 
     /// Wait for this mailbox to receive a [Signal].
-    pub fn recv(&self) -> Signal {
+    pub fn recv_signal(&self) -> Signal {
         unsafe {
             let handle = abi::mailbox::recv(self.0);
             Signal::from_handle(handle)
@@ -224,18 +225,25 @@ impl Mailbox {
 
     /// Receives a JSON message. Panics if the next signal isn't a message or
     /// if deserialization fails.
-    pub fn recv_json<T>(&self) -> (T, Vec<Capability>)
+    pub fn recv<T>(&self) -> (T, Vec<Capability>)
     where
         T: for<'a> Deserialize<'a>,
     {
-        let signal = self.recv();
+        let (bytes_data, caps) = self.recv_raw();
+        let json_data = serde_json::from_slice(&bytes_data).unwrap();
+        (json_data, caps)
+    }
+
+    /// Receives a raw bytes message. Panics if the next signal isn't a message or
+    /// if deserialization fails.
+    pub fn recv_raw(&self) -> (Vec<u8>, Vec<Capability>) {
+        let signal = self.recv_signal();
 
         let Signal::Message(msg) = signal else {
             panic!("expected message, received {:?}", signal);
         };
 
-        let data = serde_json::from_slice(&msg.data).unwrap();
-        (data, msg.caps)
+        (msg.data, msg.caps)
     }
 }
 

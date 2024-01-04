@@ -38,9 +38,9 @@ pub fn sleep(duration: f32) {
     let reply_cap = reply.make_capability(Permissions::SEND);
     reply.monitor(&SLEEP_SERVICE);
 
-    SLEEP_SERVICE.send_json(&duration, &[&reply_cap]);
+    SLEEP_SERVICE.send(&duration, &[&reply_cap]);
 
-    let _ = reply.recv();
+    let _ = reply.recv_raw();
 }
 
 pub struct Timer(RequestResponse<f32, ()>);
