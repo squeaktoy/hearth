@@ -57,14 +57,12 @@ impl Window {
 
     /// Shows the window's cursor.
     pub fn show_cursor(&self) {
-        self.cap
-            .send(&WindowCommand::SetCursorVisible(true), &[]);
+        self.cap.send(&WindowCommand::SetCursorVisible(true), &[]);
     }
 
     /// Hide the window's cursor.
     pub fn hide_cursor(&self) {
-        self.cap
-            .send(&WindowCommand::SetCursorVisible(false), &[]);
+        self.cap.send(&WindowCommand::SetCursorVisible(false), &[]);
     }
 
     /// Update the window's rending camera
