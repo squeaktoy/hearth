@@ -490,9 +490,7 @@ impl TerminalCanvas {
         let mut fg = cell.fg;
         let mut bg = cell.bg;
 
-        let is_full_block = cell.c == '▀';
-
-        if cell.flags.contains(Flags::INVERSE) ^ is_full_block {
+        if cell.flags.contains(Flags::INVERSE) {
             std::mem::swap(&mut fg, &mut bg);
         }
 
@@ -506,11 +504,6 @@ impl TerminalCanvas {
         };
 
         self.draw_solid_rect(tl, br, bg);
-
-        // skip foreground rendering if the entire cell is occupied
-        if is_full_block {
-            return;
-        }
 
         let style = FontStyle::from_cell_flags(cell.flags);
         let font = self.fonts.get(style);
