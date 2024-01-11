@@ -199,19 +199,6 @@ impl Mailbox {
         }
     }
 
-    /// Check if this mailbox has received any signals without waiting.
-    pub fn try_recv(&self) -> Option<Signal> {
-        unsafe {
-            let handle = abi::mailbox::try_recv(self.0);
-
-            if handle == u32::MAX {
-                None
-            } else {
-                Some(Signal::from_handle(handle))
-            }
-        }
-    }
-
     /// Waits for one of many mailboxes to receive a signal.
     pub fn poll(mailboxes: &[&Self]) -> (usize, Signal) {
         let handles: Vec<_> = mailboxes.iter().map(|mb| mb.0).collect();
@@ -244,6 +231,50 @@ impl Mailbox {
         };
 
         (msg.data, msg.caps)
+    }
+
+    /// Check if this mailbox has received any signals without waiting.
+    pub fn try_recv_signal(&self) -> Option<Signal> {
+        unsafe {
+            let handle = abi::mailbox::try_recv(self.0);
+
+            if handle == u32::MAX {
+                // todo: u32::MAX could be replaced by const indicating invalid handle?
+                None
+            } else {
+                Some(Signal::from_handle(handle))
+            }
+        }
+    }
+
+    /// Check if this mailbox has received any signals without waiting
+    /// and return None if there was no signal or it was down.
+    pub fn try_recv_raw(&self) -> Option<(Vec<u8>, Vec<Capability>)> {
+        let signal = self.try_recv_signal();
+
+        if let Some(Signal::Message(msg)) = signal {
+            Some((msg.data, msg.caps))
+        } else {
+            None
+        }
+    }
+
+    /// Check if this mailbox has received any signals without waiting
+    /// and return None if there was either no signal, it was down,
+    /// or there was an error while processing json.
+    pub fn try_recv<T>(&self) -> Option<(T, Vec<Capability>)>
+    where
+        T: for<'a> Deserialize<'a>,
+    {
+        let msg = self.try_recv_raw();
+
+        let Some(msg) = msg else {
+            return None;
+        };
+
+        let data = serde_json::from_slice(&msg.0).unwrap(); // todo: result type could be made into result with error handling
+
+        Some((data, msg.1))
     }
 }
 
