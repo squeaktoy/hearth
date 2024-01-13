@@ -239,7 +239,6 @@ impl Mailbox {
             let handle = abi::mailbox::try_recv(self.0);
 
             if handle == u32::MAX {
-                // todo: u32::MAX could be replaced by const indicating invalid handle?
                 None
             } else {
                 Some(Signal::from_handle(handle))
@@ -248,7 +247,7 @@ impl Mailbox {
     }
 
     /// Check if this mailbox has received any signals without waiting
-    /// and return None if there was no signal or it was down.
+    /// and return None if signal was not a message or it was down.
     pub fn try_recv_raw(&self) -> Option<(Vec<u8>, Vec<Capability>)> {
         let signal = self.try_recv_signal();
 
@@ -266,13 +265,9 @@ impl Mailbox {
     where
         T: for<'a> Deserialize<'a>,
     {
-        let msg = self.try_recv_raw();
+        let msg = self.try_recv_raw()?;
 
-        let Some(msg) = msg else {
-            return None;
-        };
-
-        let data = serde_json::from_slice(&msg.0).unwrap(); // todo: result type could be made into result with error handling
+        let data = serde_json::from_slice(&msg.0).unwrap();
 
         Some((data, msg.1))
     }
