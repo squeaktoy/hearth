@@ -131,7 +131,8 @@ impl ProcessFactory {
         // subscriber, such as writing them to stderr or a file, or even over the network or in
         // the UI itself.
         let name = &meta.name;
-        let process_span = tracing::debug_span!("process", label = name, process_id = pid,);
+        let process_span =
+            tracing::debug_span!(parent: None, "process", label = name, process_id = pid);
 
         let id = ProcessInfo {
             pid,
