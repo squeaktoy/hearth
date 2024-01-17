@@ -22,7 +22,7 @@ use glam::{dvec2, uvec2, Mat4};
 use hearth_rend3::{
     rend3::{
         self,
-        types::{Camera, CameraProjection, DirectionalLight, ResourceHandle},
+        types::{Camera, CameraProjection},
     },
     wgpu, FrameRequest, Rend3Plugin,
 };
@@ -66,6 +66,9 @@ pub enum WindowRxMessage {
         /// The camera's view matrix.
         view: Mat4,
     },
+
+    /// Broadcast the current state of the window to all event subscribers.
+    BroadcastState,
 
     /// The window is requested to quit.
     Quit,
@@ -121,9 +124,6 @@ struct Window {
 
     /// Tracks the last redraw to this window.
     last_redraw: Instant,
-
-    /// A dummy handle to keep a hard-coded directional light alive in the scene.
-    _directional_handle: ResourceHandle<DirectionalLight>,
 }
 
 impl Window {
@@ -151,17 +151,8 @@ impl Window {
         surface.configure(&iad.device, &config);
         let (outgoing_tx, outgoing_rx) = mpsc::unbounded_channel();
         let rend3_plugin = Rend3Plugin::new(iad.to_owned(), swapchain_format);
-        let renderer = rend3_plugin.renderer.to_owned();
         let frame_request_tx = rend3_plugin.frame_request_tx.clone();
-
         let (events_tx, events_rx) = mpsc::unbounded_channel();
-
-        let directional_handle = renderer.add_directional_light(DirectionalLight {
-            color: glam::Vec3::ONE,
-            intensity: 10.0,
-            direction: glam::Vec3::new(-1.0, -4.0, 2.0),
-            distance: 400.0,
-        });
 
         let window = Self {
             outgoing_tx,
@@ -173,7 +164,6 @@ impl Window {
             frame_request_tx,
             events_tx,
             last_redraw: Instant::now(),
-            _directional_handle: directional_handle,
         };
 
         let window_plugin = WindowPlugin {
@@ -308,6 +298,18 @@ impl Window {
     pub fn notify_event(&self, event: WindowEvent) {
         let _ = self.events_tx.send(event);
     }
+
+    pub fn broadcast_state(&self) {
+        let size = self.window.inner_size();
+        let size = uvec2(size.width, size.height);
+        self.notify_event(WindowEvent::Resized(size));
+
+        let scale_factor = self.window.scale_factor();
+        self.notify_event(WindowEvent::ScaleFactorChanged {
+            scale_factor,
+            new_inner_size: size,
+        });
+    }
 }
 
 pub struct WindowCtx {
@@ -374,6 +376,7 @@ impl WindowCtx {
                             view,
                         }
                     }
+                    WindowRxMessage::BroadcastState => window.broadcast_state(),
                     WindowRxMessage::Quit => control_flow.set_exit(),
                 },
                 _ => (),
@@ -436,6 +439,8 @@ impl SinkProcess for WindowService {
                 }
 
                 self.pubsub.subscribe(sub.clone());
+
+                send(WindowRxMessage::BroadcastState);
             }
             Unsubscribe => {
                 let Some(sub) = message.caps.get(0) else {
