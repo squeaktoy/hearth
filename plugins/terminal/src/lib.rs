@@ -48,11 +48,12 @@ pub struct TerminalWrapper {
 
 impl TerminalWrapper {
     /// Updates this terminal's draw state. Returns true if this terminal has not quit.
-    pub fn update(&mut self) -> bool {
+    pub fn update(&mut self, pipelines: &TerminalPipelines) -> bool {
         let quit = self.terminal.should_quit();
 
         if !quit {
-            self.terminal.update_draw_state(&mut self.draw_state);
+            self.terminal
+                .update_draw_state(pipelines, &mut self.draw_state);
         }
 
         !quit
@@ -89,7 +90,7 @@ impl Routine for TerminalRoutine {
         }
 
         // update draw states and remove terminals that have quit
-        self.terminals.retain_mut(TerminalWrapper::update);
+        self.terminals.retain_mut(|t| t.update(&self.pipelines));
 
         Box::new(TerminalNode {
             pipelines: &self.pipelines,
