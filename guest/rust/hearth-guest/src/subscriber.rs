@@ -23,6 +23,7 @@ use std::{
 
 use tracing::{field::Visit, span, Subscriber};
 
+/// Subscribes to tracing events and formats them through the API to the host
 pub struct ProcessSubscriber {
     next_span_id: AtomicUsize,
 }
