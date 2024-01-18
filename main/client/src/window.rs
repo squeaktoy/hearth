@@ -27,10 +27,10 @@ use hearth_rend3::{
     wgpu, FrameRequest, Rend3Plugin,
 };
 use hearth_runtime::{
-    async_trait, cargo_process_metadata,
+    async_trait,
     flue::{CapabilityRef, Permissions},
+    hearth_macros::GetProcessMetadata,
     hearth_schema::window::*,
-    process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     utils::{MessageInfo, PubSub, ServiceRunner, SinkProcess},
 };
@@ -411,7 +411,8 @@ impl Plugin for WindowPlugin {
     }
 }
 
-/// A service that implements the windowing protocol using winit.
+/// The native window service. Accepts WindowRequest.
+#[derive(GetProcessMetadata)]
 pub struct WindowService {
     incoming: EventLoopProxy<WindowRxMessage>,
     pubsub: Arc<PubSub<WindowEvent>>,
@@ -464,12 +465,6 @@ impl SinkProcess for WindowService {
 
 impl ServiceRunner for WindowService {
     const NAME: &'static str = SERVICE_NAME;
-
-    fn get_process_metadata() -> ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-        meta.description = Some("The native window service. Accepts WindowRequest.".to_string());
-        meta
-    }
 }
 
 fn conv_element_state(state: winit::event::ElementState) -> ElementState {
