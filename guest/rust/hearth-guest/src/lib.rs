@@ -251,10 +251,12 @@ impl Mailbox {
     pub fn try_recv_raw(&self) -> Option<(Vec<u8>, Vec<Capability>)> {
         let signal = self.try_recv_signal();
 
-        if let Some(Signal::Message(msg)) = signal {
-            Some((msg.data, msg.caps))
-        } else {
-            None
+        match signal {
+            Some(Signal::Message(msg)) => Some((msg.data, msg.caps)),
+            Some(Signal::Down { subject }) => {
+                panic!("received down signal on subject {:?}", subject)
+            }
+            None => None,
         }
     }
 
