@@ -75,11 +75,11 @@ pub trait RunnerContext<'a> {
     /// Spawns a child process, executes it using the given process runner,
     /// and returns a capability to its parent mailbox within this runners'
     /// table.
-    fn spawn(
-        &self,
-        meta: ProcessMetadata,
-        runner: impl ProcessRunner + 'static,
-    ) -> CapabilityRef<'a> {
+    fn spawn<T>(&self, runner: T) -> CapabilityRef<'a>
+    where
+        T: ProcessRunner + GetProcessMetadata + 'static,
+    {
+        let meta = T::get_process_metadata();
         let label = meta.name.clone().unwrap_or("<no name>".to_string());
         let runtime = self.get_runtime().to_owned();
         let child = runtime.process_factory.spawn(meta);
@@ -185,6 +185,12 @@ where
             caps: vec![],
         }
     }
+}
+
+/// A trait for Hearth types with process metadata.
+pub trait GetProcessMetadata {
+    /// Gets the [ProcessMetadata] for this service.
+    fn get_process_metadata() -> ProcessMetadata;
 }
 
 /// A trait for types that implement process behavior.
@@ -315,13 +321,8 @@ where
     }
 }
 
-pub trait ServiceRunner: ProcessRunner {
+pub trait ServiceRunner: ProcessRunner + GetProcessMetadata {
     const NAME: &'static str;
-
-    /// Gets the [ProcessMetadata] for this service.
-    ///
-    /// The `name` field of this struct is overridden by [Self::NAME].
-    fn get_process_metadata() -> ProcessMetadata;
 }
 
 impl<T> Plugin for T
@@ -330,8 +331,7 @@ where
 {
     fn finalize(self, builder: &mut RuntimeBuilder) {
         let name = Self::NAME.to_string();
-        let mut meta = Self::get_process_metadata();
-        meta.name = Some(name.clone());
+        let meta = Self::get_process_metadata();
         builder.add_service(name, meta, self);
     }
 }
