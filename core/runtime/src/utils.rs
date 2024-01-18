@@ -188,9 +188,10 @@ where
     }
 }
 
-/// A token for directly running a process outside a tokio task.
+/// A token which grants permission to run a process directly.
 ///
-/// Is not normally obtainable by user code to prevent misuse or blocking use.
+/// This token can not be obtained by user code, and is only used internally. This is to prevent
+/// users from running the process directly and circumventing the task spawning.
 pub struct ProcessRunToken {
     _inner: (),
 }
@@ -210,6 +211,10 @@ pub trait ProcessRunner: Send {
         token: ProcessRunToken,
     );
 
+    /// Execute this process in a new async task.
+    ///
+    /// The process will keep running in the background asynchronously.
+    /// by using its mailbox.
     fn spawn<D: 'static + Send + Borrow<Process>>(
         self,
         label: String,
@@ -222,7 +227,6 @@ pub trait ProcessRunner: Send {
 
         tokio::spawn(
             async move {
-                debug!(name = label, "spawning service");
                 self.run(label, runtime, ctx.borrow(), ProcessRunToken { _inner: () })
                     .await;
             }
