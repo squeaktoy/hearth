@@ -94,8 +94,8 @@ where
         caps.push(&reply_cap);
         caps.extend_from_slice(args);
 
-        self.cap.send_json(&request, caps.as_slice());
+        self.cap.send(&request, caps.as_slice());
 
-        reply.recv_json()
+        reply.recv()
     }
 }
