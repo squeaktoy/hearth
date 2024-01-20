@@ -21,8 +21,8 @@ use std::sync::Arc;
 use draw::{TerminalDrawState, TerminalPipelines};
 use hearth_rend3::*;
 use hearth_runtime::{
-    async_trait, cargo_process_metadata,
-    process::ProcessMetadata,
+    async_trait,
+    hearth_macros::GetProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     utils::*,
@@ -113,7 +113,8 @@ impl<'a> Node<'a> for TerminalNode<'a> {
     }
 }
 
-/// Guest-exposed terminal process.
+/// An instance of a terminal. Accepts TerminalUpdate.
+#[derive(GetProcessMetadata)]
 pub struct TerminalSink {
     inner: Arc<Terminal>,
 }
@@ -143,7 +144,8 @@ impl SinkProcess for TerminalSink {
     }
 }
 
-/// Guest-exposed service plugin.
+/// The native terminal emulator factory service. Accepts FactoryRequest.
+#[derive(GetProcessMetadata)]
 pub struct TerminalFactory {
     fonts: FontSet<Arc<FaceAtlas>>,
     new_terminals_tx: UnboundedSender<Arc<Terminal>>,
@@ -168,14 +170,7 @@ impl RequestResponseProcess for TerminalFactory {
         let terminal = Terminal::new(config, state.clone());
         let _ = self.new_terminals_tx.send(terminal.clone());
 
-        // create metadata for the child TerminalSink since it's a sink, not a
-        // service, and it doesn't have get_process_metadata()
-        let mut meta = cargo_process_metadata!();
-        meta.name = Some("TerminalSink".to_string());
-        meta.description = Some("An instance of a terminal. Accepts TerminalUpdate.".to_string());
-
-        let sink = TerminalSink { inner: terminal };
-        let child = request.spawn(meta, sink);
+        let child = request.spawn(TerminalSink { inner: terminal });
 
         ResponseInfo {
             data: Ok(FactorySuccess::Terminal),
@@ -186,15 +181,6 @@ impl RequestResponseProcess for TerminalFactory {
 
 impl ServiceRunner for TerminalFactory {
     const NAME: &'static str = "hearth.terminal.TerminalFactory";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-        meta.description = Some(
-            "The native terminal emulator factory service. Accepts FactoryRequest.".to_string(),
-        );
-
-        meta
-    }
 }
 
 #[derive(Default)]

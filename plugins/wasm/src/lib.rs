@@ -18,17 +18,17 @@
 
 use std::sync::Arc;
 
-use hearth_macros::impl_wasm_linker;
 use hearth_runtime::anyhow::{anyhow, bail, Context, Result};
 use hearth_runtime::asset::{AssetLoader, AssetStore};
 use hearth_runtime::flue::{
     CapabilityHandle, CapabilityRef, Mailbox, MailboxGroup, Permissions, Table, TableSignal,
 };
+use hearth_runtime::hearth_macros::{impl_wasm_linker, GetProcessMetadata};
 use hearth_runtime::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_runtime::process::{Process, ProcessMetadata};
 use hearth_runtime::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_runtime::{async_trait, hearth_schema};
-use hearth_runtime::{cargo_process_metadata, tokio, utils::*};
+use hearth_runtime::{tokio, utils::*};
 use hearth_schema::wasm::WasmSpawnInfo;
 use hearth_schema::{LumpId, ProcessLogLevel, SignalKind};
 use slab::Slab;
@@ -953,6 +953,8 @@ impl WasmProcess {
     }
 }
 
+/// The native WebAssembly process spawner. Accepts WasmSpawnInfo.
+#[derive(GetProcessMetadata)]
 pub struct WasmProcessSpawner {
     engine: Arc<Engine>,
     linker: Arc<Linker<ProcessData>>,
@@ -984,14 +986,6 @@ impl RequestResponseProcess for WasmProcessSpawner {
 
 impl ServiceRunner for WasmProcessSpawner {
     const NAME: &'static str = "hearth.wasm.WasmProcessSpawner";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-        meta.description =
-            Some("The native WebAssembly process spawner. Accepts WasmSpawnInfo.".to_string());
-
-        meta
-    }
 }
 
 impl WasmProcessSpawner {
