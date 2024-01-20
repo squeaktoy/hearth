@@ -34,7 +34,6 @@ use hearth_runtime::{
     hearth_schema::canvas::*,
     process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
-    tokio,
     utils::*,
 };
 
@@ -567,11 +566,8 @@ impl RequestResponseProcess for CanvasFactory {
 
                 // execute the instance process runner
                 let runtime = request.runtime.clone();
-                tokio::spawn(async move {
-                    instance
-                        .run("CanvasInstance".to_string(), runtime, &child)
-                        .await;
-                });
+
+                instance.spawn("CanvasInstance".to_string(), runtime, child);
 
                 // respond with the new canvas
                 ResponseInfo {

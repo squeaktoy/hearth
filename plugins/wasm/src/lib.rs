@@ -25,12 +25,12 @@ use hearth_runtime::flue::{
     CapabilityHandle, CapabilityRef, Mailbox, MailboxGroup, Permissions, Table, TableSignal,
 };
 use hearth_runtime::lump::{bytes::Bytes, LumpStoreImpl};
-use hearth_runtime::process::{Process, ProcessLogEvent, ProcessMetadata};
+use hearth_runtime::process::{Process, ProcessMetadata};
 use hearth_runtime::runtime::{Plugin, Runtime, RuntimeBuilder};
 use hearth_runtime::{async_trait, hearth_schema};
 use hearth_runtime::{cargo_process_metadata, tokio, utils::*};
 use hearth_schema::wasm::WasmSpawnInfo;
-use hearth_schema::{LumpId, SignalKind};
+use hearth_schema::{LumpId, ProcessLogLevel, SignalKind};
 use slab::Slab;
 use tracing::{error, warn};
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store, UpdateDeadline};
@@ -160,13 +160,18 @@ impl LogAbi {
             .try_into()
             .map_err(|_| anyhow!("invalid log level constant {}", level))?;
 
-        let event = ProcessLogEvent {
-            level,
-            module: memory.get_str(module_ptr, module_len)?.to_string(),
-            content: memory.get_str(content_ptr, content_len)?.to_string(),
-        };
+        let module = memory.get_str(module_ptr, module_len)?.to_string();
+        let content = memory.get_str(content_ptr, content_len)?.to_string();
 
-        self.process.borrow_info().log_tx.send(event)?;
+        let info = self.process.borrow_info();
+        info.process_span.in_scope(|| match level {
+            ProcessLogLevel::Trace => tracing::trace!(module, "{content}"),
+
+            ProcessLogLevel::Debug => tracing::debug!(module, "{content}"),
+            ProcessLogLevel::Info => tracing::info!(module, "{content}"),
+            ProcessLogLevel::Warning => tracing::warn!(module, "{content}"),
+            ProcessLogLevel::Error => tracing::error!(module, "{content}"),
+        });
 
         Ok(())
     }

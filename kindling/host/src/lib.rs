@@ -50,8 +50,9 @@ pub mod prelude {
         time::{sleep, Stopwatch, Timer},
         wasm::{spawn_fn, spawn_mod},
         window::MAIN_WINDOW,
-        RequestResponse, {debug, error, info, log, trace, warning},
+        RequestResponse,
     };
+    pub use tracing::{debug, error, info, trace, warn};
 }
 
 /// A helper struct for request-response capabilities.
@@ -97,56 +98,4 @@ where
 
         reply.recv()
     }
-}
-
-/// Takes a `ProcessLogLevel` and a format string and prints it to the terminal.
-#[macro_export]
-macro_rules! log {
-    ($level:expr, $($arg:tt)*) => {
-        ::hearth_guest::log(
-            $level,
-            ::core::module_path!(),
-            &format!($($arg)*),
-        )
-    }
-}
-
-/// Prints a `Trace` level log message to the terminal.
-#[macro_export]
-macro_rules! trace {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Trace, $($arg)*);
-    };
-}
-
-/// Prints a `Debug` level log message to the terminal.
-#[macro_export]
-macro_rules! debug {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Debug, $($arg)*);
-    };
-}
-
-/// Prints an `Info` level log message to the terminal.
-#[macro_export]
-macro_rules! info {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Info, $($arg)*);
-    };
-}
-
-/// Prints a `Warning` level log message to the terminal.
-#[macro_export]
-macro_rules! warning {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Warning, $($arg)*);
-    };
-}
-
-/// Prints a `Error` level log message to the terminal.
-#[macro_export]
-macro_rules! error {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Error, $($arg)*);
-    };
 }
