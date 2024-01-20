@@ -25,7 +25,11 @@ use syn::{
 
 /// Helper macro to implement [GetProcessMetadata] using doc comments and Cargo environment variables.
 ///
-/// This macro initializes these [ProcessMetadata] fields with `CARGO_PKG_*` environment variables:
+/// The `description` field is initialized with the type's doc comments.
+///
+/// The `name` field is initialized with the type's name.
+///
+/// The following [ProcessMetadata] fields are initialized with corresponding `CARGO_PKG_*` environment variables:
 /// - `authors`: `CARGO_PKG_AUTHORS`
 /// - `repository`: `CARGO_PKG_REPOSITORY`
 /// - `homepage`: `CARGO_PKG_HOMEPAGE`
