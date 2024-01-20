@@ -53,16 +53,16 @@ impl Canvas {
 
     /// Update this canvas with a new buffer of pixels to draw.
     pub fn update(&self, buffer: Pixels) {
-        self.cap.send_json(&CanvasUpdate::Resize(buffer), &[]);
+        self.cap.send(&CanvasUpdate::Resize(buffer), &[]);
     }
 
     /// Move this canvas to a new position in 3D space.
     pub fn relocate(&self, position: Position) {
-        self.cap.send_json(&CanvasUpdate::Relocate(position), &[])
+        self.cap.send(&CanvasUpdate::Relocate(position), &[])
     }
 
     /// Blit a recatangular buffer to a part of this canvas.
     pub fn blit(&self, blit: Blit) {
-        self.cap.send_json(&CanvasUpdate::Blit(blit), &[])
+        self.cap.send(&CanvasUpdate::Blit(blit), &[])
     }
 }
