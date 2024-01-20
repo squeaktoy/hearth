@@ -20,11 +20,14 @@
 
 #![warn(missing_docs)]
 
+mod subscriber;
+
 use std::borrow::Borrow;
 
 use serde::{Deserialize, Serialize};
 
 pub use hearth_schema::*;
+use subscriber::ProcessSubscriber;
 
 /// Internal helper function to turn a string into a pointer and length.
 fn abi_string(str: &str) -> (u32, u32) {
@@ -519,6 +522,10 @@ extern "C" fn _hearth_init() {
         let log_message = format!("panicked at '{msg}', {location}");
         log(ProcessLogLevel::Error, "panic", &log_message);
     }));
+
+    // initialize tracing subscriber
+    let subscriber = ProcessSubscriber::new();
+    tracing::subscriber::set_global_default(subscriber).expect("failed to set subscriber");
 }
 
 #[no_mangle]

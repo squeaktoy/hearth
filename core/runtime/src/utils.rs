@@ -16,13 +16,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{any::type_name, collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{
+    any::type_name, borrow::Borrow, collections::HashMap, fmt::Debug, marker::PhantomData,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use flue::{CapabilityHandle, CapabilityRef, OwnedTableSignal, Permissions, PostOffice, Table};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, Instrument};
 
 use crate::{
     process::{Process, ProcessMetadata},
@@ -90,9 +93,7 @@ pub trait RunnerContext<'a> {
             .export_to(perms, self.get_process().borrow_table())
             .unwrap();
 
-        tokio::spawn(async move {
-            runner.run(label, runtime, &child).await;
-        });
+        runner.spawn(label, runtime, child);
 
         child_cap
     }
@@ -193,6 +194,14 @@ pub trait GetProcessMetadata {
     fn get_process_metadata() -> ProcessMetadata;
 }
 
+/// A token which grants permission to run a process directly.
+///
+/// This token can not be obtained by user code, and is only used internally. This is to prevent
+/// users from running the process directly and circumventing the task spawning.
+pub struct ProcessRunToken {
+    _inner: (),
+}
+
 /// A trait for types that implement process behavior.
 #[async_trait]
 pub trait ProcessRunner: Send {
@@ -200,7 +209,36 @@ pub trait ProcessRunner: Send {
     ///
     /// Takes ownership of this object and provides a dev-facing label, a handle
     /// to the runtime, and an existing [Process] instance as context.
-    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: &Process);
+    async fn run(
+        mut self,
+        label: String,
+        runtime: Arc<Runtime>,
+        ctx: &Process,
+        token: ProcessRunToken,
+    );
+
+    /// Execute this process in a new async task.
+    ///
+    /// The process will keep running in the background asynchronously.
+    /// by using its mailbox.
+    fn spawn<D: 'static + Send + Borrow<Process>>(
+        self,
+        label: String,
+        runtime: Arc<Runtime>,
+        ctx: D,
+    ) where
+        Self: 'static + Sized,
+    {
+        let span = ctx.borrow().borrow_info().process_span.clone();
+
+        tokio::spawn(
+            async move {
+                self.run(label, runtime, ctx.borrow(), ProcessRunToken { _inner: () })
+                    .await;
+            }
+            .instrument(span),
+        );
+    }
 }
 
 /// A trait for process runners that continuously receive JSON-formatted messages of a single type.
@@ -228,7 +266,13 @@ impl<T> ProcessRunner for T
 where
     T: SinkProcess,
 {
-    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: &Process) {
+    async fn run(
+        mut self,
+        label: String,
+        runtime: Arc<Runtime>,
+        ctx: &Process,
+        _: ProcessRunToken,
+    ) {
         loop {
             let recv = ctx.borrow_parent().recv_owned().await;
 
