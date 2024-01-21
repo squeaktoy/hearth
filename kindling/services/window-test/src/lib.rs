@@ -26,12 +26,12 @@ pub extern "C" fn run() {
     let events = MAIN_WINDOW.subscribe();
 
     loop {
-        let (msg, _) = events.recv_json::<WindowEvent>();
+        let (msg, _) = events.recv::<WindowEvent>();
 
         if let WindowEvent::Redraw { .. } = msg {
             continue;
         }
 
-        info!("window event: {:?}", msg);
+        info!(?msg, "window event");
     }
 }

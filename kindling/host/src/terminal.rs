@@ -33,7 +33,7 @@ pub struct Terminal {
 
 impl Drop for Terminal {
     fn drop(&mut self) {
-        self.cap.send_json(&TerminalUpdate::Quit, &[]);
+        self.cap.send(&TerminalUpdate::Quit, &[]);
     }
 }
 
@@ -51,11 +51,11 @@ impl Terminal {
 
     /// Send input to this terminal.
     pub fn input(&self, input: String) {
-        self.cap.send_json(&TerminalUpdate::Input(input), &[])
+        self.cap.send(&TerminalUpdate::Input(input), &[])
     }
 
     /// Update the state of this terminal.
     pub fn update(&self, state: TerminalState) {
-        self.cap.send_json(&TerminalUpdate::State(state), &[])
+        self.cap.send(&TerminalUpdate::State(state), &[])
     }
 }
