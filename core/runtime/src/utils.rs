@@ -233,7 +233,8 @@ pub trait ProcessRunner: Send {
 
         tokio::spawn(
             async move {
-                self.run(label, runtime, ctx.borrow(), ProcessRunToken { _inner: () })
+                let ctx = ctx.borrow();
+                self.run(label, runtime, ctx, ProcessRunToken { _inner: () })
                     .await;
             }
             .instrument(span),
