@@ -82,7 +82,7 @@ pub extern "C" fn run() {
         for dep in node.config.dependencies.need.clone() {
             match names_to_idxs.get(&dep.clone()) {
                 Some(dep_idx) => {
-                    graph.add_edge(idx, *dep_idx, ());
+                    graph.add_edge(*dep_idx, idx, ());
                 }
                 None => {
                     if !native_services.contains(&dep) {
