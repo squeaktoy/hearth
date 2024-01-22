@@ -20,6 +20,7 @@ use std::collections::HashMap;
 
 use hearth_guest::Capability;
 use kindling_host::{prelude::*, registry::Registry};
+use kindling_utils::registry::*;
 use petgraph::{algo::toposort, prelude::DiGraph};
 use serde::Deserialize;
 hearth_guest::export_metadata!();
@@ -55,6 +56,7 @@ impl Service {
 #[no_mangle]
 pub extern "C" fn run() {
     info!("Hello world!");
+    let native_services = REGISTRY.list_services();
     let mut graph = DiGraph::<Service, ()>::new();
     let mut names_to_idxs = HashMap::new();
     for file in list_files(SEARCH_DIR).unwrap() {
@@ -83,8 +85,10 @@ pub extern "C" fn run() {
                     graph.add_edge(idx, *dep_idx, ());
                 }
                 None => {
-                    remove = true;
-                    error!("Dependency \'{dep}\' not found");
+                    if !native_services.contains(&dep) {
+                        remove = true;
+                        error!("Dependency \'{dep}\' not found");
+                    }
                 }
             };
         }
@@ -95,11 +99,28 @@ pub extern "C" fn run() {
         }
     }
 
+    // panics on cyclic dependencies
     let sorted_services = toposort(&graph, None).unwrap();
+
+    // unnecessary but cleans up the code more
+    let mut names_to_caps: HashMap<String, Capability> = HashMap::new();
+
+    // add native services to the map
+    for service in native_services {
+        let cap = REGISTRY.get_service(&service).unwrap();
+        names_to_caps.insert(service, cap);
+    }
 
     for idx in sorted_services {
         let service = graph.node_weight_mut(idx).unwrap();
-        service.spawn(None);
+        let mut deps = Vec::new();
+        for dep in service.config.dependencies.need.clone() {
+            let cap = names_to_caps.get(&dep).unwrap().to_owned();
+            deps.push((dep, cap));
+        }
+        let registry = Some(RegistryServer::spawn(deps));
+        let cap = service.spawn(registry);
+        names_to_caps.insert(service.name.clone(), cap);
     }
 }
 
