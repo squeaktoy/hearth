@@ -21,9 +21,8 @@ use super::*;
 use hearth_guest::terminal::*;
 
 lazy_static::lazy_static! {
-    static ref TERMINAL_FACTORY: RequestResponse<FactoryRequest, FactoryResponse> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.terminal.TerminalFactory").unwrap())
-    };
+    static ref TERMINAL_FACTORY: RequestResponse<FactoryRequest, FactoryResponse> =
+        RequestResponse::expect_service("hearth.terminal.TerminalFactory");
 }
 
 /// A wrapper around the Terminal Capability.

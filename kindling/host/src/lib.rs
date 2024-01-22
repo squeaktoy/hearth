@@ -98,4 +98,15 @@ where
 
         reply.recv()
     }
+
+    /// Retrieves a [RequestResponse] service from [registry::REGISTRY] by name.
+    ///
+    /// Panics if the service is unavailable.
+    pub fn expect_service(name: &str) -> Self {
+        Self::new(
+            registry::REGISTRY
+                .get_service(name)
+                .unwrap_or_else(|| panic!("requested service {name:?} is unavailable")),
+        )
+    }
 }
