@@ -22,9 +22,8 @@ use hearth_guest::canvas::*;
 
 lazy_static::lazy_static! {
     /// A lazily-initialized handle to the canvas factory service.
-    static ref CANVAS_FACTORY: RequestResponse<FactoryRequest, FactoryResponse> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.canvas.CanvasFactory").unwrap())
-    };
+    static ref CANVAS_FACTORY: RequestResponse<FactoryRequest, FactoryResponse> =
+        RequestResponse::expect_service("hearth.canvas.CanvasFactory");
 }
 
 /// A wrapper around the canvas Capability.
