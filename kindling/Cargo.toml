@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["init", "services/*", "host"]
-exclude = ["build"]
 
 [workspace.dependencies]
 hearth-guest = { path = "../guest/rust/hearth-guest"}
