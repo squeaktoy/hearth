@@ -42,12 +42,12 @@ impl RegistryServer {
         let caps: Vec<&Capability> = caps.iter().collect();
         let config = RegistryConfig { service_names };
         let registry = spawn_fn(Self::init, None);
-        registry.send_json(&config, &caps);
+        registry.send(&config, &caps);
         RequestResponse::new(registry)
     }
 
     fn init() {
-        let (config, service_list) = PARENT.recv_json::<RegistryConfig>();
+        let (config, service_list) = PARENT.recv::<RegistryConfig>();
 
         // Hashmap that maps the service names to their capabilities
         let mut services = HashMap::new();
@@ -58,13 +58,13 @@ impl RegistryServer {
         let registry = RegistryServer { services };
 
         loop {
-            let (request, caps) = PARENT.recv_json::<RegistryRequest>();
+            let (request, caps) = PARENT.recv::<RegistryRequest>();
             let Some(reply) = caps.first() else {
                 debug!("Request did not contain a capability");
                 continue;
             };
             let (response, response_cap) = registry.on_request(request);
-            reply.send_json(&response, &response_cap)
+            reply.send(&response, &response_cap)
         }
     }
 
