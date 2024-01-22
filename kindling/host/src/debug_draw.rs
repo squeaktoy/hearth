@@ -21,9 +21,8 @@ use super::*;
 use hearth_guest::debug_draw::*;
 
 lazy_static::lazy_static! {
-    static ref DEBUG_DRAW_FACTORY: RequestResponse<(), ()> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.DebugDrawFactory").unwrap())
-    };
+    static ref DEBUG_DRAW_FACTORY: RequestResponse<(), ()> =
+        RequestResponse::expect_service("hearth.DebugDrawFactory");
 }
 
 /// An instance of debug draw.
