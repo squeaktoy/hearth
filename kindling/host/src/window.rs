@@ -22,9 +22,11 @@ use hearth_guest::window::*;
 
 lazy_static::lazy_static! {
     /// The main client window.
-    pub static ref MAIN_WINDOW: Window =  {
+    pub static ref MAIN_WINDOW: Window = {
         Window {
-            cap: registry::REGISTRY.get_service(SERVICE_NAME).unwrap()
+            cap: registry::REGISTRY
+                .get_service(SERVICE_NAME)
+                .unwrap_or_else(|| panic!("requested service {SERVICE_NAME:?} is unavailable"))
         }
     };
 }
