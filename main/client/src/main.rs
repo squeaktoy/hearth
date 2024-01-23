@@ -104,11 +104,7 @@ fn main() {
 }
 
 async fn async_main(args: Args, rend3_plugin: Rend3Plugin, window_plugin: WindowPlugin) {
-    let config_path = args.config.unwrap_or_else(hearth_runtime::get_config_path);
-
-    let config_file = hearth_runtime::load_config(&config_path).unwrap();
-
-    let mut builder = RuntimeBuilder::new(config_file);
+    let mut builder = RuntimeBuilder::new();
     builder.add_plugin(hearth_time::TimePlugin);
     builder.add_plugin(hearth_wasm::WasmPlugin::default());
     builder.add_plugin(hearth_init::InitPlugin::new(args.init));

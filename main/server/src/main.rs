@@ -65,14 +65,11 @@ async fn main() {
     debug!("Initializing runtime");
     let config = RuntimeConfig {};
 
-    let config_path = args.config.unwrap_or_else(hearth_runtime::get_config_path);
-    let config_file = hearth_runtime::load_config(&config_path).unwrap();
-
     let (network_root_tx, network_root_rx) = oneshot::channel();
     let mut init = hearth_init::InitPlugin::new(args.init);
     init.add_hook("hearth.init.Server".into(), network_root_tx);
 
-    let mut builder = RuntimeBuilder::new(config_file);
+    let mut builder = RuntimeBuilder::new();
     builder.add_plugin(hearth_time::TimePlugin);
     builder.add_plugin(hearth_wasm::WasmPlugin::default());
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
