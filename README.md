@@ -148,8 +148,9 @@ For Hearth to work properly you must give it a WebAssembly script to serve as
 the init system and a directory to serve as its root. Hearth provides a set of
 basic utilities for use with the runtime. These utilities are called Kindling
 and can be found in the [corresponding directory](./kindling). Kindling's root
-and init system can be built with the script found in the tools directory. A
-cargo alias is provided for ease of use.
+and init system can be built with the script found in the tools directory.
+
+A Cargo alias is provided for ease of use:
 
 ```sh
 cargo build-root # build Kindling using the build script.
