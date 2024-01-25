@@ -106,8 +106,8 @@ fn main() {
 }
 
 async fn async_main(args: Args, rend3_plugin: Rend3Plugin, window_plugin: WindowPlugin) {
-    let mut builder = RuntimeBuilder::new();
     let init = args.init.unwrap_or(args.root.join("init.wasm"));
+    let mut builder = RuntimeBuilder::new();
     builder.add_plugin(hearth_time::TimePlugin);
     builder.add_plugin(hearth_wasm::WasmPlugin::default());
     builder.add_plugin(hearth_init::InitPlugin::new(init));
