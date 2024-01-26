@@ -158,8 +158,7 @@ A Cargo alias is provided for ease of use:
 cargo build-root # build Kindling using the build script.
 ```
 
-Now that the root has been built, Hearth can be ran with kindling using the
-following command in the root of the repository.
+Now that the root has been built, Hearth can be ran with Kindling as its root:
 
 ```sh
 hearth-client --root kindling/target/kindling-root/ # Run Hearth in serverless mode with the given root.
