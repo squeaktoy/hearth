@@ -46,8 +46,10 @@ pub struct Args {
     pub config: Option<PathBuf>,
 
     /// The init system to run.
+    ///
+    /// [default: <ROOT>/init.wasm]
     #[clap(short, long)]
-    pub init: PathBuf,
+    pub init: Option<PathBuf>,
 
     /// A path to the guest-side filesystem root.
     #[clap(short, long)]
@@ -66,7 +68,8 @@ async fn main() {
     let config = RuntimeConfig {};
 
     let (network_root_tx, network_root_rx) = oneshot::channel();
-    let mut init = hearth_init::InitPlugin::new(args.init);
+    let init = args.init.unwrap_or(args.root.join("init.wasm"));
+    let mut init = hearth_init::InitPlugin::new(init);
     init.add_hook("hearth.init.Server".into(), network_root_tx);
 
     let mut builder = RuntimeBuilder::new();
