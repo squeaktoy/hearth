@@ -38,6 +38,18 @@ pub fn set_ambient_lighting(color: Vec3) {
     let _ = result.unwrap();
 }
 
+/// Update the skybox with the given lump containing [TextureData].
+pub fn set_skybox(texture: &Lump) {
+    let (result, _) = RENDERER.request(
+        RendererRequest::SetSkybox {
+            texture: texture.get_id(),
+        },
+        &[],
+    );
+
+    let _ = result.unwrap();
+}
+
 /// A directional light.
 pub struct DirectionalLight(Capability);
 
