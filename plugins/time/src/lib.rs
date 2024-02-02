@@ -50,7 +50,7 @@ impl Plugin for TimePlugin {
             .add_plugin(SleepService)
             .add_plugin(TimerFactory)
             .add_plugin(StopwatchFactory)
-			.add_plugin(UnixTimeService);
+            .add_plugin(UnixTimeService);
     }
 }
 
@@ -218,22 +218,22 @@ pub struct UnixTimeService;
 
 #[async_trait]
 impl RequestResponseProcess for UnixTimeService {
-	type Request = ();
-	type Response = u128;
+    type Request = ();
+    type Response = u128;
 
-	async fn on_request<'a>(
-		&'a mut self,
-		_request: &mut RequestInfo<'a, Self::Request>,
-	) -> ResponseInfo<'a, Self::Response> {
-		let time_since_epoch = SystemTime::now()
-			.duration_since(SystemTime::UNIX_EPOCH)
-			.expect("system time before UNIX epoch");
+    async fn on_request<'a>(
+        &'a mut self,
+        _request: &mut RequestInfo<'a, Self::Request>,
+    ) -> ResponseInfo<'a, Self::Response> {
+        let time_since_epoch = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("system time before UNIX epoch");
 
-		ResponseInfo {
-			data: time_since_epoch.as_nanos(),
-			caps: vec![],
-		}
-	}
+        ResponseInfo {
+            data: time_since_epoch.as_nanos(),
+            caps: vec![],
+        }
+    }
 }
 
 impl ServiceRunner for UnixTimeService {
