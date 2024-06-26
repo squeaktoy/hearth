@@ -14,9 +14,6 @@
   <a href="https://coven.witchcraft.zone/@hearth">
     <img alt="Fediverse" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcoven.witchcraft.zone%2Fusers%2F9lylyyd6kcmppzkm%2Ffollowers&query=totalItems&suffix=%20followers&label=Fediverse&logo=mastodon&logoColor=white">
   </a>
-  <a href="https://www.gnu.org/licenses/why-affero-gpl.html">
-    <img alt="AGPL License" src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366?logo=gnu&logoColor=white">
-  </a>
   <img alt="Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hearth-rs/hearth/pr.yml?logo=github&logoColor=white"/>
 </p>
 
@@ -27,10 +24,6 @@ Hearth is a shared, always-on execution environment for constructing
 [Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
 [Contributing](/CONTRIBUTORS.md)
-
-<a href="https://www.gnu.org/licenses/agpl-3.0.html">
-  <img src="./resources/misc/agplv3-with-text-162x68.png"/>
-</a>
 
 </div>
 
