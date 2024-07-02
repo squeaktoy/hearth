@@ -10,9 +10,6 @@ lazy_static::lazy_static! {
 
     static ref STOPWATCH_FACTORY: RequestResponse<(), ()> =
         RequestResponse::expect_service("hearth.StopwatchFactory");
-
-    static ref UNIX_TIME: RequestResponse<(), u128> =
-        RequestResponse::expect_service("hearth.UnixTime");
 }
 
 /// Sleeps for the given time in seconds.
@@ -24,12 +21,6 @@ pub fn sleep(duration: f32) {
     SLEEP_SERVICE.send(&duration, &[&reply_cap]);
 
     let _ = reply.recv_raw();
-}
-
-/// Gets the time since the UNIX epoch in nanoseconds as a unsigned 128-bit
-/// integer.
-pub fn get_unix_time() -> u128 {
-    UNIX_TIME.request((), &[]).0
 }
 
 pub struct Timer(RequestResponse<f32, ()>);
